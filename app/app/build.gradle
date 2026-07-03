@@ -424,7 +424,7 @@ android {
     }
 
     tasks.register('buildSdk', Exec) {
-        workingDir "${bringyourHomeDir}/sdk/build"
+        workingDir "${bringyourHomeDir}/build"
         commandLine 'make', 'init', 'build_android'
         environment 'WARP_VERSION', "${appVersion()}+${appVersionCode()}"
         environment 'ANDROID_NDK_HOME', android.ndkDirectory
@@ -457,8 +457,8 @@ android {
 
 // local URnetwork SDK
 dependencies {
-    compileOnly fileTree(dir: "${bringyourHomeDir}/sdk/build/android", include: ['*-sources.jar'])
-    implementation fileTree(dir: "${bringyourHomeDir}/sdk/build/android", include: ['*.aar', '*.jar'])
+    compileOnly fileTree(dir: "${bringyourHomeDir}/build/android", include: ['*-sources.jar'])
+    implementation fileTree(dir: "${bringyourHomeDir}/build/android", include: ['*.aar', '*.jar'])
 }
 
 dependencies {
