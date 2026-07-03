@@ -1,0 +1,87 @@
+name: Beta Build — Android
+
+on:
+  push:
+    branches:
+      - beta/custom-server
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  WARP_VERSION: beta-${{ github.run_number }}
+
+jobs:
+  build-android:
+    name: Build Android app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Android repo
+        uses: actions/checkout@v4
+
+      - name: Check out forked SDK
+        uses: actions/checkout@v4
+        with:
+          repository: Ryanmello07/urnetwork-sdk
+          ref: beta/custom-server
+          path: urnetwork-sdk
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: true
+          link-to-sdk: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: urnetwork-sdk/go.mod
+
+      - name: Build SDK for Android
+        working-directory: urnetwork-sdk/build
+        env:
+          BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
+          WARP_HOME: ${{ github.workspace }}/urnetwork-sdk
+          WARP_VERSION_HOME: ${{ github.workspace }}/urnetwork-sdk/version
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
+          make init build_android
+
+      - name: Write local.properties to bypass warpctl
+        working-directory: app
+        run: |
+          cat > local.properties <<EOF
+          warp.version=${{ env.WARP_VERSION }}
+          warp.version_code=${{ github.run_number }}
+          EOF
+
+      - name: Build githubDebug APK
+        working-directory: app
+        env:
+          BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
+        run: ./gradlew :app:assembleGithubDebug
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: beta-custom-server-${{ github.run_number }}-${{ github.run_attempt }}
+        run: |
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes || true
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --title "URnetwork Android beta custom server ${{ github.run_number }}" \
+            --generate-notes \
+            app/app/build/outputs/apk/github/debug/*.apk
