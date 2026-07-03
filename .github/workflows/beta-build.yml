@@ -46,7 +46,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: urnetwork-sdk/go.mod
+          go-version: stable
 
       - name: Build SDK for Android
         working-directory: urnetwork-sdk/build
