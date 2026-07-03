@@ -33,8 +33,10 @@ ext.abiVersionCodeVariants = [
 def warpHomeDir = System.getenv('WARP_HOME') ?:
         file("${rootDir.absolutePath}/../..").absolutePath
 
+// Points to the local checkout of the forked SDK:
+// https://github.com/Ryanmello07/urnetwork-sdk
 def bringyourHomeDir = System.getenv('BRINGYOUR_HOME') ?:
-        file("${rootDir.absolutePath}/../..").absolutePath
+        file("${rootDir.absolutePath}/../../urnetwork-sdk").absolutePath
 
 ext.signingSecret = { key ->
     def signingPropertiesFile = file("${warpHomeDir}/release/android/signing/app.properties")
