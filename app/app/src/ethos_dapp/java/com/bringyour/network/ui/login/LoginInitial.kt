@@ -2,7 +2,6 @@ package com.bringyour.network.ui.login
 
 import android.content.Context
 import android.net.Uri
-import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -81,17 +80,10 @@ import com.bringyour.network.ui.components.overlays.WelcomeAnimatedOverlayLogin
 import com.bringyour.network.ui.theme.BlueMedium
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
-import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
-import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
-import com.solana.mobilewalletadapter.clientlib.Solana
-import com.solana.mobilewalletadapter.clientlib.TransactionResult
-import com.solana.mobilewalletadapter.common.signin.SignInWithSolana
-import com.solana.publickey.SolanaPublicKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.ethereumphone.walletsdk.WalletSDK
-import java.util.Date
 
 @Composable()
 fun LoginInitial(
@@ -150,82 +142,75 @@ fun LoginInitial(
         signature: String
             ) -> Unit = { blockchain, pk, signedMessage, signature ->
 
-        val encodedPublicKey = Uri.encode(pk)
-        val encodedSignedMessage = Uri.encode(signedMessage)
-        val encodedSignature = Uri.encode(signature)
-        val encodedBlockchain = Uri.encode(blockchain)
+        if (blockchain == "solana") {
+            scope.launch {
+                activityResultSender?.let { sender ->
+                    val api = application?.api
+                    if (api == null) {
+                        loginViewModel.setLoginError("Error connecting to wallet")
+                        return@launch
+                    }
 
-        navController.navigate("create-network/${encodedBlockchain}/${encodedPublicKey}/${encodedSignedMessage}/${encodedSignature}")
+                    // the message/signature this callback was invoked with were
+                    // already consumed by the just-completed /auth/login call —
+                    // fetch and sign a brand-new challenge before creating the network
+                    when (val result = requestAndSignSolanaChallenge(sender, api)) {
+                        is SolanaChallengeSignResult.Success -> {
+                            val encodedPublicKey = Uri.encode(result.signed.publicKey)
+                            val encodedSignedMessage = Uri.encode(result.signed.message)
+                            val encodedSignature = Uri.encode(result.signed.signature)
+
+                            navController.navigate("create-network/solana/${encodedPublicKey}/${encodedSignedMessage}/${encodedSignature}")
+                        }
+                        is SolanaChallengeSignResult.NoWalletFound -> {
+                            noSolanaWalletsFound = true
+                        }
+                        is SolanaChallengeSignResult.Failure -> {
+                            loginViewModel.setLoginError("Error connecting to wallet")
+                        }
+                    }
+                }
+            }
+        } else {
+            // Ethereum path (out of scope): server does not require a wallet
+            // challenge for this blockchain today — keep prior behavior as-is.
+            val encodedPublicKey = Uri.encode(pk)
+            val encodedSignedMessage = Uri.encode(signedMessage)
+            val encodedSignature = Uri.encode(signature)
+            val encodedBlockchain = Uri.encode(blockchain)
+
+            navController.navigate("create-network/${encodedBlockchain}/${encodedPublicKey}/${encodedSignedMessage}/${encodedSignature}")
+        }
     }
 
     val connectSolanaWallet = {
-
-        val solanaUri = Uri.parse("https://ur.io")
-        val iconUri = Uri.parse("favicon.ico")
-        val identityName = "URnetwork"
-
         scope.launch {
+            activityResultSender?.let { sender ->
+                val api = application?.api
+                if (api == null) {
+                    loginViewModel.setLoginError("Error connecting to wallet")
+                    return@launch
+                }
 
-            // `connect` dispatches an association intent to MWA-compatible wallet apps.
-            activityResultSender?.let { activityResultSender ->
-
-                // Instantiate the MWA client object
-                val walletAdapter = MobileWalletAdapter(
-                    connectionIdentity = ConnectionIdentity(
-                        identityUri = solanaUri,
-                        iconUri = iconUri,
-                        identityName = identityName,
-                    ),
-                )
-                walletAdapter.blockchain = Solana.Mainnet
-
-                val timestamp = Date().time.toString()
-                val message = "Welcome to URnetwork - $timestamp"
-
-                val result = walletAdapter.signIn(
-                    activityResultSender,
-                    SignInWithSolana.Payload("ur.io", message)
-                )
-
-                when (result) {
-                    is TransactionResult.Success -> {
-
-                        // On success, an `AuthorizationResult` with a `signInResult` object is returned.
-                        val signInResult = result.authResult.signInResult
-
-                        signInResult?.let {
-
-                            val address = SolanaPublicKey(it.publicKey).base58()
-                            
-                            val signatureBytes = it.signature
-                            val signatureBase64 = Base64.encodeToString(signatureBytes, Base64.NO_WRAP)
-
-                            val signedMessage = it.signedMessage.decodeToString()
-
-                            loginViewModel.walletLoginSolana(
-                                context,
-                                application?.api,
-                                address,
-                                signedMessage,
-                                signatureBase64,
-                                {result ->
-                                    onLogin(result.network.byJwt)
-                                },
-                                onCreateNetworkWallet
-                            )
-
-                        } ?: run {
-                            Log.i(TAG, "signInResult is null")
-                        }
-
+                when (val result = requestAndSignSolanaChallenge(sender, api)) {
+                    is SolanaChallengeSignResult.Success -> {
+                        loginViewModel.walletLoginSolana(
+                            context,
+                            api,
+                            result.signed.publicKey,
+                            result.signed.message,
+                            result.signed.signature,
+                            { loginResult -> onLogin(loginResult.network.byJwt) },
+                            onCreateNetworkWallet
+                        )
                     }
-                    is TransactionResult.NoWalletFound -> {
+                    is SolanaChallengeSignResult.NoWalletFound -> {
                         noSolanaWalletsFound = true
                         Log.i("LoginInitial", "No MWA compatible wallet app found on device.")
                     }
-                    is TransactionResult.Failure -> {
+                    is SolanaChallengeSignResult.Failure -> {
                         loginViewModel.setLoginError("Error connecting to wallet")
-                        Log.i("LoginInitial", "Error connecting to wallet: ${result.e}")
+                        Log.i("LoginInitial", "Error connecting to wallet: ${result.error}")
                     }
                 }
             }
