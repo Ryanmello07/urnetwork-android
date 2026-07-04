@@ -9,6 +9,7 @@ import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
+import com.solana.mobilewalletadapter.clientlib.successPayload
 import com.solana.publickey.SolanaPublicKey
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
