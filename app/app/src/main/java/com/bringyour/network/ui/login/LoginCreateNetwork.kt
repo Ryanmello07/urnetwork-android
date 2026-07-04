@@ -254,6 +254,13 @@ fun LoginCreateNetwork(
                             termsAgreed
                 }
                 is LoginCreateNetworkParams.LoginCreateWalletParams -> {
+                    android.util.Log.d(
+                        "CreateNetworkBtn",
+                        "wallet publicKey=${params.publicKey.isNotEmpty()}, " +
+                                "signedMessage=${params.signedMessage.isNotEmpty()}, " +
+                                "signature=${params.signature.isNotEmpty()}, " +
+                                "blockchain=${params.blockchain.isNotEmpty()}"
+                    )
                     !inProgress &&
                         (networkName.text.length >= 6) &&
                         (params.publicKey.isNotEmpty()) &&
