@@ -30,6 +30,8 @@ import com.bringyour.network.ui.login.LoginPasswordResetAfterSend
 import com.bringyour.network.ui.login.LoginVerify
 import com.bringyour.network.ui.login.LoginViewModel
 import com.bringyour.network.ui.login.SwitchAccountScreen
+import com.bringyour.network.ui.login.WalletCreateBundle
+import com.bringyour.network.ui.login.toWalletCreateBundle
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 
@@ -140,6 +142,35 @@ fun LoginNavHost(
                             signature = signature,
                             referralCode = referralCode
                         )
+
+                        LoginCreateNetwork(
+                            createNetworkParams,
+                            navController
+                        )
+                    }
+
+                    composable("create-network-wallet/{bundle}") { backStackEntry ->
+
+                        val bundleArg = backStackEntry.arguments?.getString("bundle") ?: ""
+                        val walletBundle = bundleArg.toWalletCreateBundle()
+
+                        val createNetworkParams = if (walletBundle != null) {
+                            LoginCreateNetworkParams.LoginCreateWalletParams(
+                                blockchain = walletBundle.blockchain,
+                                publicKey = walletBundle.publicKey,
+                                signedMessage = walletBundle.signedMessage,
+                                signature = walletBundle.signature,
+                                referralCode = referralCode
+                            )
+                        } else {
+                            LoginCreateNetworkParams.LoginCreateWalletParams(
+                                blockchain = "",
+                                publicKey = "",
+                                signedMessage = "",
+                                signature = "",
+                                referralCode = referralCode
+                            )
+                        }
 
                         LoginCreateNetwork(
                             createNetworkParams,

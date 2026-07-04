@@ -156,11 +156,16 @@ fun LoginInitial(
                     // fetch and sign a brand-new challenge before creating the network
                     when (val result = requestAndSignSolanaChallenge(sender, api)) {
                         is SolanaChallengeSignResult.Success -> {
-                            val encodedPublicKey = Uri.encode(result.signed.publicKey)
-                            val encodedSignedMessage = Uri.encode(result.signed.message)
-                            val encodedSignature = Uri.encode(result.signed.signature)
+                            Log.d("LoginInitial", "onCreateNetworkWallet (solana) signed pk=${result.signed.publicKey.isNotEmpty()}, message=${result.signed.message.isNotEmpty()}, signature=${result.signed.signature.isNotEmpty()}")
 
-                            navController.navigate("create-network/solana/${encodedPublicKey}/${encodedSignedMessage}/${encodedSignature}")
+                            val bundle = WalletCreateBundle(
+                                blockchain = "solana",
+                                publicKey = result.signed.publicKey,
+                                signedMessage = result.signed.message,
+                                signature = result.signed.signature
+                            )
+
+                            navController.navigate("create-network-wallet/${bundle.toBase64Json()}")
                         }
                         is SolanaChallengeSignResult.NoWalletFound -> {
                             noSolanaWalletsFound = true
