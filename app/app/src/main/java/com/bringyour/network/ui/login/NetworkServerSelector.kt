@@ -284,7 +284,7 @@ private fun NetworkApiDialog(
     }
     val derivedApiUrl = derivedServiceUrl(activeHost, activeMigrationHost, envName, "https", "api")
     val derivedConnectUrl = derivedServiceUrl(activeHost, activeMigrationHost, envName, "wss", "connect")
-    val showsInsecureEndpointWarning = hasInsecureApiUrl(apiUrl.text) || hasInsecureConnectUrl(connectUrl.text)
+    val showInsecureEndpointWarning = hasInsecureApiUrl(apiUrl.text) || hasInsecureConnectUrl(connectUrl.text)
 
     URDialog(
         visible = visible,
@@ -359,7 +359,7 @@ private fun NetworkApiDialog(
                 enabled = enabled && managerAvailable
             )
 
-            if (showsInsecureEndpointWarning) {
+            if (showInsecureEndpointWarning) {
                 Text(
                     text = stringResource(id = R.string.network_api_insecure_warning),
                     style = MaterialTheme.typography.bodySmall,
