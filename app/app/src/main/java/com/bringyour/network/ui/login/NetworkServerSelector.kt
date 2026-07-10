@@ -213,11 +213,11 @@ fun NetworkServerSelector(
                 }
                 managerLocal.activeNetworkSpace = networkSpace
                 setStatus(context.getString(R.string.network_api_switched_to, normalizedHost))
-                Log.i(TAG, "Network API switched to host=$normalizedHost api=${networkSpace?.apiUrl} connect=${networkSpace?.platformUrl}")
-                isPresenting = false
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to switch Network API", e)
-                setStatus(context.getString(R.string.network_api_failed, e.message ?: "unknown error"))
+Log.i(context.TAG, "Network API switched to host=$normalizedHost api=${networkSpace?.apiUrl} connect=${networkSpace?.platformUrl}")
+isPresenting = false
+} catch (e: Exception) {
+    Log.e(context.TAG, "Failed to switch Network API", e)
+    setStatus(context.getString(R.string.network_api_failed, e.message ?: "unknown error"))
             }
         }
     )
