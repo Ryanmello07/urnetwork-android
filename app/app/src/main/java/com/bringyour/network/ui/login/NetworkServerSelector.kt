@@ -86,15 +86,9 @@ private fun normalizeConnectUrl(raw: String): String {
     return "wss://$value"
 }
 
-private fun hasInsecureApiUrl(raw: String): Boolean {
+private fun hasInsecureScheme(raw: String, secureScheme: String): Boolean {
     return explicitScheme(raw)?.let { scheme ->
-        scheme != "https"
-    } ?: false
-}
-
-private fun hasInsecureConnectUrl(raw: String): Boolean {
-    return explicitScheme(raw)?.let { scheme ->
-        scheme != "wss"
+        scheme != secureScheme
     } ?: false
 }
 
@@ -284,7 +278,9 @@ private fun NetworkApiDialog(
     }
     val derivedApiUrl = derivedServiceUrl(activeHost, activeMigrationHost, envName, "https", "api")
     val derivedConnectUrl = derivedServiceUrl(activeHost, activeMigrationHost, envName, "wss", "connect")
-    val showInsecureEndpointWarning = hasInsecureApiUrl(apiUrl.text) || hasInsecureConnectUrl(connectUrl.text)
+    val showInsecureEndpointWarning =
+        (apiUrl.text.isNotBlank() && hasInsecureScheme(apiUrl.text, "https")) ||
+            (connectUrl.text.isNotBlank() && hasInsecureScheme(connectUrl.text, "wss"))
 
     URDialog(
         visible = visible,
