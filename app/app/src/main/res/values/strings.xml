@@ -9,6 +9,25 @@
         name="user_auth_placeholder"
     >Enter your phone number or email</string>
     <string name="get_started">Get started</string>
+    <string name="change_network_api">Change Network API</string>
+    <string name="change_network_api_title">Change Network API</string>
+    <string name="network_api_description">Choose the network domain used by the app. Leave the API and connect URLs blank to derive them from the domain.</string>
+    <string name="network_api_current_api">Current API: %1$s</string>
+    <string name="network_api_current_connect">Current connect: %1$s</string>
+    <string name="network_api_domain_label">Network domain</string>
+    <string name="network_api_domain_help">Example: ur.network or your custom domain.</string>
+    <string name="network_api_api_url_label">API URL (optional)</string>
+    <string name="network_api_api_url_help">Leave blank to derive from the network domain.</string>
+    <string name="network_api_connect_url_label">Connect URL (optional)</string>
+    <string name="network_api_connect_url_help">Use wss:// for secure custom connect servers.</string>
+    <string name="network_api_use_default">Use default network</string>
+    <string name="network_api_apply">Apply Network API</string>
+    <string name="network_api_insecure_warning">Warning: one or more custom endpoints are not using HTTPS/WSS. Traffic may be unencrypted.</string>
+    <string name="network_api_manager_unavailable">Network manager unavailable</string>
+    <string name="network_api_enter_domain">Enter a network domain</string>
+    <string name="network_api_switched_to">Switched to %1$s</string>
+    <string name="network_api_failed">Failed: %1$s</string>
+
     <string name="google_auth_btn_text">Log in with Google</string>
     <string name="commitment_issues">Commitment issues? </string>
     <string name="try_guest_mode"> Try Guest Mode</string>

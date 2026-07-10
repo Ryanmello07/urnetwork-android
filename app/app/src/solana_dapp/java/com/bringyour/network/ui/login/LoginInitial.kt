@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.bringyour.network.ui.components.ButtonStyle
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URTextInput
+import com.bringyour.network.ui.login.NetworkServerSelector
 import com.bringyour.network.ui.theme.URNetworkTheme
 import androidx.compose.ui.res.painterResource
 import com.bringyour.network.ui.theme.TextMuted
@@ -523,6 +524,7 @@ fun LoginInitialActions(
                 .widthIn(max = 512.dp),
             horizontalAlignment = Alignment.Start
         ) {
+
             URTextInput(
                 value = userAuth,
                 onValueChange = {
@@ -673,6 +675,10 @@ fun LoginInitialActions(
                 setGuestModeOverlayVisible = setGuestModeOverlayVisible,
                 enabled = !isLoginInProgress
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            NetworkServerSelector(enabled = !isLoginInProgress)
         }
     }
 
