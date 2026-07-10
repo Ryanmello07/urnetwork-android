@@ -22,6 +22,7 @@
     <string name="network_api_connect_url_help">Use wss:// for secure custom connect servers.</string>
     <string name="network_api_use_default">Use default network</string>
     <string name="network_api_apply">Apply Network API</string>
+    <string name="network_api_insecure_warning">Warning: one or more custom endpoints are not using HTTPS/WSS. Traffic may be unencrypted.</string>
     <string name="network_api_manager_unavailable">Network manager unavailable</string>
     <string name="network_api_enter_domain">Enter a network domain</string>
     <string name="network_api_switched_to">Switched to %1$s</string>

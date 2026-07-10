@@ -42,17 +42,26 @@ import com.bringyour.network.ui.components.URTextInput
 import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
+import com.bringyour.network.ui.theme.Yellow
 import com.bringyour.sdk.Sdk
 
 private fun normalizeNetworkHost(raw: String): String {
     var value = raw.trim().lowercase()
-val schemeSeparator = "://"
-if (value.contains(schemeSeparator)) {
-    value = value.substringAfter(schemeSeparator)
-}
-value = value.substringBefore("/").substringBefore("?").substringBefore("#")
+    val schemeSeparator = "://"
+    if (value.contains(schemeSeparator)) {
+        value = value.substringAfter(schemeSeparator)
+    }
+    value = value.substringBefore("/").substringBefore("?").substringBefore("#")
     value = value.substringAfter("@")
     return value.trim().trim('.')
+}
+
+private fun explicitScheme(raw: String): String? {
+    val value = raw.trim()
+    if (!value.contains("://")) {
+        return null
+    }
+    return value.substringBefore("://").trim().lowercase().takeIf { it.isNotBlank() }
 }
 
 private fun normalizeApiUrl(raw: String): String {
@@ -75,6 +84,18 @@ private fun normalizeConnectUrl(raw: String): String {
         return value
     }
     return "wss://$value"
+}
+
+private fun hasInsecureApiUrl(raw: String): Boolean {
+    return explicitScheme(raw)?.let { scheme ->
+        scheme != "https"
+    } ?: false
+}
+
+private fun hasInsecureConnectUrl(raw: String): Boolean {
+    return explicitScheme(raw)?.let { scheme ->
+        scheme != "wss"
+    } ?: false
 }
 
 private fun derivedServiceUrl(
@@ -213,11 +234,11 @@ fun NetworkServerSelector(
                 }
                 managerLocal.activeNetworkSpace = networkSpace
                 setStatus(context.getString(R.string.network_api_switched_to, normalizedHost))
-Log.i(context.TAG, "Network API switched to host=$normalizedHost api=${networkSpace?.apiUrl} connect=${networkSpace?.platformUrl}")
-isPresenting = false
-} catch (e: Exception) {
-    Log.e(context.TAG, "Failed to switch Network API", e)
-    setStatus(context.getString(R.string.network_api_failed, e.message ?: "unknown error"))
+                Log.i(context.TAG, "Network API switched to host=$normalizedHost api=${networkSpace?.apiUrl} connect=${networkSpace?.platformUrl}")
+                isPresenting = false
+            } catch (e: Exception) {
+                Log.e(context.TAG, "Failed to switch Network API", e)
+                setStatus(context.getString(R.string.network_api_failed, e.message ?: "unknown error"))
             }
         }
     )
@@ -263,6 +284,7 @@ private fun NetworkApiDialog(
     }
     val derivedApiUrl = derivedServiceUrl(activeHost, activeMigrationHost, envName, "https", "api")
     val derivedConnectUrl = derivedServiceUrl(activeHost, activeMigrationHost, envName, "wss", "connect")
+    val showsInsecureEndpointWarning = hasInsecureApiUrl(apiUrl.text) || hasInsecureConnectUrl(connectUrl.text)
 
     URDialog(
         visible = visible,
@@ -336,6 +358,15 @@ private fun NetworkApiDialog(
                 supportingText = stringResource(id = R.string.network_api_connect_url_help),
                 enabled = enabled && managerAvailable
             )
+
+            if (showsInsecureEndpointWarning) {
+                Text(
+                    text = stringResource(id = R.string.network_api_insecure_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Yellow
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             URButton(
                 style = ButtonStyle.SECONDARY,
