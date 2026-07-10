@@ -46,11 +46,11 @@ import com.bringyour.sdk.Sdk
 
 private fun normalizeNetworkHost(raw: String): String {
     var value = raw.trim().lowercase()
-    val schemeSeparator = "://"
-    if (value.contains(schemeSeparator)) {
-        value = value.substringAfter(schemeSeparator)
-    }
-    value = value.substringBefore("/")
+val schemeSeparator = "://"
+if (value.contains(schemeSeparator)) {
+    value = value.substringAfter(schemeSeparator)
+}
+value = value.substringBefore("/").substringBefore("?").substringBefore("#")
     value = value.substringAfter("@")
     return value.trim().trim('.')
 }
