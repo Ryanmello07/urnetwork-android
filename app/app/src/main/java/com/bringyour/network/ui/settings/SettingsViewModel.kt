@@ -125,7 +125,7 @@ class SettingsViewModel @Inject constructor(
                 if (info.clientId?.idStr == clientId) {
                     viewModelScope.launch {
                         deviceId = info.deviceId
-                        deviceName = info.deviceName.ifEmpty { info.description }
+                        deviceName = info.deviceName.ifEmpty { info.deviceDescription }
                         deviceSpec = info.deviceSpec
                     }
                     break
