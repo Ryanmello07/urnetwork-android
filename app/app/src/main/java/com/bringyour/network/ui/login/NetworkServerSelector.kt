@@ -53,6 +53,12 @@ private fun normalizeNetworkHost(raw: String): String {
     }
     value = value.substringBefore("/").substringBefore("?").substringBefore("#")
     value = value.substringAfter("@")
+    // Strip a trailing :port - the network domain field is a bare host used
+    // to derive api.<host>/connect.<host>; a custom port belongs in the
+    // explicit API/connect URL overrides below, not baked into the derived
+    // subdomain (which would otherwise produce invalid hosts like
+    // "api.192.168.1.5:8080").
+    value = value.substringBeforeLast(":")
     return value.trim().trim('.')
 }
 
