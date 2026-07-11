@@ -45,7 +45,10 @@ fun String.toWalletCreateBundle(): WalletCreateBundle? {
             signature = json.getString("signature")
         )
     } catch (e: Exception) {
-        Log.e(TAG, "Failed to decode wallet create bundle: $this", e)
+        // do not log `this` - it is a base64-encoded bundle containing the
+        // signed wallet challenge and signature, which is sensitive auth
+        // material and must not end up in device logs.
+        Log.e(TAG, "Failed to decode wallet create bundle", e)
         null
     }
 }
