@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.bringyour.network.DeviceManager
 import com.bringyour.network.JwtManager
 import com.bringyour.network.TAG
+import com.bringyour.network.ui.shared.models.ProvideControlMode
 import com.bringyour.sdk.SubscriptionBalanceCallback
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -121,6 +122,9 @@ class SubscriptionBalanceViewModel @Inject constructor(
                              * refresh the token
                              */
                             if (Plan.fromString(plan) == Plan.Supporter && !currentIsPro) {
+                                // free -> paid: reset provide mode to never once at the
+                                // upgrade; the user can opt back in and that choice persists
+                                deviceManager.provideControlMode = ProvideControlMode.NEVER
                                 deviceManager.device?.refreshToken(0)
                             }
                         }

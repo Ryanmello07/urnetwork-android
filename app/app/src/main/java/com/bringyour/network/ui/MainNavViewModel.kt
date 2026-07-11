@@ -99,6 +99,10 @@ sealed class Route {
     @Serializable data class Payout(val id: String) : Route()
     @Serializable object BlockedRegions: Route()
     @Serializable object BalanceCodes: Route()
+    @Serializable data class ContractStats(val provider: Boolean) : Route()
+    @Serializable object SplitRules : Route()
+    @Serializable object AppSplitRules : Route()
+    @Serializable object DnsSettings : Route()
 }
 
 

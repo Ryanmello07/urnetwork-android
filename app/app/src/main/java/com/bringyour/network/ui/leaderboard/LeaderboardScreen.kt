@@ -111,13 +111,18 @@ fun LeaderboardScreen(
                         )
                     }
 
-                    itemsIndexed(leaderboardEntries.value) { index, entry ->
+                    itemsIndexed(
+                        leaderboardEntries.value,
+                        key = { _, entry -> entry.networkId.toString() },
+                    ) { index, entry ->
                         Column {
                             HorizontalDivider()
                             LeaderboardEntry(
                                 entry,
                                 rank = index + 1,
-                                netProvidedFormatted = leaderboardViewModel.formatDataProvided(entry.netMiBCount),
+                                netProvidedFormatted = remember(entry.netMiBCount) {
+                                    leaderboardViewModel.formatDataProvided(entry.netMiBCount)
+                                },
                                 isNetworkRow = leaderboardViewModel.networkId == entry.networkId.toString()
                             )
                         }

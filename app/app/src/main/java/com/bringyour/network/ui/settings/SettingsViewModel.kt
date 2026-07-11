@@ -83,7 +83,7 @@ class SettingsViewModel @Inject constructor(
     var allowProductUpdates by mutableStateOf(false)
         private set
 
-    var provideControlMode by mutableStateOf(ProvideControlMode.AUTO)
+    var provideControlMode by mutableStateOf(ProvideControlMode.NEVER)
         private set
 
     var allowForeground by mutableStateOf(false)
@@ -99,6 +99,64 @@ class SettingsViewModel @Inject constructor(
 
     var version by mutableStateOf("")
         private set
+
+    /**
+     * Device name and spec, from this device's network client record
+     */
+    private var deviceId: com.bringyour.sdk.Id? = null
+
+    var deviceName by mutableStateOf("")
+        private set
+
+    var deviceSpec by mutableStateOf("")
+        private set
+
+    var isUpdatingDeviceName by mutableStateOf(false)
+        private set
+
+    fun fetchDeviceInfo() {
+        val device = deviceManager.device ?: return
+        val clientId = device.clientId?.idStr ?: return
+        device.api?.getNetworkClients { result, _ ->
+            val clients = result?.clients ?: return@getNetworkClients
+            val n = clients.len()
+            for (i in 0 until n) {
+                val info = clients.get(i) ?: continue
+                if (info.clientId?.idStr == clientId) {
+                    viewModelScope.launch {
+                        deviceId = info.deviceId
+                        deviceName = info.deviceName.ifEmpty { info.description }
+                        deviceSpec = info.deviceSpec
+                    }
+                    break
+                }
+            }
+        }
+    }
+
+    fun updateDeviceName(name: String, onResult: (Boolean) -> Unit) {
+        val device = deviceManager.device ?: return onResult(false)
+        val id = deviceId ?: return onResult(false)
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            return onResult(false)
+        }
+        isUpdatingDeviceName = true
+        val args = com.bringyour.sdk.DeviceSetNameArgs()
+        args.deviceId = id
+        args.deviceName = trimmed
+        device.api?.deviceSetName(args) { result, err ->
+            viewModelScope.launch {
+                isUpdatingDeviceName = false
+                if (err == null && result?.error == null) {
+                    deviceName = trimmed
+                    onResult(true)
+                } else {
+                    onResult(false)
+                }
+            }
+        }
+    }
 
     /**
      * Allow providing on cell networks

@@ -29,7 +29,6 @@ import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.URNetworkTheme
 import com.bringyour.network.utils.formatBalanceBytes
-import kotlin.math.min
 
 @Composable
 fun UsageBar(
@@ -204,27 +203,6 @@ fun UsageBar(
         Spacer(modifier = Modifier.height(8.dp))
 
         HorizontalDivider()
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        /**
-         * reliability
-         */
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                stringResource(R.string.reliability_with_value, meanReliabilityWeight),
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted
-            )
-            Text(
-                stringResource(R.string.reliability_bonus, min(meanReliabilityWeight * 100, 100.0)),
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted
-            )
-        }
 
         Spacer(modifier = Modifier.height(8.dp))
 

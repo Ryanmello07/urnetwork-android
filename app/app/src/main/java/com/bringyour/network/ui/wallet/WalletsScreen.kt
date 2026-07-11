@@ -338,6 +338,14 @@ fun WalletsScreen(
 
                                 NetworkReliability(reliabilityWindow)
 
+                                HorizontalDivider()
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                com.bringyour.network.ui.stats.ProviderStatsSection(
+                                    navController = navController
+                                )
+
                             }
                         }
 

@@ -130,10 +130,6 @@ fun IntroductionUsageBar(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                BulletPoint(text = stringResource(id = R.string.earn_more_bullet_stay_connected, "+100"))
-
-                Spacer(modifier = Modifier.height(16.dp))
-
                 BulletPoint(text = stringResource(id = R.string.earn_more_bullet_refer, "30"))
 
             }

@@ -148,6 +148,11 @@
                 android:host="details"
                 android:scheme="solanadappstore" />
         </intent>
+        <!-- visibility for launchable apps, used by the app split rules screen -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
 </manifest>

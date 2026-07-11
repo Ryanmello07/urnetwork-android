@@ -45,7 +45,9 @@ fun BrowseLocations(
     currentSearchQuery: String,
     keyboardController: SoftwareKeyboardController?,
     lazyListState: LazyListState,
-    refreshLocations: () -> Unit
+    refreshLocations: () -> Unit,
+    networkPeers: List<com.bringyour.network.ui.stats.NetworkPeerUi> = listOf(),
+    onConnectPeer: (com.bringyour.network.ui.stats.NetworkPeerUi) -> Unit = {},
 ) {
 
     val scope = rememberCoroutineScope()
@@ -119,7 +121,9 @@ fun BrowseLocations(
                 },
                 searchQuery = currentSearchQuery,
                 listState = lazyListState,
-                isRefreshing = fetchLocationsState == FilterLocationsState.Loading
+                isRefreshing = fetchLocationsState == FilterLocationsState.Loading,
+                networkPeers = networkPeers,
+                onConnectPeer = onConnectPeer,
             )
         }
     }

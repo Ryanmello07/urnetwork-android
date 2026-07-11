@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -112,6 +113,10 @@ import com.bringyour.network.ui.shared.viewmodels.AccountPointsViewModel
 import com.bringyour.network.ui.shared.viewmodels.NetworkReliabilityViewModel
 import com.bringyour.network.ui.shared.viewmodels.Plan
 import com.bringyour.network.ui.shared.viewmodels.SolanaPaymentViewModel
+import com.bringyour.network.ui.stats.AppSplitRulesScreen
+import com.bringyour.network.ui.stats.ContractStatsScreen
+import com.bringyour.network.ui.stats.DnsSettingsScreen
+import com.bringyour.network.ui.stats.SplitRulesScreen
 import com.bringyour.network.ui.theme.Pink
 import com.bringyour.network.ui.upgrade.UpgradeScreen
 import com.bringyour.sdk.ReliabilityWindow
@@ -175,6 +180,12 @@ fun MainNavHost(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val scope = rememberCoroutineScope()
+
+    // hoisted here so re-tapping the connect tab can collapse it
+    val connectActionsSheetState = rememberStandardBottomSheetState(
+        initialValue = SheetValue.PartiallyExpanded,
+        skipHiddenState = true
+    )
 
     val navSuiteLayoutType = with(adaptiveInfo) {
 
@@ -390,6 +401,11 @@ fun MainNavHost(
 
                                             if (currentRoute != Route.Connect) {
                                                 navController.popBackStack(Route.Connect, inclusive = false)
+                                            } else {
+                                                // already on the connect screen: collapse the drawer
+                                                scope.launch {
+                                                    connectActionsSheetState.partialExpand()
+                                                }
                                             }
 
                                         } else {
@@ -443,7 +459,8 @@ fun MainNavHost(
                                         totalReferralCount = totalReferralCount,
                                         solanaPaymentViewModel = solanaPaymentViewModel,
                                         isCheckingSolanaTransaction = isCheckingSolanaTransaction,
-                                        isPro = isPro
+                                        isPro = isPro,
+                                        connectActionsSheetState = connectActionsSheetState
                                     )
                                 }
 
@@ -481,7 +498,8 @@ fun MainNavHost(
                                     totalReferralCount = totalReferralCount,
                                     solanaPaymentViewModel = solanaPaymentViewModel,
                                     isCheckingSolanaTransaction = isCheckingSolanaTransaction,
-                                    isPro = isPro
+                                    isPro = isPro,
+                                    connectActionsSheetState = connectActionsSheetState
                                 )
 
                                 HorizontalDivider(
@@ -615,6 +633,7 @@ fun MainNavContent(
     solanaPaymentViewModel: SolanaPaymentViewModel,
     isCheckingSolanaTransaction: Boolean,
     isPro: Boolean,
+    connectActionsSheetState: SheetState,
     accountViewModel: AccountViewModel = hiltViewModel<AccountViewModel>(),
     profileViewModel: ProfileViewModel = hiltViewModel<ProfileViewModel>(),
     accountPointsViewModel: AccountPointsViewModel = hiltViewModel<AccountPointsViewModel>(),
@@ -646,11 +665,6 @@ fun MainNavContent(
             color = MainBorderBase
         )
     }
-
-    val connectActionsSheetState = rememberStandardBottomSheetState(
-        initialValue = SheetValue.PartiallyExpanded,
-        skipHiddenState = true
-    )
 
     NavHost(
         navController = navController,
@@ -690,6 +704,52 @@ fun MainNavContent(
                     connectViewModel = connectViewModel,
                     locationsListViewModel = locationsListViewModel,
                     connectActionsSheetState = connectActionsSheetState
+                )
+            }
+
+            composable<Route.ContractStats>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) { backStackEntry ->
+                val route: Route.ContractStats = backStackEntry.toRoute()
+                ContractStatsScreen(
+                    navController = navController,
+                    provider = route.provider,
+                )
+            }
+
+            composable<Route.SplitRules>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                SplitRulesScreen(
+                    navController = navController,
+                )
+            }
+
+            composable<Route.AppSplitRules>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                AppSplitRulesScreen(
+                    navController = navController,
+                )
+            }
+
+            composable<Route.DnsSettings>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                DnsSettingsScreen(
+                    navController = navController,
                 )
             }
         }

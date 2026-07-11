@@ -57,7 +57,7 @@ class DeviceManager @Inject constructor(
         }
 
     var provideControlMode: ProvideControlMode
-        get() = synchronized(deviceLock) { device?.provideControlMode?.let { ProvideControlMode.fromString(it) } ?: ProvideControlMode.AUTO }
+        get() = synchronized(deviceLock) { device?.provideControlMode?.let { ProvideControlMode.fromString(it) } ?: ProvideControlMode.NEVER }
         set(it) = synchronized(deviceLock) {
             asyncLocalState?.localState?.provideControlMode = ProvideControlMode.toString(it)
             device?.provideControlMode = ProvideControlMode.toString(it)
@@ -114,7 +114,7 @@ class DeviceManager @Inject constructor(
         val defaultLocation = localState.defaultLocation // when user selects location, disconnects, restarts app, we want to persist the location
         val canShowRatingDialog = localState.canShowRatingDialog
         val canPromptIntroFunnel = localState.canPromptIntroFunnel
-        val provideControlMode = ProvideControlMode.fromString(localState.provideControlMode) ?: ProvideControlMode.AUTO
+        val provideControlMode = ProvideControlMode.fromString(localState.provideControlMode) ?: ProvideControlMode.NEVER
         val provideNetworkMode = ProvideNetworkMode.fromString(localState.provideNetworkMode) ?: ProvideNetworkMode.WIFI
         val provideMode = if (provideControlMode == ProvideControlMode.ALWAYS) Sdk.ProvideModePublic else localState.provideMode
         val vpnInterfaceWhileOffline = localState.vpnInterfaceWhileOffline
