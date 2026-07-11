@@ -1,0 +1,397 @@
+package com.bringyour.network.ui.stats
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.core.graphics.drawable.toBitmap
+import androidx.navigation.NavController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.bringyour.network.R
+import com.bringyour.network.ui.Route
+import com.bringyour.network.ui.theme.Green
+import com.bringyour.network.ui.theme.MainTintedBackgroundBase
+import com.bringyour.network.ui.theme.Pink
+import com.bringyour.network.ui.theme.Red
+import com.bringyour.network.ui.theme.MutedCoral
+import com.bringyour.network.ui.theme.TextFaint
+import com.bringyour.network.ui.theme.TextMuted
+
+/**
+ * The statistics sections in the connect sheet: client statistics,
+ * local statistics, and custom dns
+ */
+@Composable
+fun ConnectStatsSections(
+    navController: NavController,
+    throughputViewModel: ThroughputViewModel,
+    blockActionsViewModel: BlockActionsViewModel,
+    dnsSettingsViewModel: DnsSettingsViewModel,
+) {
+
+    /**
+     * Client statistics: remote and blocked traffic.
+     * Tap to open the client contract details.
+     */
+    StatsCard(
+        title = stringResource(id = R.string.client_statistics),
+        onClick = {
+            navController.navigate(Route.ContractStats(provider = false))
+        }
+    ) {
+
+        TransferChart(
+            points = throughputViewModel.clientPoints,
+            route = ThroughputRoute.REMOTE,
+            title = stringResource(id = R.string.remote),
+            windowSeconds = throughputViewModel.windowSeconds,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        TransferChart(
+            points = throughputViewModel.clientPoints,
+            route = ThroughputRoute.BLOCK,
+            title = stringResource(id = R.string.blocked),
+            windowSeconds = throughputViewModel.windowSeconds,
+            byteColor = Red,
+            packetColor = MutedCoral,
+        )
+
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    /**
+     * App split rules: its own touch target above the local statistics.
+     * Opens the app split rules. The active apps (included when any exist,
+     * else excluded) show as an overlapping icon deck next to the label.
+     */
+    val includedAppIds = blockActionsViewModel.tunnelIncludedAppIds
+    val excludedAppIds = blockActionsViewModel.tunnelExcludedAppIds
+    AppSplitRulesPanel(
+        includedCount = includedAppIds.size,
+        excludedCount = excludedAppIds.size,
+        activeAppIds = if (includedAppIds.isNotEmpty()) includedAppIds else excludedAppIds,
+        onClick = {
+            navController.navigate(Route.AppSplitRules)
+        }
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    /**
+     * Local statistics: traffic routed to the local network.
+     * Tap to open the split rules.
+     */
+    StatsCard(
+        title = stringResource(id = R.string.local_statistics),
+        onClick = {
+            navController.navigate(Route.SplitRules)
+        }
+    ) {
+
+        TransferChart(
+            points = throughputViewModel.clientPoints,
+            route = ThroughputRoute.LOCAL,
+            title = stringResource(id = R.string.local),
+            windowSeconds = throughputViewModel.windowSeconds,
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            stringResource(id = R.string.split_rule_count, blockActionsViewModel.splitRules.size),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White
+        )
+
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    /**
+     * Custom dns summary. Tap to open the dns settings.
+     */
+    StatsCard(
+        title = stringResource(id = R.string.custom_dns),
+        onClick = {
+            navController.navigate(Route.DnsSettings)
+        }
+    ) {
+
+        val settings = dnsSettingsViewModel.settings
+
+        if (settings != null) {
+            DnsStatusRow(stringResource(id = R.string.dns_over_https), settings.dohEnabled)
+            Spacer(modifier = Modifier.height(8.dp))
+            DnsStatusRow(stringResource(id = R.string.unencrypted_dns), settings.unencryptedDnsEnabled)
+            Spacer(modifier = Modifier.height(8.dp))
+            DnsStatusRow(stringResource(id = R.string.local_dns), settings.localDnsEnabled)
+            Spacer(modifier = Modifier.height(8.dp))
+            DnsStatusRow(stringResource(id = R.string.local_dns_fallback), settings.localDnsFallbackEnabled)
+        } else {
+            Text(
+                stringResource(id = R.string.dns_settings_unavailable),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextFaint
+            )
+        }
+
+    }
+}
+
+/**
+ * "X apps excluded" or "X apps included", as its own tappable panel.
+ * Inclusions take precedence. Tap to open the app split rules. The active
+ * apps show as an overlapping icon deck next to the label.
+ */
+@Composable
+fun AppSplitRulesPanel(
+    includedCount: Int,
+    excludedCount: Int,
+    activeAppIds: List<String>,
+    onClick: () -> Unit,
+) {
+
+    val text = if (0 < includedCount) {
+        stringResource(id = R.string.apps_included_count, includedCount)
+    } else {
+        stringResource(id = R.string.apps_excluded_count, excludedCount)
+    }
+
+    val icons = rememberAppIcons(activeAppIds)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MainTintedBackgroundBase,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        AppIconDeck(
+            icons = icons,
+            modifier = Modifier.weight(1f)
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = TextFaint,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+/**
+ * A horizontal row of app icons that collapses into an overlapping deck
+ * (leftmost on top) when the icons are wider than the available width.
+ */
+@Composable
+private fun AppIconDeck(
+    icons: List<ImageBitmap>,
+    modifier: Modifier = Modifier,
+) {
+    if (icons.isEmpty()) {
+        Box(modifier = modifier)
+        return
+    }
+
+    val iconSize = 22.dp
+    val ring = 1.dp
+
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        val maxWidthPx = with(density) { maxWidth.toPx() }
+        val cellPx = with(density) { (iconSize + ring * 2).toPx() }
+        val fullGapPx = with(density) { 4.dp.toPx() }
+        val fullStepPx = cellPx + fullGapPx
+        val n = icons.size
+
+        // step between icon left edges: full spacing when they fit, else
+        // overlap to fit within the available width (floored so they never
+        // fully collapse)
+        val stepPx = if (n <= 1 || n * fullStepPx <= maxWidthPx) {
+            fullStepPx
+        } else {
+            ((maxWidthPx - cellPx) / (n - 1)).coerceAtLeast(cellPx * 0.4f)
+        }
+
+        // how many actually fit; the rest are dropped
+        val maxVisible = if (stepPx <= 0f) {
+            1
+        } else {
+            (((maxWidthPx - cellPx) / stepPx).toInt() + 1).coerceIn(1, n)
+        }
+        val visible = icons.take(maxVisible)
+
+        Box {
+            visible.forEachIndexed { index, icon ->
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset((index * stepPx).toInt(), 0) }
+                        // leftmost on top
+                        .zIndex((n - index).toFloat())
+                        .size(iconSize + ring * 2)
+                        .background(MainTintedBackgroundBase, RoundedCornerShape(7.dp))
+                        .padding(ring)
+                ) {
+                    Image(
+                        bitmap = icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(iconSize)
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Loads the app icons for the given package names off the main thread.
+ */
+@Composable
+private fun rememberAppIcons(packageNames: List<String>): List<ImageBitmap> {
+    val context = LocalContext.current
+    val key = packageNames.joinToString(",")
+    val icons by produceState(initialValue = emptyList<ImageBitmap>(), key) {
+        value = withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            packageNames.mapNotNull { packageName ->
+                runCatching {
+                    pm.getApplicationIcon(packageName).toBitmap(64, 64).asImageBitmap()
+                }.getOrNull()
+            }
+        }
+    }
+    return icons
+}
+
+@Composable
+private fun DnsStatusRow(
+    label: String,
+    enabled: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(
+                        color = if (enabled) Green else TextFaint.copy(alpha = 0.4f),
+                        shape = CircleShape
+                    )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White
+            )
+        }
+
+        Text(
+            stringResource(id = if (enabled) R.string.on else R.string.off),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) Green else TextMuted
+        )
+    }
+}
+
+@Composable
+private fun StatsCard(
+    title: String,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MainTintedBackgroundBase,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onClick() }
+            .padding(16.dp)
+    ) {
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                title,
+                style = TextStyle(color = TextMuted)
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = TextFaint,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        content()
+    }
+}

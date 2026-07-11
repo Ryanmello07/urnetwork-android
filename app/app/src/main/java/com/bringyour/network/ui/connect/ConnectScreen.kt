@@ -2,6 +2,8 @@ package com.bringyour.network.ui.connect
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.BottomSheetScaffoldState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -74,6 +78,9 @@ fun ConnectScreen(
     isPro: Boolean,
     connectActionsSheetState: SheetState,
     accountViewModel: AccountViewModel = hiltViewModel<AccountViewModel>(),
+    throughputViewModel: com.bringyour.network.ui.stats.ThroughputViewModel = hiltViewModel(),
+    blockActionsViewModel: com.bringyour.network.ui.stats.BlockActionsViewModel = hiltViewModel(),
+    dnsSettingsViewModel: com.bringyour.network.ui.stats.DnsSettingsViewModel = hiltViewModel(),
 ) {
 
     val connectStatus by connectViewModel.connectStatus.collectAsState()
@@ -171,7 +178,10 @@ fun ConnectScreen(
                 selectedWindowType = connectViewModel.selectedWindowType,
                 setSelectedWindowType = connectViewModel.setSelectedWindowType,
                 allowDirect = connectViewModel.allowDirect,
-                toggleAllowDirect = connectViewModel.toggleAllowDirect
+                toggleAllowDirect = connectViewModel.toggleAllowDirect,
+                throughputViewModel = throughputViewModel,
+                blockActionsViewModel = blockActionsViewModel,
+                dnsSettingsViewModel = dnsSettingsViewModel,
             )
         },
         mainContent = {
@@ -229,14 +239,32 @@ fun ConnectActionsSheetScaffold(
     sheetPeekHeight: Dp = dimensionResource(id = R.dimen.connect_actions_sheet_peek_height),
 ) {
 
+    val scrollState = rememberScrollState()
+
+    // when the sheet settles back to the peek, reset the content to the top so
+    // the peek always shows the top of the actions (matches the iOS drawer)
+    LaunchedEffect(scaffoldState.bottomSheetState) {
+        snapshotFlow { scaffoldState.bottomSheetState.currentValue }
+            .collect { value ->
+                if (value == SheetValue.PartiallyExpanded) {
+                    scrollState.animateScrollTo(0)
+                }
+            }
+    }
+
     BottomSheetScaffold(
         sheetPeekHeight = sheetPeekHeight,
         scaffoldState = scaffoldState,
         sheetContainerColor = SheetBlack,
         sheetContent = {
+            // the sheet body scrolls when expanded. BottomSheetScaffold installs a
+            // nested scroll connection so a downward drag with the content at the
+            // top hands off to the sheet and collapses it instead of overscrolling,
+            // and an upward drag expands the sheet before the content scrolls
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 16.dp)
             ) {

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Outbound
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -48,6 +49,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +69,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
@@ -80,7 +83,10 @@ import com.bringyour.network.ui.account.AccountViewModel
 import com.bringyour.network.ui.components.InfoIconWithOverlay
 import com.bringyour.network.ui.components.URLinkText
 import com.bringyour.network.ui.components.URSwitch
+import androidx.compose.ui.text.input.TextFieldValue
 import com.bringyour.network.ui.components.URTextInputLabel
+import com.bringyour.network.ui.components.URTextInput
+import com.bringyour.network.ui.components.URDialog
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.BlueLight
 import com.bringyour.network.ui.theme.TextMuted
@@ -160,6 +166,13 @@ fun SettingsScreen(
         }
     }
 
+    var isPresentingRenameDevice by remember { mutableStateOf(false) }
+    var editingDeviceName by remember { mutableStateOf(TextFieldValue("")) }
+
+    LaunchedEffect(Unit) {
+        settingsViewModel.fetchDeviceInfo()
+    }
+
     val signAndVerifySeekerHolder: () -> Unit = {
         scope.launch {
 
@@ -229,6 +242,12 @@ fun SettingsScreen(
         provideControlMode = settingsViewModel.provideControlMode,
         setProvideControlMode = settingsViewModel.setProvideControlMode,
         urIdUrl = settingsViewModel.urIdUrl,
+        deviceName = settingsViewModel.deviceName,
+        deviceSpec = settingsViewModel.deviceSpec,
+        onEditDeviceName = {
+            editingDeviceName = TextFieldValue(settingsViewModel.deviceName)
+            isPresentingRenameDevice = true
+        },
         showDeleteAccountDialog = showDeleteAccountDialog,
         setShowDeleteAccountDialog = settingsViewModel.setShowDeleteAccountDialog,
         deleteAccount = settingsViewModel.deleteAccount,
@@ -253,6 +272,47 @@ fun SettingsScreen(
         provideIndicatorColor = settingsViewModel.provideIndicatorColor,
         stripePortalUrl = settingsViewModel.stripePortalUrl.collectAsState().value
     )
+
+    if (isPresentingRenameDevice) {
+        URDialog(
+            visible = true,
+            onDismiss = { isPresentingRenameDevice = false }
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(id = R.string.device_name_label),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                URTextInput(
+                    value = editingDeviceName,
+                    onValueChange = { editingDeviceName = it },
+                    label = null,
+                    placeholder = stringResource(id = R.string.device_name_label),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                URButton(
+                    onClick = {
+                        settingsViewModel.updateDeviceName(editingDeviceName.text) { success ->
+                            isPresentingRenameDevice = false
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    message = if (success) "Device name updated"
+                                        else "There was an error updating the device name.",
+                                    withDismissAction = true,
+                                    duration = SnackbarDuration.Short
+                                )
+                            }
+                        }
+                    },
+                    enabled = !settingsViewModel.isUpdatingDeviceName
+                ) { buttonTextStyle ->
+                    Text(stringResource(id = R.string.save), style = buttonTextStyle)
+                }
+            }
+        }
+    }
 
     if (isPresentingAuthCodeDialog) {
         AuthCodeCreateDialog(
@@ -311,6 +371,9 @@ fun SettingsScreen(
     provideControlMode: ProvideControlMode,
     setProvideControlMode: (ProvideControlMode) -> Unit,
     urIdUrl: (String) -> String?,
+    deviceName: String = "",
+    deviceSpec: String = "",
+    onEditDeviceName: () -> Unit = {},
     setShowDeleteAccountDialog: (Boolean) -> Unit = {},
     showDeleteAccountDialog: Boolean,
     deleteAccount: (onSuccess: () -> Unit, onFailure: (Exception?) -> Unit) -> Unit,
@@ -630,6 +693,68 @@ fun SettingsScreen(
                         color = TextMuted
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            /**
+             * Device name and spec
+             */
+            URTextInputLabel(text = stringResource(id = R.string.device))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onEditDeviceName() }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(id = R.string.device_name_label),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        deviceName.ifEmpty { "—" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = stringResource(id = R.string.edit_device_name),
+                        tint = TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(id = R.string.device_spec_label),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                // the spec string can be very long; keep it to one ellipsized line
+                Text(
+                    deviceSpec.ifEmpty { "—" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             Spacer(modifier = Modifier.height(32.dp))

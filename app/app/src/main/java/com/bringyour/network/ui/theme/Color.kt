@@ -56,6 +56,10 @@ val Green900 = Color(0xFF063102)
 
 // URnetwork Color Theme
 
+// a muted coral, used for the blocked packet series (maroon reads as
+// near-black against the dark background)
+val MutedCoral = Color(0xFFC8604F)
+
 val BlueDark = Blue900
 val BlueMedium = Blue400
 val BlueLight = Blue200

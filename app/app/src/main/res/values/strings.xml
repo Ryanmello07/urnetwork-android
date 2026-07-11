@@ -444,7 +444,7 @@
     >Learn more at the protocol page</string>
     <string
         name="adjust_setting_always_fill_data_faster"
-    >You can adjust the setting to Always to fill the free data faster.</string>
+    >Providing is off by default. Choose when your device provides below.</string>
     <string
         name="allow_provider_cell_network_unlimited_plan"
     >You can also allow the provider to use cell network data, which works great if you have an unlimited plan.</string>
@@ -480,13 +480,13 @@
     <string name="community_edition">Community Edition</string>
     <string
         name="community_edition_details"
-    >Participate in the network and get free access to the community edition.</string>
+    >Get free access to the community edition.</string>
     <string
         name="boost_bandwidth_title"
-    >Boost your bandwidth - Earn more every day</string>
+    >Boost your bandwidth</string>
     <string
         name="boost_bandwidth_details"
-    >By participating in the network and providing bandwidth you can earn rewards.</string>
+    >You get free data every month, and can earn more by referring friends.</string>
     <string
         name="default_bandwidth_earn_more_by"
     >By default, you get %d GiB/month. Here\'s how you can earn extra bandwidth:</string>
@@ -496,10 +496,10 @@
     <string
         name="earn_more_bullet_refer"
     >Refer a friend = +%s GiB/Month</string>
-    <string name="reliability_settings">Reliability settings</string>
+    <string name="reliability_settings">Contribute bandwidth</string>
     <string
         name="reliability_settings_details"
-    >Adjust settings to maximize reliability. App runs in the background when connected and on Wi-Fi. Reliability is how many IPs you make continually available to the network</string>
+    >Providing is optional. When you turn it on, the app can share your connection with the network while it runs in the background on Wi-Fi.</string>
     <string name="when_you_refer_a_friend">When you refer a friend:</string>
     <string name="refer_friends_perks">You get +%s GiB/month for life</string>
     <string
@@ -551,4 +551,92 @@
     <string name="window_type_quality">Web</string>
     <string name="window_type_speed">Streaming</string>
     <string name="strong_anonymization">Strong Anonymization</string>
+
+    <!-- transfer stats and split rules -->
+    <string name="client_statistics">Client statistics</string>
+    <string name="local_statistics">Local statistics</string>
+    <string name="provider_statistics">Provider statistics</string>
+    <string name="custom_dns">Custom DNS</string>
+    <string name="remote">Remote</string>
+    <string name="local">Local</string>
+    <string name="blocked">Blocked</string>
+    <string name="allowed">Allowed</string>
+    <string name="included">Included</string>
+    <string name="excluded">Excluded</string>
+    <string name="providing_disabled">Providing is disabled</string>
+    <string name="client_contracts">Client contracts</string>
+    <string name="provider_contracts">Provider contracts</string>
+    <string name="no_open_contracts">No open contracts</string>
+    <string name="contracts_appear_connected">Contracts appear here while connected.</string>
+    <string name="contracts_appear_providing">Contracts appear here while providing.</string>
+    <string name="contract">Contract</string>
+    <string name="companion">Companion</string>
+    <string name="contract_count">%1$d contracts</string>
+    <string name="of_total">of %1$s</string>
+    <string name="client_id_copied">Client ID copied</string>
+    <string name="split_rules">Split rules</string>
+    <string name="app_split_rules">App split rules</string>
+    <string name="rules">Rules</string>
+    <string name="apps">Apps</string>
+    <string name="activity">Activity</string>
+    <string name="split_rule_count">%1$d split rules</string>
+    <string name="split_rules_hint">Tap traffic below to route it locally, bypassing the tunnel.</string>
+    <string name="split_rules_info_note">Exclusions apply to the whole co-associated network cluster, so related traffic is caught together.</string>
+    <string name="split_rules_activity_hint">Routing activity appears here while connected.</string>
+    <string name="allowed_blocked_counts">%1$d allowed · %2$d blocked</string>
+    <string name="host_count">%1$d hosts</string>
+    <string name="new_items_count">%1$d new</string>
+    <string name="new_split_rule">New split rule</string>
+    <string name="edit_split_rule">Edit split rule</string>
+    <string name="split_rule_description">Selected hosts are routed locally and bypass the tunnel.</string>
+    <string name="remove_rule">Remove rule</string>
+    <string name="apps_excluded_count">%1$d apps excluded</string>
+    <string name="apps_included_count">%1$d apps included</string>
+    <string name="exclude_app">Exclude from VPN</string>
+    <string name="exclude_app_description">This app bypasses the tunnel.</string>
+    <string name="include_app">Route through VPN</string>
+    <string name="include_app_description">Only included apps use the tunnel.</string>
+    <string name="app_included_toast">%1$s will route through the VPN</string>
+    <string name="app_excluded_toast">%1$s will bypass the VPN</string>
+    <string name="app_split_active_include">Include active — only included apps use the VPN</string>
+    <string name="app_split_active_exclude">Exclude active — excluded apps bypass the VPN</string>
+    <string name="app_split_active_none">No app split — all apps use the VPN</string>
+    <string name="app_split_precedence_note">Included apps take precedence: when any app is included, only included apps use the VPN and exclusions have no effect.</string>
+    <string name="network_peers">Network peers</string>
+
+    <!-- dns settings -->
+    <string name="dns_over_https">DNS over HTTPS</string>
+    <string name="unencrypted_dns">Unencrypted DNS</string>
+    <string name="local_dns">Local DNS</string>
+    <string name="local_dns_fallback">Local DNS fallback</string>
+    <string name="local_dns_fallback_description">Races a local resolver while the tunnel starts. When off, DNS only resolves through the tunnel.</string>
+    <string name="dns_settings_unavailable">DNS settings unavailable</string>
+    <string name="on">On</string>
+    <string name="off">Off</string>
+    <string name="resolvers">Resolvers</string>
+    <string name="remote_lowercase">remote</string>
+    <string name="local_lowercase">local</string>
+    <string name="remote_doh_urls">Remote DoH URLs</string>
+    <string name="local_doh_urls">Local DoH URLs</string>
+    <string name="remote_dns_servers">Remote DNS servers</string>
+    <string name="local_dns_servers">Local DNS servers</string>
+    <string name="ip_address">IP address</string>
+    <string name="ipv4">IPv4</string>
+    <string name="ipv6">IPv6</string>
+    <string name="add">Add</string>
+    <string name="dns_recommendation_message">The strongest security rules are known not to work in %1$s. There are less secure recommended DNS settings that work better.</string>
+    <string name="use_recommended_settings">Use recommended settings</string>
+    <string name="dns_restore_secure_message">Restore the most secure settings: encrypted DNS over HTTPS through the tunnel.</string>
+    <string name="restore_most_secure_settings">Restore to most secure settings</string>
+    <string name="dns_using_recommended">Using recommended regional settings</string>
+    <string name="dns_using_secure">Using most secure default settings</string>
+    <string name="this_region">this region</string>
+    <string name="suggested_remote_dns_servers">Suggested remote DNS servers</string>
+    <string name="suggested_remote_dns_servers_description">Suggestions for the connected country are marked with its color. Turning one on adds it to the remote DNS servers.</string>
+
+    <!-- device -->
+    <string name="device">Device</string>
+    <string name="device_name_label">Name</string>
+    <string name="device_spec_label">Spec</string>
+    <string name="edit_device_name">Edit device name</string>
 </resources>

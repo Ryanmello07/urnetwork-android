@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.R
+import com.bringyour.network.ui.stats.NetworkPeerUi
+import com.bringyour.network.ui.stats.networkPeersSection
 import com.bringyour.network.ui.theme.Red400
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,7 +40,9 @@ fun LocationsList(
     onRefresh: () -> Unit,
     onFocusChanged: () -> Unit = {},
     listState: LazyListState,
-    isRefreshing: Boolean
+    isRefreshing: Boolean,
+    networkPeers: List<NetworkPeerUi> = listOf(),
+    onConnectPeer: (NetworkPeerUi) -> Unit = {},
 ) {
 
     if (
@@ -82,6 +86,14 @@ fun LocationsList(
                 state = listState
                 // verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+
+                // network peers pinned at the top
+                networkPeersSection(
+                    peers = networkPeers,
+                    selectedLocation = selectedLocation,
+                    getLocationColor = getLocationColor,
+                    onConnectPeer = onConnectPeer,
+                )
 
                 if (bestSearchMatches.isNotEmpty()) {
                     item {

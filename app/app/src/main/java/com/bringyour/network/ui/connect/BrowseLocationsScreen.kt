@@ -22,8 +22,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.bringyour.network.R
+import com.bringyour.network.ui.stats.NetworkPeersViewModel
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import kotlinx.coroutines.launch
@@ -34,7 +36,8 @@ fun BrowseLocationsScreen(
     locationsListViewModel: LocationsListViewModel,
     connectViewModel: ConnectViewModel,
     navController: NavController,
-    connectActionsSheetState: SheetState
+    connectActionsSheetState: SheetState,
+    networkPeersViewModel: NetworkPeersViewModel = hiltViewModel(),
 ) {
     val fetchLocationsState by remember { locationsListViewModel.filterLocationsState }.collectAsState()
     val lazyListState = rememberLazyListState()
@@ -91,7 +94,17 @@ fun BrowseLocationsScreen(
                 getLocationColor = locationsListViewModel.getLocationColor,
                 filterLocations = locationsListViewModel.filterLocations,
                 lazyListState = lazyListState,
-                refreshLocations = locationsListViewModel.refreshLocations
+                refreshLocations = locationsListViewModel.refreshLocations,
+                networkPeers = networkPeersViewModel.connectedProvidePeers,
+                onConnectPeer = { peer ->
+                    networkPeersViewModel.connectLocationForPeer(peer)?.let { location ->
+                        connectViewModel.connect(location)
+                        scope.launch {
+                            connectActionsSheetState.partialExpand()
+                        }
+                        navController.popBackStack()
+                    }
+                },
             )
         }
     }

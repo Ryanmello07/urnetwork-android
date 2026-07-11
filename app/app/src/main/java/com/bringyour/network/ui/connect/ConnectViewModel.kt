@@ -67,6 +67,11 @@ constructor(
     var grid by mutableStateOf<ConnectGrid?>(null)
         private set
 
+    // last published grid signature; skip redundant recomposition when the SDK
+    // re-emits a logically-unchanged grid (its Id/ProviderGridPoint values are
+    // compared by reference, so an unconditional assign always recomposes)
+    private var lastGridSignature: String = ""
+
     // var grid by mutableStateOf<ConnectGrid?>(null)
     private var tunnelConnected = false
 
@@ -261,6 +266,7 @@ constructor(
         val newWindowCurrentSize: Int
         val newProviderGridPoints: Map<Id, ProviderGridPoint>
 
+        val signature = StringBuilder()
         if (grid != null) {
             newWindowCurrentSize = grid.windowCurrentSize
 
@@ -271,10 +277,26 @@ constructor(
                 updateProviderGridPoints[point.clientId] = point
             }
             newProviderGridPoints = updateProviderGridPoints
+            signature.append(newWindowCurrentSize).append(';')
+            newProviderGridPoints.values
+                .map { "${it.clientId.idStr}:${it.state}:${it.x}:${it.y}" }
+                .sorted()
+                .forEach { signature.append(it).append('|') }
         } else {
             newWindowCurrentSize = 0
             newProviderGridPoints = mapOf()
         }
+
+        // skip the state assignment (and the GridCanvas recomposition + point
+        // animation relaunch it triggers) when the grid is logically unchanged.
+        // the SDK re-emits fresh Id/ProviderGridPoint proxies each callback, so
+        // an unconditional assign would recompose on every event even when
+        // nothing moved.
+        val newSignature = signature.toString()
+        if (newSignature == lastGridSignature) {
+            return
+        }
+        lastGridSignature = newSignature
 
         viewModelScope.launch {
             this@ConnectViewModel.grid = grid

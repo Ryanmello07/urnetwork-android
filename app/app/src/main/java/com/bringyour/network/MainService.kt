@@ -84,7 +84,13 @@ import kotlin.concurrent.thread
 
     private var deviceOfflineSub: Sub? = null
     private var windowStatusChangeSub: Sub? = null
+    private var blockActionOverridesSub: Sub? = null
     private var connected: Boolean = false
+
+    // the app split rule state currently applied to the tunnel, used to
+    // detect when a rebuild is needed
+    private var appliedTunnelIncludedAppIds: Set<String> = emptySet()
+    private var appliedTunnelExcludedAppIds: Set<String> = emptySet()
 
     @Volatile
     private var closeMonitorStarted: Boolean = false
@@ -187,6 +193,20 @@ import kotlin.concurrent.thread
                 updateWindowStatus(windowStatus)
             }
 
+            // rebuild the tunnel when the per-app split rules change so the
+            // allowed/disallowed application sets stay in sync
+            blockActionOverridesSub?.close()
+            blockActionOverridesSub = app.device?.addBlockActionOverridesChangeListener {
+                Handler(mainLooper).post {
+                    val (included, excluded) = tunnelAppSplit()
+                    if (included != appliedTunnelIncludedAppIds || excluded != appliedTunnelExcludedAppIds) {
+                        if (canUpdatePfd(source)) {
+                            updatePfd(offline)
+                        }
+                    }
+                }
+            }
+
             startCloseMonitor()
         }
 
@@ -221,14 +241,29 @@ import kotlin.concurrent.thread
         builder.setMtu(1440)
         builder.setBlocking(false)
         builder.setUnderlyingNetworks(null)
+        val (tunnelIncludedAppIds, tunnelExcludedAppIds) = tunnelAppSplit()
+        appliedTunnelIncludedAppIds = tunnelIncludedAppIds
+        appliedTunnelExcludedAppIds = tunnelExcludedAppIds
+
         if (offline) {
 //            Log.i(TAG, "[io]OFFLINE")
             // when offline, only allow traffic from a fake package name
             // in this way, the vpn service remains active but no apps detect it as an interface
             builder.addAllowedApplication("${packageName}.offline")
+        } else if (tunnelIncludedAppIds.isNotEmpty()) {
+            // per-app inclusions take precedence: allowlist mode, only the
+            // included apps use the tunnel (this app is excluded by omission)
+            for (includedPackageName in tunnelIncludedAppIds) {
+                try {
+                    builder.addAllowedApplication(includedPackageName)
+                } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                }
+            }
         } else {
+            // denylist mode: everything uses the tunnel except this app,
+            // the default excluded apps, and the per-app exclusions
             builder.addDisallowedApplication(packageName)
-            for (excludedPackageName in defaultExcludedPackageNames()) {
+            for (excludedPackageName in defaultExcludedPackageNames() + tunnelExcludedAppIds) {
                 try {
                     builder.addDisallowedApplication(excludedPackageName)
                 } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
@@ -380,6 +415,37 @@ import kotlin.concurrent.thread
         }
     }
 
+    /**
+     * The per-app split for the tunnel builder, derived from the device
+     * block action overrides. Returns (tunnelIncludedAppIds, tunnelExcludedAppIds).
+     *
+     * The sdk `OverrideLocalAppIds` is expressed from the local-routing side:
+     * `included` are apps routed locally (they bypass the tunnel), `excluded`
+     * are apps routed remotely (they go through the tunnel). From the tunnel
+     * builder's perspective this is inverted: remote-routed apps are the ones
+     * included in the tunnel (allowlist), local-routed apps are excluded
+     * (disallow / bypass).
+     */
+    private fun tunnelAppSplit(): Pair<Set<String>, Set<String>> {
+        val app = application as MainApplication
+        val overrideAppIds = app.device?.localOverrideAppIds ?: return Pair(emptySet(), emptySet())
+        val tunnelIncluded = sdkStringListToSet(overrideAppIds.excluded)
+        val tunnelExcluded = sdkStringListToSet(overrideAppIds.included)
+        return Pair(tunnelIncluded, tunnelExcluded)
+    }
+
+    private fun sdkStringListToSet(list: com.bringyour.sdk.StringList?): Set<String> {
+        if (list == null) {
+            return emptySet()
+        }
+        val set = mutableSetOf<String>()
+        val n = list.len()
+        for (i in 0 until n) {
+            set.add(list.get(i))
+        }
+        return set
+    }
+
     override fun onDestroy() {
         super.onDestroy()
 
@@ -406,6 +472,9 @@ import kotlin.concurrent.thread
 
         windowStatusChangeSub?.close()
         windowStatusChangeSub = null
+
+        blockActionOverridesSub?.close()
+        blockActionOverridesSub = null
 
         packetFlow?.close()
         packetFlow = null

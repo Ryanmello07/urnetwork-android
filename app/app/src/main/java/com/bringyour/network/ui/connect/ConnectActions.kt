@@ -41,6 +41,10 @@ import com.bringyour.network.ui.components.URSwitch
 import com.bringyour.network.ui.components.UsageBar
 import com.bringyour.network.ui.shared.models.ConnectStatus
 import com.bringyour.network.ui.shared.viewmodels.Plan
+import com.bringyour.network.ui.stats.BlockActionsViewModel
+import com.bringyour.network.ui.stats.ConnectStatsSections
+import com.bringyour.network.ui.stats.DnsSettingsViewModel
+import com.bringyour.network.ui.stats.ThroughputViewModel
 import com.bringyour.network.ui.theme.MainTintedBackgroundBase
 import com.bringyour.network.ui.theme.Pink
 import com.bringyour.network.ui.theme.Red400
@@ -77,7 +81,10 @@ fun ConnectActions(
     selectedWindowType: WindowType,
     setSelectedWindowType: (WindowType) -> Unit,
     allowDirect: Boolean,
-    toggleAllowDirect: () -> Unit
+    toggleAllowDirect: () -> Unit,
+    throughputViewModel: ThroughputViewModel,
+    blockActionsViewModel: BlockActionsViewModel,
+    dnsSettingsViewModel: DnsSettingsViewModel,
 ) {
 
     Column(
@@ -261,6 +268,18 @@ fun ConnectActions(
             }
 
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        /**
+         * Statistics and dns sections
+         */
+        ConnectStatsSections(
+            navController = navController,
+            throughputViewModel = throughputViewModel,
+            blockActionsViewModel = blockActionsViewModel,
+            dnsSettingsViewModel = dnsSettingsViewModel,
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
