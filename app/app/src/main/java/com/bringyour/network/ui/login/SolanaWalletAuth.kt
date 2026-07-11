@@ -84,28 +84,37 @@ suspend fun requestAndSignSolanaChallenge(
     walletAdapter.blockchain = Solana.Mainnet
 
     val result = walletAdapter.transact(activityResultSender) { authResult ->
+        val account = authResult.accounts.firstOrNull()
+            ?: throw IllegalStateException("Wallet did not return an account")
         signMessagesDetached(
             arrayOf(messageTemplate.toByteArray()),
-            arrayOf(authResult.accounts.first().publicKey)
+            arrayOf(account.publicKey)
         )
     }
 
     return when (result) {
         is TransactionResult.Success -> {
-            val signatureBytes = result.successPayload?.messages?.first()?.signatures?.first()
-            if (signatureBytes == null) {
-                SolanaChallengeSignResult.Failure(Exception("Wallet did not return a signature"))
-            } else {
-                val publicKey = SolanaPublicKey(result.authResult.accounts.first().publicKey).base58()
-                val signatureBase64 = Base64.encodeToString(signatureBytes, Base64.NO_WRAP)
+            val signatureBytes = result.successPayload?.messages?.firstOrNull()?.signatures?.firstOrNull()
+            val account = result.authResult.accounts.firstOrNull()
+            when {
+                signatureBytes == null -> {
+                    SolanaChallengeSignResult.Failure(Exception("Wallet did not return a signature"))
+                }
+                account == null -> {
+                    SolanaChallengeSignResult.Failure(Exception("Wallet did not return an account"))
+                }
+                else -> {
+                    val publicKey = SolanaPublicKey(account.publicKey).base58()
+                    val signatureBase64 = Base64.encodeToString(signatureBytes, Base64.NO_WRAP)
 
-                SolanaChallengeSignResult.Success(
-                    SolanaSignedChallenge(
-                        publicKey = publicKey,
-                        message = messageTemplate,
-                        signature = signatureBase64
+                    SolanaChallengeSignResult.Success(
+                        SolanaSignedChallenge(
+                            publicKey = publicKey,
+                            message = messageTemplate,
+                            signature = signatureBase64
+                        )
                     )
-                )
+                }
             }
         }
         is TransactionResult.NoWalletFound -> SolanaChallengeSignResult.NoWalletFound
