@@ -197,6 +197,7 @@ class WalletViewModel @Inject constructor(
         if (externalWalletAddress.text.length >= 42) {
             validateWalletAddress(externalWalletAddress.text, "MATIC")
             validateWalletAddress(externalWalletAddress.text, "SOL")
+            validateWalletAddress(externalWalletAddress.text, "TAO")
         }
 
     }
@@ -271,6 +272,8 @@ class WalletViewModel @Inject constructor(
             externalWalletAddressIsValid = externalWalletAddressIsValid.copy(polygon = isValid)
         } else if (chain == "SOL") {
             externalWalletAddressIsValid = externalWalletAddressIsValid.copy(solana = isValid)
+        } else if (chain == "TAO") {
+            externalWalletAddressIsValid = externalWalletAddressIsValid.copy(tao = isValid)
         }
     }
 
@@ -281,6 +284,8 @@ class WalletViewModel @Inject constructor(
             chain = "SOL"
         } else if (externalWalletAddressIsValid.polygon) {
             chain = "MATIC"
+        } else if (externalWalletAddressIsValid.tao) {
+            chain = "TAO"
         }
 
         if (_wallets.value.isEmpty()) {
@@ -524,7 +529,8 @@ class WalletViewModel @Inject constructor(
 
 enum class Blockchain {
     POLYGON,
-    SOLANA;
+    SOLANA,
+    BITTENSOR;
 
     companion object {
         fun fromString(value: String): Blockchain? {
@@ -533,6 +539,8 @@ enum class Blockchain {
                 "MATIC" -> POLYGON
                 "SOLANA" -> SOLANA
                 "SOL" -> SOLANA
+                "TAO" -> BITTENSOR
+                "BITTENSOR" -> BITTENSOR
                 else -> null
             }
         }
@@ -541,6 +549,7 @@ enum class Blockchain {
 
 data class WalletValidationState(
     val solana: Boolean = false,
-    val polygon: Boolean = false
+    val polygon: Boolean = false,
+    val tao: Boolean = false
 )
 

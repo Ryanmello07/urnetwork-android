@@ -363,7 +363,8 @@ fun ExternalWalletScreenContent(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    if (!isPayoutWallet) {
+                    // bittensor wallets can't be used as the payout wallet yet
+                    if (!isPayoutWallet && blockchain != Blockchain.BITTENSOR) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp)
                         ) {
@@ -380,6 +381,18 @@ fun ExternalWalletScreenContent(
                                     style = buttonTextStyle
                                 )
                             }
+                        }
+                    }
+
+                    if (blockchain == Blockchain.BITTENSOR) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Text(
+                                stringResource(id = R.string.bittensor_wallet_future_use),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted
+                            )
                         }
                     }
 

@@ -1,5 +1,6 @@
 package com.bringyour.network.ui
 
+import android.net.Uri
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -44,6 +45,7 @@ fun LoginNavHost(
     isLoadingAuthCode: Boolean,
     referralCode: String?,
     activityResultSender: ActivityResultSender?,
+    walletCreateNetworkParams: LoginCreateNetworkParams.LoginCreateWalletParams? = null,
     overlayViewModel: OverlayViewModel = hiltViewModel()
 ) {
     val navController = rememberNavController()
@@ -224,6 +226,20 @@ fun LoginNavHost(
                             userAuth,
                             navController
                         )
+                    }
+                }
+
+                // an unlinked wallet auth was received by the activity (eg the bittensor
+                // sign message deep link) -> route into the create network flow
+                LaunchedEffect(walletCreateNetworkParams) {
+                    walletCreateNetworkParams?.let { params ->
+
+                        val encodedBlockchain = Uri.encode(params.blockchain)
+                        val encodedPublicKey = Uri.encode(params.publicKey)
+                        val encodedSignedMessage = Uri.encode(params.signedMessage)
+                        val encodedSignature = Uri.encode(params.signature)
+
+                        navController.navigate("create-network/${encodedBlockchain}/${encodedPublicKey}/${encodedSignedMessage}/${encodedSignature}")
                     }
                 }
 

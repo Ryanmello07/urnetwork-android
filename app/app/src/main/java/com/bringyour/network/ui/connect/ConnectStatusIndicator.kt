@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,7 +41,11 @@ fun ConnectStatusIndicator(
         isPollingSubscriptionBalance -> "Processing subscription balance..."
         contractStatus?.insufficientBalance == true && currentPlan != Plan.Supporter -> "Insufficient balance"
         displayReconnectTunnel -> stringResource(id = R.string.reconnect_tunnel_status_indicator)
-        status == ConnectStatus.CONNECTED -> stringResource(id = R.string.connected_provider_count, windowCurrentSize)
+        status == ConnectStatus.CONNECTED -> pluralStringResource(
+            id = R.plurals.connected_provider_count,
+            count = windowCurrentSize,
+            windowCurrentSize,
+        )
         status == ConnectStatus.CONNECTING || status == ConnectStatus.DESTINATION_SET ->
             stringResource(id = R.string.connecting_status_indicator)
         status == ConnectStatus.DISCONNECTED -> when {

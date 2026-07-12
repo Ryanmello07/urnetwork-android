@@ -61,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -135,7 +136,8 @@ fun SettingsScreen(
     activityResultSender: ActivityResultSender?,
     walletViewModel: WalletViewModel,
     bonusReferralCode: String,
-    isPro: Boolean
+    isPro: Boolean,
+    totalReferrals: Long = 0L
 ) {
 
     val notificationsAllowed = settingsViewModel.permissionGranted.collectAsState().value
@@ -241,7 +243,6 @@ fun SettingsScreen(
         toggleAllowProductUpdates = settingsViewModel.toggleAllowProductUpdates,
         provideControlMode = settingsViewModel.provideControlMode,
         setProvideControlMode = settingsViewModel.setProvideControlMode,
-        urIdUrl = settingsViewModel.urIdUrl,
         deviceName = settingsViewModel.deviceName,
         deviceSpec = settingsViewModel.deviceSpec,
         onEditDeviceName = {
@@ -270,7 +271,8 @@ fun SettingsScreen(
         isCreatingAuthCode = settingsViewModel.isCreatingAuthCode.collectAsState().value,
         setDisplayAuthCodeDialog = settingsViewModel.setIsPresentingAuthCodeDialog,
         provideIndicatorColor = settingsViewModel.provideIndicatorColor,
-        stripePortalUrl = settingsViewModel.stripePortalUrl.collectAsState().value
+        stripePortalUrl = settingsViewModel.stripePortalUrl.collectAsState().value,
+        totalReferrals = totalReferrals
     )
 
     if (isPresentingRenameDevice) {
@@ -370,7 +372,6 @@ fun SettingsScreen(
     toggleAllowProductUpdates: () -> Unit,
     provideControlMode: ProvideControlMode,
     setProvideControlMode: (ProvideControlMode) -> Unit,
-    urIdUrl: (String) -> String?,
     deviceName: String = "",
     deviceSpec: String = "",
     onEditDeviceName: () -> Unit = {},
@@ -396,7 +397,8 @@ fun SettingsScreen(
     isCreatingAuthCode: Boolean,
     setDisplayAuthCodeDialog: (Boolean) -> Unit,
     provideIndicatorColor: Color,
-    stripePortalUrl: String?
+    stripePortalUrl: String?,
+    totalReferrals: Long = 0L
 ) {
 
     val context = LocalContext.current
@@ -446,14 +448,35 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(stringResource(id = R.string.settings), style = MaterialTheme.typography.headlineSmall)
+
+                /**
+                 * referral royalty: networks with at least one referral get the
+                 * crowned frog mascot (same as the ur.io site)
+                 */
+                if (0 < totalReferrals) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.referral_frog),
+                            contentDescription = stringResource(id = R.string.referral_royalty),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            stringResource(id = R.string.referral_royalty),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted
+                        )
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(64.dp))
 
             /**
-             * URid
+             * Client ID
              */
             URTextInputLabel(
-                text = "URid"
+                text = "Client ID"
             )
             Row(
                 modifier = Modifier
@@ -474,50 +497,6 @@ fun SettingsScreen(
                     clientId,
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
-                )
-
-                Icon(
-                    painter = painterResource(id = R.drawable.content_copy),
-                    contentDescription = "Copy",
-                    tint = TextMuted,
-                    modifier = Modifier.width(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            URTextInputLabel(
-                text = "URL"
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Color(0x1AFFFFFF),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .clickable {
-
-                        clipboardManager.setText(
-                            AnnotatedString(
-                                urIdUrl(clientId) ?: clientId
-                            )
-                        )
-                    }
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-
-                ) {
-                Text(
-                    "https://ur.io/c?$clientId",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp)
                 )
 
                 Icon(
@@ -992,7 +971,7 @@ fun SettingsScreen(
                 ) {
 
                     Text(
-                        if (currentPlan == Plan.Basic) "Basic" else "Supporter",
+                        if (currentPlan == Plan.Basic) "Basic" else "Pro",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White
                     )
@@ -1078,6 +1057,21 @@ fun SettingsScreen(
                     color = Color.White
                 )
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            /**
+             * Protocol
+             */
+            val uriHandler = LocalUriHandler.current
+            Text(
+                stringResource(id = R.string.uses_ur_protocol),
+                style = MaterialTheme.typography.bodyMedium,
+                color = BlueMedium,
+                modifier = Modifier.clickable {
+                    uriHandler.openUri("https://ur.xyz")
+                }
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -1276,7 +1270,6 @@ private fun SettingsScreenPreview() {
             toggleAllowProductUpdates = {},
             provideControlMode = ProvideControlMode.AUTO,
             setProvideControlMode = {},
-            urIdUrl = { clientId -> "https://ur.io/c?$clientId" },
             showDeleteAccountDialog = false,
             setShowDeleteAccountDialog = {},
             deleteAccount = { onSuccess, onFailure -> },
@@ -1352,7 +1345,6 @@ private fun SettingsScreenSupporterPreview() {
             toggleAllowProductUpdates = {},
             provideControlMode = ProvideControlMode.AUTO,
             setProvideControlMode = {},
-            urIdUrl = { clientId -> "https://ur.io/c?$clientId" },
             showDeleteAccountDialog = false,
             setShowDeleteAccountDialog = {},
             deleteAccount = { onSuccess, onFailure -> },
@@ -1396,7 +1388,6 @@ private fun SettingsScreenNotificationsDisabledPreview() {
             toggleAllowProductUpdates = {},
             provideControlMode = ProvideControlMode.AUTO,
             setProvideControlMode = {},
-            urIdUrl = { clientId -> "https://ur.io/c?$clientId" },
             showDeleteAccountDialog = false,
             setShowDeleteAccountDialog = {},
             deleteAccount = { onSuccess, onFailure -> },
@@ -1440,7 +1431,6 @@ private fun SettingsScreenNotificationsAllowedPreview() {
             toggleAllowProductUpdates = {},
             provideControlMode = ProvideControlMode.AUTO,
             setProvideControlMode = {},
-            urIdUrl = { clientId -> "https://ur.io/c?$clientId" },
             showDeleteAccountDialog = false,
             setShowDeleteAccountDialog = {},
             deleteAccount = { onSuccess, onFailure -> },
@@ -1484,7 +1474,6 @@ private fun SettingsScreenDeleteAccountDialogPreview() {
             toggleAllowProductUpdates = {},
             provideControlMode = ProvideControlMode.AUTO,
             setProvideControlMode = {},
-            urIdUrl = { clientId -> "https://ur.io/c?$clientId" },
             showDeleteAccountDialog = true,
             setShowDeleteAccountDialog = {},
             deleteAccount = { onSuccess, onFailure -> },

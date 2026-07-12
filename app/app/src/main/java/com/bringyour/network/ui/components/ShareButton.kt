@@ -19,7 +19,7 @@ import com.bringyour.network.R
 
 @Composable
 fun ShareButton(
-    referralLink: String
+    text: String
 ) {
 
     val context = LocalContext.current
@@ -27,7 +27,7 @@ fun ShareButton(
     URButton(onClick = {
         val shareIntent = Intent().apply {
             action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, referralLink)
+            putExtra(Intent.EXTRA_TEXT, text)
             type = "text/plain"
         }
         context.startActivity(Intent.createChooser(shareIntent, null))

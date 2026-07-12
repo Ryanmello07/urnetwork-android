@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -225,7 +226,11 @@ fun ContractStatsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        stringResource(id = R.string.new_items_count, pendingCount),
+                        pluralStringResource(
+                            id = R.plurals.new_items_count,
+                            count = pendingCount,
+                            pendingCount,
+                        ),
                         style = TextStyle(fontSize = 12.sp),
                         color = Color.White
                     )
@@ -270,7 +275,11 @@ fun ContractClientRow(
             if (1 < row.pairCount) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    stringResource(id = R.string.contract_count, row.pairCount),
+                    pluralStringResource(
+                        id = R.plurals.contract_count,
+                        count = row.pairCount,
+                        row.pairCount,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
                 )

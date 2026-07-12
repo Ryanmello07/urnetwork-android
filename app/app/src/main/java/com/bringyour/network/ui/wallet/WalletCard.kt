@@ -58,10 +58,11 @@ fun WalletCard(
         }
     }
 
-    val walletType = if (blockchain == Blockchain.SOLANA)
-            "Solana"
-        else
-            "Polygon"
+    val walletType = when (blockchain) {
+        Blockchain.SOLANA -> "Solana"
+        Blockchain.BITTENSOR -> "Bittensor"
+        else -> "Polygon"
+    }
 
     Column(
         modifier = Modifier

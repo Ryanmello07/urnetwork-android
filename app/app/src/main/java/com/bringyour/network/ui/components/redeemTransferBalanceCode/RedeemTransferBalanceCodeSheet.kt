@@ -9,12 +9,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.bringyour.network.ui.theme.TextMuted
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,6 +66,14 @@ fun RedeemTransferBalanceCodeSheet(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Someone opening this sheet with no code needs to know where to get one.
+            // Plain text, no link -- see the string comment.
+            Text(
+                stringResource(id = R.string.balance_code_where_to_buy),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
 
             URButton(
                 onClick = {

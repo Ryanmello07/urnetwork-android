@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.IntOffset
@@ -44,6 +45,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.bringyour.network.R
 import com.bringyour.network.ui.Route
+import com.bringyour.network.ui.components.URSwitch
 import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.theme.MainTintedBackgroundBase
 import com.bringyour.network.ui.theme.Pink
@@ -62,6 +64,7 @@ fun ConnectStatsSections(
     throughputViewModel: ThroughputViewModel,
     blockActionsViewModel: BlockActionsViewModel,
     dnsSettingsViewModel: DnsSettingsViewModel,
+    blockerViewModel: BlockerViewModel,
 ) {
 
     /**
@@ -136,7 +139,11 @@ fun ConnectStatsSections(
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            stringResource(id = R.string.split_rule_count, blockActionsViewModel.splitRules.size),
+            pluralStringResource(
+                id = R.plurals.split_rule_count,
+                count = blockActionsViewModel.splitRules.size,
+                blockActionsViewModel.splitRules.size,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = Color.White
         )
@@ -174,6 +181,52 @@ fun ConnectStatsSections(
         }
 
     }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    /**
+     * Ad and tracker blocker toggle. The device applies it immediately and
+     * persists it to local settings.
+     */
+    BlockerTogglePanel(
+        enabled = blockerViewModel.blockerEnabled,
+        toggle = {
+            blockerViewModel.setBlockerEnabled(!blockerViewModel.blockerEnabled)
+        }
+    )
+}
+
+/**
+ * The ad and tracker blocker toggle, as its own panel under the custom dns
+ * summary.
+ */
+@Composable
+fun BlockerTogglePanel(
+    enabled: Boolean,
+    toggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MainTintedBackgroundBase,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            stringResource(id = R.string.block_ads_and_trackers),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White
+        )
+
+        URSwitch(
+            checked = enabled,
+            toggle = toggle
+        )
+    }
 }
 
 /**
@@ -190,9 +243,17 @@ fun AppSplitRulesPanel(
 ) {
 
     val text = if (0 < includedCount) {
-        stringResource(id = R.string.apps_included_count, includedCount)
+        pluralStringResource(
+            id = R.plurals.apps_included_count,
+            count = includedCount,
+            includedCount,
+        )
     } else {
-        stringResource(id = R.string.apps_excluded_count, excludedCount)
+        pluralStringResource(
+            id = R.plurals.apps_excluded_count,
+            count = excludedCount,
+            excludedCount,
+        )
     }
 
     val icons = rememberAppIcons(activeAppIds)

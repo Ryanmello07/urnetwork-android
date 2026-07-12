@@ -81,6 +81,7 @@ fun ConnectScreen(
     throughputViewModel: com.bringyour.network.ui.stats.ThroughputViewModel = hiltViewModel(),
     blockActionsViewModel: com.bringyour.network.ui.stats.BlockActionsViewModel = hiltViewModel(),
     dnsSettingsViewModel: com.bringyour.network.ui.stats.DnsSettingsViewModel = hiltViewModel(),
+    blockerViewModel: com.bringyour.network.ui.stats.BlockerViewModel = hiltViewModel(),
 ) {
 
     val connectStatus by connectViewModel.connectStatus.collectAsState()
@@ -182,6 +183,10 @@ fun ConnectScreen(
                 throughputViewModel = throughputViewModel,
                 blockActionsViewModel = blockActionsViewModel,
                 dnsSettingsViewModel = dnsSettingsViewModel,
+                blockerViewModel = blockerViewModel,
+                onReferralClick = {
+                    overlayViewModel.launch(OverlayMode.Refer)
+                },
             )
         },
         mainContent = {

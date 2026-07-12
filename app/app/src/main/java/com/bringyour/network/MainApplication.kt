@@ -476,6 +476,18 @@ class MainApplication : Application() {
 
 
     private fun initDevice(byClientJwt: String): Boolean {
+        // the sdk fires this when the jwt refresh finds the client no longer
+        // exists on the server (e.g. the client was removed): the sdk has
+        // already cleared its local auth state; log the user out and return
+        // to the login flow
+        deviceManager.onAuthLogout = {
+            Handler(mainLooper).post {
+                logout()
+                val intent = Intent(applicationContext, LoginActivity::class.java)
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK.or(Intent.FLAG_ACTIVITY_TASK_ON_HOME))
+                startActivity(intent)
+            }
+        }
         if (!deviceManager.initDevice(
             networkSpaceManagerProvider.getNetworkSpace(),
             byClientJwt,

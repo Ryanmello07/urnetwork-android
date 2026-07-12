@@ -96,59 +96,88 @@ class SubscriptionBalanceViewModel @Inject constructor(
 
             _isLoading.value = true
 
-            deviceManager.device?.api?.subscriptionBalance( SubscriptionBalanceCallback { result, err ->
+            /**
+             * If the device or its api is not up yet, the call below dispatches
+             * NOTHING and no callback ever arrives to clear `_isLoading`. It would stay
+             * true forever, and because every fetch is guarded on `!_isLoading.value`,
+             * both poll loops -- and every later refresh -- would become silent no-ops
+             * for the life of this view model. The balance and the Pro label would then
+             * be stale until the app was relaunched.
+             *
+             * So bail out cleanly instead of wedging: the caller polls again shortly.
+             */
+            val api = deviceManager.device?.api
+            if (api == null) {
+                _isLoading.value = false
+                isRefreshingSubscriptionBalance = false
+            } else {
 
-                viewModelScope.launch {
-                    if (err != null) {
+                api.subscriptionBalance( SubscriptionBalanceCallback { result, err ->
 
-                        _isLoading.value = false
-                        isRefreshingSubscriptionBalance = false
-                        _errorFetchingSubscriptionBalance.value = true
+                    viewModelScope.launch {
+                        if (err != null) {
 
-                    } else {
-
-                        if (result == null) {
                             _isLoading.value = false
                             isRefreshingSubscriptionBalance = false
-                            return@launch
-                        }
+                            _errorFetchingSubscriptionBalance.value = true
 
-                        result.currentSubscription?.plan?.let { plan ->
+                        } else {
 
-                            val currentIsPro = jwtManager.jwtFlow.value?.pro == true
+                            if (result == null) {
+                                _isLoading.value = false
+                                isRefreshingSubscriptionBalance = false
+                                return@launch
+                            }
 
                             /**
-                             * if plan from SubscriptionBalance is different than JWT.Pro
-                             * refresh the token
+                             * The server is the source of truth for Pro, and
+                             * `currentSubscription` is non-null exactly when the network is
+                             * Pro. The jwt's `pro` claim is baked in when the token is
+                             * issued, so it goes stale on BOTH an upgrade and a lapse.
+                             * Refresh the token whenever the two disagree, in either
+                             * direction.
+                             *
+                             * The downgrade case used to be unreachable: it lived inside
+                             * `currentSubscription?.plan?.let`, which does not run precisely
+                             * when the user is no longer pro. A lapsed subscriber kept
+                             * showing "Supporter", kept Pro behavior, and kept the upgrade
+                             * CTA hidden until the app was relaunched.
                              */
-                            if (Plan.fromString(plan) == Plan.Supporter && !currentIsPro) {
+                            val serverIsPro = result.currentSubscription != null
+                            val jwtIsPro = jwtManager.jwtFlow.value?.pro == true
+
+                            if (serverIsPro && !jwtIsPro) {
                                 // free -> paid: reset provide mode to never once at the
                                 // upgrade; the user can opt back in and that choice persists
                                 deviceManager.provideControlMode = ProvideControlMode.NEVER
+                            }
+
+                            if (serverIsPro != jwtIsPro) {
                                 deviceManager.device?.refreshToken(0)
                             }
+
+                            result.currentSubscription?.store.let { store ->
+                                _currentStore.value = store
+                            }
+
+                            _availableBalanceByteCount.value = result.balanceByteCount
+                            pendingBalanceByteCount = result.openTransferByteCount
+                            _startBalanceByteCount.value = result.startBalanceByteCount
+                            usedBalanceByteCount = (result.startBalanceByteCount - result.balanceByteCount - pendingBalanceByteCount).coerceAtLeast(0)
+                            _errorFetchingSubscriptionBalance.value = false
+                            _isLoading.value = false
                         }
 
-                        result.currentSubscription?.store.let { store ->
-                            _currentStore.value = store
+                        isRefreshingSubscriptionBalance = false
+                        if (!_isInitialized.value) {
+                            _isInitialized.value = true
                         }
 
-                        _availableBalanceByteCount.value = result.balanceByteCount
-                        pendingBalanceByteCount = result.openTransferByteCount
-                        _startBalanceByteCount.value = result.startBalanceByteCount
-                        usedBalanceByteCount = (result.startBalanceByteCount - result.balanceByteCount - pendingBalanceByteCount).coerceAtLeast(0)
-                        _errorFetchingSubscriptionBalance.value = false
-                        _isLoading.value = false
                     }
 
-                    isRefreshingSubscriptionBalance = false
-                    if (!_isInitialized.value) {
-                        _isInitialized.value = true
-                    }
+                })
 
-                }
-
-            })
+            }
 
         }
 
