@@ -60,7 +60,6 @@ fun ReferOverlay(
 ) {
 
     val clipboardManager = LocalClipboardManager.current
-    val referralLink = "https://ur.io/c?bonus=${referralCode}"
 
     OverlayBackground(
         onDismiss = onDismiss,
@@ -87,9 +86,14 @@ fun ReferOverlay(
 
             if (referralCode != null) {
 
-                QRCodeWithImage(
-                    text = referralLink,
-                    imageResId = R.drawable.qr_code_center
+                /**
+                 * referrals no longer use deep links; friends enter the code
+                 * when they sign up
+                 */
+                Text(
+                    stringResource(id = R.string.refer_friends_code_hint),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Black
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -109,8 +113,8 @@ fun ReferOverlay(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            referralLink,
-                            style = MaterialTheme.typography.bodyMedium,
+                            referralCode,
+                            style = MaterialTheme.typography.headlineSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
@@ -121,7 +125,7 @@ fun ReferOverlay(
                         Text(
                             stringResource(id = R.string.copy),
                             modifier = Modifier.clickable {
-                                clipboardManager.setText(AnnotatedString(referralLink))
+                                clipboardManager.setText(AnnotatedString(referralCode))
                             },
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 color = BlueMedium
@@ -132,7 +136,7 @@ fun ReferOverlay(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                ShareButton(referralLink)
+                ShareButton(stringResource(id = R.string.referral_share_message, referralCode))
             } else {
                 CircularProgressIndicator(
                     modifier = Modifier

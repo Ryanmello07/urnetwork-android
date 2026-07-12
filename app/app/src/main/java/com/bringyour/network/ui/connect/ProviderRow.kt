@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -41,8 +42,6 @@ import com.bringyour.network.ui.theme.Red400
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.URNetworkTheme
 import com.bringyour.network.ui.theme.Yellow
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable()
 fun ProviderRow(
@@ -57,8 +56,6 @@ fun ProviderRow(
     isStrongPrivacy: Boolean,
     displayIcons: Boolean = true
 ) {
-
-    val formatter = remember { NumberFormat.getNumberInstance(Locale.US) }
 
     var isFocused by remember { mutableStateOf(false) }
 
@@ -116,7 +113,11 @@ fun ProviderRow(
                 if (providerCount != null && providerCount > 0) {
                     Row {
                         Text(
-                            "${formatter.format(providerCount)} Providers",
+                            pluralStringResource(
+                                id = R.plurals.provider_count,
+                                count = providerCount,
+                                providerCount,
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextMuted
                         )

@@ -17,6 +17,9 @@ enum class OverlayMode {
     FeedbackSubmitted,
     Onboarding,
     OnboardingGuestMode,
+    // a purchase Play accepted but has not completed -- awaiting approval or an
+    // out-of-band payment. Distinct from Upgrade, which means it actually went through.
+    PurchasePending,
 }
 
 @Composable
@@ -59,6 +62,19 @@ fun FullScreenOverlay(
                 }
             )
         }
+    }
+
+    // Purchase awaiting approval overlay
+    AnimatedVisibility(
+        visible = overlayMode == OverlayMode.PurchasePending,
+        enter = enterTransition,
+        exit = exitTransition,
+    ) {
+        PurchasePendingOverlay(
+            onDismiss = {
+                overlayViewModel.launch(null)
+            }
+        )
     }
 
     // Feedback submitted overlay

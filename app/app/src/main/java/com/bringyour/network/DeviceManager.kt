@@ -18,10 +18,17 @@ class DeviceManager @Inject constructor(
 
     private val deviceLock = Any()
 
+    // set by the application; fired when the sdk detects the stored auth is
+    // no longer valid on the server (e.g. the client was removed) and has
+    // cleared the local auth state. The app must log out and return to the
+    // login flow.
+    var onAuthLogout: (() -> Unit)? = null
+
     @Volatile var device: DeviceLocal? = null
         private set
 
     private var jwtRefreshSub: Sub? = null
+    private var authLogoutSub: Sub? = null
     private var provideSecretKeysSub: Sub? = null
     private val localStateChangeSubs = mutableListOf<Sub>()
 
@@ -213,6 +220,10 @@ class DeviceManager @Inject constructor(
                     jwtManager.updateJwt(byJwt)
                 } ?: jwtManager.clearJwt()
             }
+
+            authLogoutSub = newDevice.addAuthLogoutListener {
+                onAuthLogout?.invoke()
+            }
         }
         return true
     }
@@ -316,6 +327,8 @@ class DeviceManager @Inject constructor(
     private fun closeDeviceSubscriptionsLocked() {
         jwtRefreshSub?.close()
         jwtRefreshSub = null
+        authLogoutSub?.close()
+        authLogoutSub = null
         provideSecretKeysSub?.close()
         provideSecretKeysSub = null
         localStateChangeSubs.forEach { it.close() }

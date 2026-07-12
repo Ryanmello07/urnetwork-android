@@ -84,14 +84,14 @@ fun ManualWalletAddressSheet(
                         value = externalWalletAddress,
                         onValueChange = setExternalWalletAddress,
                         label = "USDC wallet address",
-                        placeholder = "Enter a Solana or Matic USDC wallet address",
-                        supportingText = "USDC addresses on Solana and Polygon are currently supported",
+                        placeholder = "Enter a Solana, Matic, or Bittensor wallet address",
+                        supportingText = "USDC addresses on Solana and Polygon, and Bittensor (TAO) addresses, are supported",
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Done
                         ),
                         onDone = {
-                            if ((walletValidationState.solana || walletValidationState.polygon) && !isProcessingWallet)  {
+                            if ((walletValidationState.solana || walletValidationState.polygon || walletValidationState.tao) && !isProcessingWallet)  {
                                 onSubmit()
                             }
                         }
@@ -99,7 +99,7 @@ fun ManualWalletAddressSheet(
 
                     URButton(
                         onClick = onSubmit,
-                        enabled = (walletValidationState.solana || walletValidationState.polygon) && !isProcessingWallet,
+                        enabled = (walletValidationState.solana || walletValidationState.polygon || walletValidationState.tao) && !isProcessingWallet,
                     ) { buttonTextStyle ->
                         Text("Link wallet", style = buttonTextStyle)
                     }

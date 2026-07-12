@@ -93,10 +93,6 @@ class SettingsViewModel @Inject constructor(
         allowProductUpdates = allow
     }
 
-    val urIdUrl: (String) -> String? = { clientId ->
-        networkSpaceManagerProvider.getNetworkSpace()?.connectLinkUrl(clientId)
-    }
-
     var version by mutableStateOf("")
         private set
 
@@ -125,7 +121,7 @@ class SettingsViewModel @Inject constructor(
                 if (info.clientId?.idStr == clientId) {
                     viewModelScope.launch {
                         deviceId = info.deviceId
-                        deviceName = info.deviceName.ifEmpty { info.description }
+                        deviceName = info.deviceName.ifEmpty { info.deviceDescription }
                         deviceSpec = info.deviceSpec
                     }
                     break

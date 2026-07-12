@@ -23,11 +23,11 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
@@ -42,6 +42,7 @@ import com.bringyour.network.ui.components.UsageBar
 import com.bringyour.network.ui.shared.models.ConnectStatus
 import com.bringyour.network.ui.shared.viewmodels.Plan
 import com.bringyour.network.ui.stats.BlockActionsViewModel
+import com.bringyour.network.ui.stats.BlockerViewModel
 import com.bringyour.network.ui.stats.ConnectStatsSections
 import com.bringyour.network.ui.stats.DnsSettingsViewModel
 import com.bringyour.network.ui.stats.ThroughputViewModel
@@ -51,8 +52,6 @@ import com.bringyour.network.ui.theme.Red400
 import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.sdk.ConnectLocation
-import java.text.NumberFormat
-import java.util.Locale
 
 @Composable
 fun ConnectActions(
@@ -85,6 +84,9 @@ fun ConnectActions(
     throughputViewModel: ThroughputViewModel,
     blockActionsViewModel: BlockActionsViewModel,
     dnsSettingsViewModel: DnsSettingsViewModel,
+    blockerViewModel: BlockerViewModel,
+    // opens the referral flow from the usage bar referral row
+    onReferralClick: () -> Unit,
 ) {
 
     Column(
@@ -279,6 +281,7 @@ fun ConnectActions(
             throughputViewModel = throughputViewModel,
             blockActionsViewModel = blockActionsViewModel,
             dnsSettingsViewModel = dnsSettingsViewModel,
+            blockerViewModel = blockerViewModel,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -373,7 +376,8 @@ fun ConnectActions(
                 availableBytes = availableBytes,
                 meanReliabilityWeight = meanReliabilityWeight,
                 totalReferrals = totalReferrals,
-                dailyByteCount = dailyByteCount
+                dailyByteCount = dailyByteCount,
+                onReferralClick = onReferralClick
             )
 
         }
@@ -403,8 +407,6 @@ fun OpenProviderListButton(
 
         getLocationColor(key)
     }
-
-    val formatter = remember { NumberFormat.getNumberInstance(Locale.US) }
 
     Row(
         modifier = Modifier
@@ -442,9 +444,10 @@ fun OpenProviderListButton(
 
                     if (selectedLocation.providerCount > 0) {
                         Text(
-                            stringResource(
-                                R.string.provider_count,
-                                formatter.format(selectedLocation.providerCount)
+                            pluralStringResource(
+                                id = R.plurals.provider_count,
+                                count = selectedLocation.providerCount,
+                                selectedLocation.providerCount,
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextMuted

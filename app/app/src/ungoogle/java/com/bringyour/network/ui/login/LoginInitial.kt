@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -93,6 +94,14 @@ fun LoginInitial(
     var contentVisible by remember { mutableStateOf(true) }
     var welcomeOverlayVisible by remember { mutableStateOf(false) }
     var noSolanaWalletsFound by remember { mutableStateOf(false) }
+
+    // clear the bittensor auth spinner when returning from the sign message browser flow
+    LifecycleResumeEffect(Unit) {
+        if (loginViewModel.bittensorAuthInProgress) {
+            loginViewModel.setBittensorAuthInProgress(false)
+        }
+        onPauseOrDispose {}
+    }
 
     val onLogin: (String) -> Unit = { networkJwt ->
         handleLoginFlow(
@@ -203,6 +212,18 @@ fun LoginInitial(
         }
     }
 
+    val connectBittensorWallet = {
+        loginViewModel.setLoginError(null)
+
+        // the signed message is returned to the LoginActivity
+        // as ur://bittensor-sign-message
+        if (launchBittensorSignMessage(context)) {
+            loginViewModel.setBittensorAuthInProgress(true)
+        } else {
+            loginViewModel.setLoginError(context.getString(R.string.login_error))
+        }
+    }
+
     LoginInitial(
         navController,
         userAuth = loginViewModel.userAuth,
@@ -218,6 +239,10 @@ fun LoginInitial(
             connectSolanaWallet()
         },
         solanaAuthInProgress = loginViewModel.solanaAuthInProgress,
+        bittensorLogin = {
+            connectBittensorWallet()
+        },
+        bittensorAuthInProgress = loginViewModel.bittensorAuthInProgress,
         onLogin = onLogin,
         contentVisible = contentVisible,
         setContentVisible = {
@@ -260,6 +285,8 @@ fun LoginInitial(
     setCreateGuestModeInProgress: (Boolean) -> Unit,
     solanaLogin: () -> Unit,
     solanaAuthInProgress: Boolean,
+    bittensorLogin: () -> Unit,
+    bittensorAuthInProgress: Boolean,
     onLogin: (String) -> Unit,
     contentVisible: Boolean,
     setContentVisible: (Boolean) -> Unit,
@@ -403,6 +430,8 @@ fun LoginInitial(
                         },
                         onSolanaLogin = solanaLogin,
                         solanaAuthInProgress = solanaAuthInProgress,
+                        onBittensorLogin = bittensorLogin,
+                        bittensorAuthInProgress = bittensorAuthInProgress,
                         launchAuthCodeLoginSheet = {
                             setAuthCodeLoginSheetVisible(true)
                         }
@@ -455,10 +484,12 @@ fun LoginInitialActions(
     onLogin: () -> Unit,
     onSolanaLogin: () -> Unit,
     solanaAuthInProgress: Boolean,
+    onBittensorLogin: () -> Unit,
+    bittensorAuthInProgress: Boolean,
     launchAuthCodeLoginSheet: () -> Unit,
 ) {
 
-    val isLoginInProgress = userAuthInProgress || solanaAuthInProgress || createGuestModeInProgress
+    val isLoginInProgress = userAuthInProgress || solanaAuthInProgress || bittensorAuthInProgress || createGuestModeInProgress
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -511,6 +542,37 @@ fun LoginInitialActions(
                     "or",
                     color = TextMuted
                 )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            /**
+             * Bittensor Sign in
+             */
+            URButton(
+                style = ButtonStyle.SECONDARY,
+                onClick = {
+                    onBittensorLogin()
+                },
+                enabled = !isLoginInProgress,
+                isProcessing = bittensorAuthInProgress
+            ) { buttonTextStyle ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Image(
+                        painter = painterResource(id = R.drawable.bittensor_logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        stringResource(id = R.string.bittensor_sign_in),
+                        style = buttonTextStyle
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -669,6 +731,8 @@ private fun LoginInitialPreview() {
                     setCreateGuestModeInProgress = {},
                     solanaAuthInProgress = false,
                     solanaLogin = {},
+                    bittensorAuthInProgress = false,
+                    bittensorLogin = {},
                     onLogin = {},
                     contentVisible = true,
                     setContentVisible = {},
@@ -719,6 +783,8 @@ private fun LoginInitialLandscapePreview() {
                     setCreateGuestModeInProgress = {},
                     solanaAuthInProgress = false,
                     solanaLogin = {},
+                    bittensorAuthInProgress = false,
+                    bittensorLogin = {},
                     contentVisible = true,
                     setContentVisible = {},
                     welcomeOverlayVisible = false,

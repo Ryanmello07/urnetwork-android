@@ -53,6 +53,12 @@ import com.bringyour.network.LoginActivity
 import com.bringyour.network.MainApplication
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.overlays.OverlayMode
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import com.bringyour.network.ui.theme.ProGold
+import com.bringyour.network.ui.theme.ProGoldLight
 import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.MainBorderBase
 import com.bringyour.network.ui.theme.URNetworkTheme
@@ -66,6 +72,7 @@ enum class LoginMode {
 fun AccountSwitcher(
     loginMode: LoginMode,
     networkName: String?,
+    isPro: Boolean = false,
     launchOverlay: (OverlayMode) -> Unit
 ) {
 
@@ -76,13 +83,53 @@ fun AccountSwitcher(
     val focusRequester = remember { FocusRequester()}
 
     Box(
-        modifier = Modifier.size(32.dp)
+        modifier = Modifier.size(if (isPro) 40.dp else 32.dp),
+        contentAlignment = Alignment.Center
     ) {
+
+        /**
+         * Pro members get a glowing gold ring around their avatar.
+         *
+         * The glow is a radial gradient behind the avatar (Compose has no shadow that
+         * can be tinted gold), and the ring itself is a sweep gradient border, so the
+         * light appears to travel around it rather than sitting flat.
+         */
+        if (isPro) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                ProGold.copy(alpha = 0.40f),
+                                ProGold.copy(alpha = 0.10f),
+                                Color.Transparent
+                            )
+                        ),
+                        shape = CircleShape
+                    )
+            )
+        }
+
         Image(
             painter = painterResource(id = R.drawable.account_switcher_avatar),
             contentDescription = null,
             modifier = Modifier
-                .fillMaxSize()
+                .size(32.dp)
+                .then(
+                    if (isPro) {
+                        Modifier.border(
+                            width = 2.dp,
+                            brush = Brush.sweepGradient(
+                                listOf(ProGoldLight, ProGold, ProGoldLight, ProGold, ProGoldLight)
+                            ),
+                            shape = CircleShape
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+                .clip(CircleShape)
                 .clickable {
                     isOverlayVisible = true
                            },

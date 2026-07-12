@@ -16,11 +16,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.bringyour.network.ui.LoginNavHost
+import com.bringyour.network.ui.login.BITTENSOR_SIGN_MESSAGE
+import com.bringyour.network.ui.login.LoginCreateNetworkParams
 import com.bringyour.network.ui.login.LoginViewModel
 import com.bringyour.network.ui.theme.URNetworkTheme
 import com.bringyour.sdk.AuthCodeLoginArgs
+import com.bringyour.sdk.AuthLoginArgs
 import com.bringyour.sdk.AuthNetworkClientArgs
 import com.bringyour.sdk.NetworkCreateArgs
+import com.bringyour.sdk.WalletAuthArgs
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +50,7 @@ class LoginActivity : AppCompatActivity() {
     private var defaultLocation: String? = null
     private var switchToGuestMode by mutableStateOf(false)
     private var isLoadingAuthCode by mutableStateOf(false)
+    private var walletCreateNetworkParams by mutableStateOf<LoginCreateNetworkParams.LoginCreateWalletParams?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -69,7 +74,10 @@ class LoginActivity : AppCompatActivity() {
         if (Intent.ACTION_VIEW == action) {
             Log.i(TAG, "Intent.ACTION_VIEW == action")
             intent?.data?.let { u ->
-                if ((u.scheme == "https" && u.host == "ur.io" && u.path == "/c") || u.scheme == "ur") {
+                if (u.scheme == "ur" && u.host == "bittensor-sign-message") {
+                    Log.i(TAG, "bittensorSignMessageLogin $u")
+                    bittensorSignMessageLogin(u)
+                } else if ((u.scheme == "https" && u.host == "ur.io" && u.path == "/c") || u.scheme == "ur") {
                     Log.i(TAG, "createWithUri $u")
                     createWithUri(u)
                 }
@@ -95,7 +103,8 @@ class LoginActivity : AppCompatActivity() {
                     switchToGuestMode = switchToGuestMode,
                     isLoadingAuthCode = isLoadingAuthCode,
                     referralCode = referralCode,
-                    activityResultSender = activityResultSender
+                    activityResultSender = activityResultSender,
+                    walletCreateNetworkParams = walletCreateNetworkParams
                 )
             }
         }
@@ -250,6 +259,79 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
+    // handles the redirect back from the ur.io wallet-connect bittensor sign message flow
+    // ur://bittensor-sign-message?address=<ss58>&signature=<0xhex>
+    // or ur://bittensor-sign-message?errorCode=-1&errorMessage=...
+    private fun bittensorSignMessageLogin(uri: Uri) {
+        val app = app ?: return
+
+        val errorCode = uri.getQueryParameter("errorCode")
+        val errorMessage = uri.getQueryParameter("errorMessage")
+        val address = uri.getQueryParameter("address")
+        val signature = uri.getQueryParameter("signature")
+
+        if (errorCode != null || address.isNullOrEmpty() || signature.isNullOrEmpty()) {
+            Log.i(TAG, "bittensorSignMessageLogin: error: code=$errorCode message=$errorMessage")
+            loginViewModel.setLoginError(errorMessage ?: getString(R.string.login_error))
+            return
+        }
+
+        isLoadingAuthCode = true
+
+        val args = AuthLoginArgs()
+        val walletAuth = WalletAuthArgs()
+
+        walletAuth.blockchain = "TAO"
+        walletAuth.publicKey = address
+        walletAuth.message = BITTENSOR_SIGN_MESSAGE
+        walletAuth.signature = signature
+
+        args.walletAuth = walletAuth
+
+        app.api?.authLogin(args) { result, err ->
+            lifecycleScope.launch {
+
+                if (err != null) {
+                    isLoadingAuthCode = false
+                    loginViewModel.setLoginError(err.message)
+                } else if (result.error != null) {
+                    isLoadingAuthCode = false
+                    loginViewModel.setLoginError(result.error.message)
+                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
+                    loginViewModel.setLoginError(null)
+
+                    app.login(result.network.byJwt)
+
+                    authClientAndFinish(
+                        callback = { error ->
+                            if (error != null) {
+                                Log.i(TAG, "authClientAndFinish error: $error")
+                            }
+                            isLoadingAuthCode = false
+                        },
+                    )
+                } else if (result.walletAuth != null) {
+                    // the wallet is not linked to a network yet
+                    // route into the create network flow
+                    loginViewModel.setLoginError(null)
+                    walletCreateNetworkParams = LoginCreateNetworkParams.LoginCreateWalletParams(
+                        blockchain = "TAO",
+                        publicKey = result.walletAuth.publicKey,
+                        signedMessage = result.walletAuth.message,
+                        signature = result.walletAuth.signature,
+                        referralCode = referralCode
+                    )
+                    isLoadingAuthCode = false
+                } else {
+                    isLoadingAuthCode = false
+                    loginViewModel.setLoginError(getString(R.string.login_error))
+                }
+            }
+        } ?: run {
+            isLoadingAuthCode = false
+        }
+    }
+
     private fun createGuestNetworkAndFinish(app: MainApplication) {
         val args = NetworkCreateArgs()
         args.terms = true
@@ -335,7 +417,7 @@ class LoginActivity : AppCompatActivity() {
         val app = app ?: return
 
         val authArgs = AuthNetworkClientArgs()
-        authArgs.description = app.deviceDescription
+        authArgs.deviceDescription = app.deviceDescription
         authArgs.deviceSpec = app.deviceSpec
 
         app.api?.authNetworkClient(authArgs) { result, err ->

@@ -118,7 +118,10 @@ fun IntroductionUsageBar(
                     availableBytes = availableBytes,
                     meanReliabilityWeight = meanReliabilityWeight,
                     totalReferrals = totalReferrals,
-                    dailyByteCount = dailyByteCount
+                    dailyByteCount = dailyByteCount,
+                    onReferralClick = {
+                        navController.navigate(IntroRoute.IntroductionReferral)
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))

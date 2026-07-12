@@ -36,6 +36,17 @@ class PlanViewModel @Inject constructor(
     val restoredSubscriptionSequence: StateFlow<Long> = _restoredSubscriptionSequence.asStateFlow()
     private var consumedRestoredSubscriptionSequence = 0L
 
+    /**
+     * A purchase the store accepted but has not completed (awaiting approval, or an
+     * out-of-band payment). This flavor has no Google Play billing, so it is never
+     * emitted here -- the sequence stays 0 and the collector in MainNavHost (which is
+     * shared across flavors) simply never fires. It exists so that shared UI can handle
+     * the pending case uniformly wherever a store CAN report it.
+     */
+    private val _purchasePendingSequence = MutableStateFlow(0L)
+    val purchasePendingSequence: StateFlow<Long> = _purchasePendingSequence.asStateFlow()
+    private var consumedPurchasePendingSequence = 0L
+
     val triggerUpgradeSuccess: () -> Unit = {
         _upgradeSuccessSequence.update { it + 1L }
         viewModelScope.launch {
@@ -51,6 +62,14 @@ class PlanViewModel @Inject constructor(
         return true
     }
 
+    fun consumePurchasePendingSequence(sequence: Long): Boolean {
+        if (sequence == 0L || sequence <= consumedPurchasePendingSequence) {
+            return false
+        }
+        consumedPurchasePendingSequence = sequence
+        return true
+    }
+
     fun consumeRestoredSubscriptionSequence(sequence: Long): Boolean {
         if (sequence == 0L || sequence <= consumedRestoredSubscriptionSequence) {
             return false
@@ -58,6 +77,26 @@ class PlanViewModel @Inject constructor(
         consumedRestoredSubscriptionSequence = sequence
         return true
     }
+
+    /**
+     * Billing errors, surfaced by the shared UI for EVERY flavor. Nothing sets this
+     * here today (this flavor has no Google Play billing), but any payment path that
+     * fails must be able to put a message in front of the user rather than failing
+     * silently — which is what used to happen everywhere.
+     */
+    var changePlanError by mutableStateOf<String?>(null)
+        private set
+
+    val setChangePlanError: (String?) -> Unit = { msg ->
+        changePlanError = msg
+    }
+
+    /**
+     * No Play Billing purchase to re-launch on this flavor, so there is nothing to
+     * retry from the error dialog — it offers only Close. A "Try again" button that
+     * did nothing would be worse than not offering one.
+     */
+    val retryUpgrade: (() -> Unit)? = null
 
     var networkId by mutableStateOf<String?>(null)
         private set

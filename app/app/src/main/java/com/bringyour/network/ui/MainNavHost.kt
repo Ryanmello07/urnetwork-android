@@ -1,5 +1,8 @@
 package com.bringyour.network.ui
 
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import android.content.res.Configuration
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
@@ -268,6 +271,67 @@ fun MainNavHost(
             } else {
                 navController.popBackStack()
             }
+        }
+    }
+
+    /**
+     * EVERY billing error reaches the user, with a way out.
+     *
+     * `changePlanError` was set in half a dozen places -- a declined card, a billing
+     * client failure, "Network not found" -- and rendered NOWHERE. A failed purchase
+     * therefore looked exactly like nothing happening: the spinner stopped and the user
+     * was left staring at the plan screen with no idea what went wrong or what to do.
+     *
+     * A payment error the user cannot see is a payment error they will hit again, so
+     * this always offers the remedy (try again) rather than just reporting the failure.
+     */
+    planViewModel.changePlanError?.let { changePlanError ->
+        AlertDialog(
+            onDismissRequest = { planViewModel.setChangePlanError(null) },
+            title = { Text(stringResource(id = R.string.payment_problem)) },
+            text = { Text(changePlanError) },
+            confirmButton = {
+                val retryUpgrade = planViewModel.retryUpgrade
+                TextButton(
+                    onClick = {
+                        planViewModel.setChangePlanError(null)
+                        retryUpgrade?.invoke()
+                    }
+                ) {
+                    Text(
+                        stringResource(
+                            id = if (retryUpgrade != null) R.string.try_again else R.string.close
+                        )
+                    )
+                }
+            },
+            dismissButton = {
+                // only a second button when there is actually something to retry
+                if (planViewModel.retryUpgrade != null) {
+                    TextButton(onClick = { planViewModel.setChangePlanError(null) }) {
+                        Text(stringResource(id = R.string.close))
+                    }
+                }
+            }
+        )
+    }
+
+    /**
+     * A purchase Play accepted but has NOT completed (awaiting approval, or an
+     * out-of-band payment). There is nothing to poll for -- the PURCHASED state does
+     * not arrive now -- so just tell the user, and do NOT close the screen or claim an
+     * upgrade.
+     *
+     * Without this the pending case was silent: the spinner stopped, nothing else
+     * happened, and the user concluded the purchase had failed and bought again.
+     */
+    LaunchedEffect(Unit) {
+        planViewModel.purchasePendingSequence.collect { sequence ->
+            if (!planViewModel.consumePurchasePendingSequence(sequence)) {
+                return@collect
+            }
+
+            overlayViewModel.launch(OverlayMode.PurchasePending)
         }
     }
 
@@ -836,7 +900,8 @@ fun MainNavContent(
                 activityResultSender,
                 walletViewModel,
                 bonusReferralCode = referralCodeViewModel.referralCode.collectAsState().value,
-                isPro = isPro
+                isPro = isPro,
+                totalReferrals = referralCodeViewModel.totalReferralCount.collectAsState().value
             ) }
 
             composable<Route.BlockedRegions>(

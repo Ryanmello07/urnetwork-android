@@ -53,6 +53,21 @@ class PlanViewModel @Inject constructor(
     val restoredSubscriptionSequence: StateFlow<Long> = _restoredSubscriptionSequence.asStateFlow()
     private var consumedRestoredSubscriptionSequence = 0L
 
+    /**
+     * A purchase that Google Play accepted but has NOT completed: it is awaiting
+     * approval (a child needing a parent's OK) or an out-of-band payment. The PURCHASED
+     * state does not arrive now -- it lands later, and `reconcileExistingSubscriptions`
+     * picks it up on the next billing connection.
+     *
+     * This used to be swallowed entirely: `acknowledgePurchases` filters to PURCHASED,
+     * found nothing, stopped the spinner and returned. No success, no error, no
+     * message. The user's only reasonable conclusion is that the purchase failed -- so
+     * they try to buy again.
+     */
+    private val _purchasePendingSequence = MutableStateFlow(0L)
+    val purchasePendingSequence: StateFlow<Long> = _purchasePendingSequence.asStateFlow()
+    private var consumedPurchasePendingSequence = 0L
+
     var inProgress by mutableStateOf(false)
         private set
 
@@ -127,6 +142,12 @@ class PlanViewModel @Inject constructor(
     var changePlanError by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * The remedy offered alongside a billing error. On this flavor the purchase runs
+     * through Google Play, so we can re-launch it directly.
+     */
+    val retryUpgrade: (() -> Unit)? = { upgrade() }
+
     val initPurchasesUpdatedListener: () -> PurchasesUpdatedListener = {
         PurchasesUpdatedListener { billingResult, purchases ->
             setChangePlanError(null)
@@ -163,6 +184,14 @@ class PlanViewModel @Inject constructor(
             return false
         }
         consumedUpgradeSuccessSequence = sequence
+        return true
+    }
+
+    fun consumePurchasePendingSequence(sequence: Long): Boolean {
+        if (sequence == 0L || sequence <= consumedPurchasePendingSequence) {
+            return false
+        }
+        consumedPurchasePendingSequence = sequence
         return true
     }
 
@@ -221,6 +250,21 @@ class PlanViewModel @Inject constructor(
         }
 
         if (purchasedSubscriptions.isEmpty()) {
+
+            /**
+             * Play fires PurchasesUpdatedListener with OK for a PENDING purchase too
+             * (pending purchases are enabled -- see enablePendingPurchases above). It is
+             * not complete and no PURCHASED state arrives now, so there is nothing to
+             * acknowledge -- but the user MUST be told, or the spinner just stops and
+             * they are left staring at the plan screen assuming it failed.
+             */
+            val hasPending = purchases.any {
+                it.purchaseState == Purchase.PurchaseState.PENDING
+            }
+            if (hasPending) {
+                _purchasePendingSequence.update { it + 1L }
+            }
+
             if (updateProgress) {
                 setInProgress(false)
             }
