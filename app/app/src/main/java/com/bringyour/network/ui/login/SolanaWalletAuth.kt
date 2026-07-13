@@ -90,7 +90,7 @@ suspend fun requestAndSignSolanaChallenge(
         val account = authResult.accounts.firstOrNull()
             ?: throw IllegalStateException("Wallet did not return an account")
         signMessagesDetached(
-            arrayOf(messageTemplate.toByteArray()),
+            arrayOf(messageTemplate.toByteArray(Charsets.UTF_8)),
             arrayOf(account.publicKey)
         )
     }
