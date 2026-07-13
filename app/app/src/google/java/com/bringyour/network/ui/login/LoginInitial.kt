@@ -152,6 +152,11 @@ fun LoginInitial(
                     is SolanaChallengeSignResult.Success -> {
                         Log.d("LoginInitial", "onCreateNetworkSolana signed pk=${result.signed.publicKey.isNotEmpty()}, message=${result.signed.message.isNotEmpty()}, signature=${result.signed.signature.isNotEmpty()}")
 
+                        if (result.signed.publicKey != publicKey) {
+                            loginViewModel.setLoginError("Wallet account changed. Please use the same account for create network.")
+                            return@launch
+                        }
+
                         val bundle = WalletCreateBundle(
                             blockchain = blockchain,
                             publicKey = result.signed.publicKey,
