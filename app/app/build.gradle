@@ -179,6 +179,15 @@ android {
             buildConfigField "String", "BUNDLER_RPC_URL", "\"\""
             println("Warning: BUNDLER_RPC_URL not set in local.properties")
         }
+
+        // WalletConnect Cloud project id for the Bittensor wallet sign in.
+        // When empty, the ur.io/wallet-connect bridge falls back to injected
+        // wallets only (browser extension / wallet in-app browser).
+        def walletConnectProjectId = localProperties.getProperty("WALLETCONNECT_PROJECT_ID", "")
+        buildConfigField "String", "WALLETCONNECT_PROJECT_ID", "\"${walletConnectProjectId}\""
+        if (!walletConnectProjectId) {
+            println("Warning: WALLETCONNECT_PROJECT_ID not set in local.properties")
+        }
     }
 
     signingConfigs {
@@ -463,6 +472,9 @@ dependencies {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
+
+    // custom tabs, used for the wallet-connect sign message flow
+    implementation 'androidx.browser:browser:1.8.0'
 
     // serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")

@@ -22,40 +22,51 @@ fun WalletChainIcon(
     blockchain: Blockchain?
 ) {
 
-    val painterResourceId = if (blockchain == Blockchain.SOLANA)
-        R.drawable.solana_logo
-    else
-        R.drawable.polygon_logo
+    val painterResourceId = when (blockchain) {
+        Blockchain.SOLANA -> R.drawable.solana_logo
+        Blockchain.BITTENSOR -> R.drawable.bittensor_logo
+        else -> R.drawable.polygon_logo
+    }
 
-    val description = if (blockchain == Blockchain.SOLANA)
-        "Solana Wallet"
-    else
-        "Polygon Wallet"
+    val description = when (blockchain) {
+        Blockchain.SOLANA -> "Solana Wallet"
+        Blockchain.BITTENSOR -> "Bittensor Wallet"
+        else -> "Polygon Wallet"
+    }
 
-    val padding = if (blockchain == Blockchain.SOLANA)
-        12.dp
-    else
-        0.dp
+    val padding = when (blockchain) {
+        Blockchain.SOLANA, Blockchain.BITTENSOR -> 12.dp
+        else -> 0.dp
+    }
 
-    val width = if (blockchain == Blockchain.SOLANA)
-        32.dp // solana
-    else
-        54.dp // polygon
+    val width = when (blockchain) {
+        Blockchain.SOLANA, Blockchain.BITTENSOR -> 32.dp // solana, bittensor
+        else -> 54.dp // polygon
+    }
 
-    val backgroundColor = if (blockchain == Blockchain.SOLANA)
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xFF9945FF),
-                Color(0xFF14F195)
+    val backgroundColor = when (blockchain) {
+        Blockchain.SOLANA ->
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF9945FF),
+                    Color(0xFF14F195)
+                )
             )
-        )
-    else
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xFF8A46FF),
-                Color(0xFF6E38CC)
+        Blockchain.BITTENSOR ->
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF2A2A2A),
+                    Color(0xFF000000)
+                )
             )
-        )
+        else ->
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF8A46FF),
+                    Color(0xFF6E38CC)
+                )
+            )
+    }
 
     Box(
         modifier = Modifier
@@ -87,6 +98,16 @@ private fun WalletChainIconSolanaPreview() {
     URNetworkTheme {
         WalletChainIcon(
             blockchain = Blockchain.SOLANA
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun WalletChainIconBittensorPreview() {
+    URNetworkTheme {
+        WalletChainIcon(
+            blockchain = Blockchain.BITTENSOR
         )
     }
 }

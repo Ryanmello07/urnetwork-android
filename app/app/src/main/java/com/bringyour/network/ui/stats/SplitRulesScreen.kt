@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -283,7 +284,11 @@ fun SplitRulesScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        stringResource(id = R.string.new_items_count, pendingCount),
+                        pluralStringResource(
+                            id = R.plurals.new_items_count,
+                            count = pendingCount,
+                            pendingCount,
+                        ),
                         style = TextStyle(fontSize = 12.sp),
                         color = Color.White
                     )
@@ -384,7 +389,11 @@ private fun SplitRuleRow(
                 color = Color.White
             )
             Text(
-                stringResource(id = R.string.host_count, rule.hosts.size),
+                pluralStringResource(
+                    id = R.plurals.host_count,
+                    count = rule.hosts.size,
+                    rule.hosts.size,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextFaint
             )

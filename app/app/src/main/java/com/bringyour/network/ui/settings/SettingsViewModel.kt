@@ -93,10 +93,6 @@ class SettingsViewModel @Inject constructor(
         allowProductUpdates = allow
     }
 
-    val urIdUrl: (String) -> String? = { clientId ->
-        networkSpaceManagerProvider.getNetworkSpace()?.connectLinkUrl(clientId)
-    }
-
     var version by mutableStateOf("")
         private set
 

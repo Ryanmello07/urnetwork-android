@@ -195,7 +195,7 @@ fun IntroductionReferral(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    ShareButton(referralLink = "https://ur.io/c?bonus=${referralCode}")
+                    ShareButton(text = stringResource(id = R.string.referral_share_message, referralCode))
 
                 }
 

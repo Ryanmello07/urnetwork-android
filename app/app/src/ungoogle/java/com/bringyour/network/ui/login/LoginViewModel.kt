@@ -59,6 +59,13 @@ class LoginViewModel @Inject constructor(
         solanaAuthInProgress = inProgress
     }
 
+    var bittensorAuthInProgress by mutableStateOf(false)
+        private set
+
+    val setBittensorAuthInProgress: (Boolean) -> Unit = { inProgress ->
+        bittensorAuthInProgress = inProgress
+    }
+
     val login: (
         ctx: Context,
         api: Api?,
@@ -116,21 +123,22 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    val walletLogin: (
-        context: Context,
+    fun walletLogin(
+        ctx: Context,
         api: Api?,
         publicKey: String,
         signedMessage: String,
         signature: String,
         onLogin: (AuthLoginResult) -> Unit,
-        onCreateNetwork: (blockchain: String, publicKey: String, signedMessage: String, signature: String) -> Unit
-    ) -> Unit = walletLogin@{ ctx, api, publicKey, signedMessage, signature, onLogin, onCreateNetwork ->
+        onCreateNetwork: (blockchain: String, publicKey: String, signedMessage: String, signature: String) -> Unit,
+        blockchain: String = "solana",
+    ) {
 
         if (!solanaAuthInProgress) {
 
             val authApi = api ?: run {
                 setLoginError(ctx.getString(R.string.login_error))
-                return@walletLogin
+                return
             }
 
             setLoginError(null)
@@ -138,8 +146,6 @@ class LoginViewModel @Inject constructor(
 
             val args = AuthLoginArgs()
             val walletAuth = WalletAuthArgs()
-
-            val blockchain = "solana"
 
             walletAuth.publicKey = publicKey
             walletAuth.message = signedMessage

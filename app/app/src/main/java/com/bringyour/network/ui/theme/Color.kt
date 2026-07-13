@@ -82,3 +82,8 @@ val OffWhite = Color(0xFFF8F8F8)
 val Black = Color(0xFF101010)
 val OffBlack = Color(0xFF1C1C1C)
 val SheetBlack = Black.lighten(0.03f)
+// Pro gold. Reserved for the Pro entitlement across the product -- the profile ring
+// here, the network-name button on ur.io, the referral panel. Because it is used for
+// nothing else, gold reads as "this account is Pro" rather than as decoration.
+val ProGold = Color(0xFFFFC400)
+val ProGoldLight = Color(0xFFFFE082)

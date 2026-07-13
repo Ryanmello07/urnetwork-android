@@ -14,6 +14,7 @@ import android.system.OsConstants.AF_INET
 import android.system.OsConstants.AF_INET6
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.bringyour.network.utils.sdkStringListToList
 import com.bringyour.sdk.DeviceLocal
 import com.bringyour.sdk.IoLoop
 import com.bringyour.sdk.Sdk
@@ -67,6 +68,8 @@ import kotlin.concurrent.thread
     // clientIpv4 (the TUN interface address) is sourced at tunnel-build time from the
     // SDK device's tunnelLocalAddress() (reserved from connect's pool); see updatePfd.
     val clientIpv4PrefixLength = 32
+    // static fallback when the sdk device is unavailable; the builder dns normally
+    // comes from the device (see `tunnelDnsServers`)
     // see:
     // https://security.googleblog.com/2022/07/dns-over-http3-in-android.html#fn2
     // only Google DNS and CloudFlare DNS will auto-enable DoT/DoH on Android
@@ -85,12 +88,18 @@ import kotlin.concurrent.thread
     private var deviceOfflineSub: Sub? = null
     private var windowStatusChangeSub: Sub? = null
     private var blockActionOverridesSub: Sub? = null
+    private var dnsResolverSettingsSub: Sub? = null
     private var connected: Boolean = false
 
     // the app split rule state currently applied to the tunnel, used to
     // detect when a rebuild is needed
     private var appliedTunnelIncludedAppIds: Set<String> = emptySet()
     private var appliedTunnelExcludedAppIds: Set<String> = emptySet()
+
+    // the (ipv4, ipv6) dns servers currently applied to the tunnel, used to
+    // detect when a rebuild is needed
+    private var appliedTunnelDnsServers: Pair<List<String>, List<String>> =
+        Pair(emptyList(), emptyList())
 
     @Volatile
     private var closeMonitorStarted: Boolean = false
@@ -207,6 +216,19 @@ import kotlin.concurrent.thread
                 }
             }
 
+            // rebuild the tunnel when the dns settings change the builder dns
+            // servers (e.g. unencrypted local servers set or cleared)
+            dnsResolverSettingsSub?.close()
+            dnsResolverSettingsSub = app.device?.addDnsResolverSettingsChangeListener {
+                Handler(mainLooper).post {
+                    if (tunnelDnsServers() != appliedTunnelDnsServers) {
+                        if (canUpdatePfd(source)) {
+                            updatePfd(offline)
+                        }
+                    }
+                }
+            }
+
             startCloseMonitor()
         }
 
@@ -244,6 +266,8 @@ import kotlin.concurrent.thread
         val (tunnelIncludedAppIds, tunnelExcludedAppIds) = tunnelAppSplit()
         appliedTunnelIncludedAppIds = tunnelIncludedAppIds
         appliedTunnelExcludedAppIds = tunnelExcludedAppIds
+        val (tunnelDnsIpv4s, tunnelDnsIpv6s) = tunnelDnsServers()
+        appliedTunnelDnsServers = Pair(tunnelDnsIpv4s, tunnelDnsIpv6s)
 
         if (offline) {
 //            Log.i(TAG, "[io]OFFLINE")
@@ -281,17 +305,9 @@ import kotlin.concurrent.thread
                 clientIpv4,
                 clientIpv4PrefixLength
             )
-            // DNS from the SDK device's tunnel DNS setting (default plain 1.1.1.1);
-            // plain :53 lets the UpgradeMux intercept and upgrade it. Falls back to the
-            // static list when the device or setting is unavailable.
-            val tunnelDns = app.device?.tunnelDnsSetting()
-            val tunnelDnsServers =
-                if (tunnelDns != null && tunnelDns.server.isNotEmpty()) {
-                    listOf(tunnelDns.server)
-                } else {
-                    dnsIpv4s
-                }
-            for (dnsIpv4 in tunnelDnsServers) {
+            // DNS from the SDK device, like the tunnel address (see `tunnelDnsServers`);
+            // plain :53 lets the UpgradeMux intercept and upgrade it
+            for (dnsIpv4 in tunnelDnsIpv4s) {
                 builder.addDnsServer(dnsIpv4)
             }
             if (Build.VERSION_CODES.TIRAMISU <= Build.VERSION.SDK_INT) {
@@ -352,7 +368,7 @@ import kotlin.concurrent.thread
                 clientIpv6,
                 clientIpv6PrefixLength
             )
-            for (dnsIpv6 in dnsIpv6s) {
+            for (dnsIpv6 in tunnelDnsIpv6s) {
                 builder.addDnsServer(dnsIpv6)
             }
             if (Build.VERSION_CODES.TIRAMISU <= Build.VERSION.SDK_INT) {
@@ -434,6 +450,22 @@ import kotlin.concurrent.thread
         return Pair(tunnelIncluded, tunnelExcluded)
     }
 
+    /**
+     * The (ipv4, ipv6) dns servers for the tunnel builder, from the sdk device
+     * like the tunnel address: the dns settings' unencrypted local servers when
+     * set, otherwise the device default (plain 1.1.1.1, which the UpgradeMux can
+     * intercept and upgrade). Falls back to the static defaults when the device
+     * is unavailable.
+     */
+    private fun tunnelDnsServers(): Pair<List<String>, List<String>> {
+        val app = application as MainApplication
+        val device = app.device ?: return Pair(dnsIpv4s, dnsIpv6s)
+        return Pair(
+            sdkStringListToList(device.tunnelDnsAddressesIpv4()).ifEmpty { dnsIpv4s },
+            sdkStringListToList(device.tunnelDnsAddressesIpv6()),
+        )
+    }
+
     private fun sdkStringListToSet(list: com.bringyour.sdk.StringList?): Set<String> {
         if (list == null) {
             return emptySet()
@@ -475,6 +507,9 @@ import kotlin.concurrent.thread
 
         blockActionOverridesSub?.close()
         blockActionOverridesSub = null
+
+        dnsResolverSettingsSub?.close()
+        dnsResolverSettingsSub = null
 
         packetFlow?.close()
         packetFlow = null

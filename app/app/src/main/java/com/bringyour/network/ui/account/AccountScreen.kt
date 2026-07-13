@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
@@ -222,6 +224,8 @@ fun AccountScreenContent(
             AccountSwitcher(
                 loginMode = loginMode,
                 networkName = networkName,
+                // Pro members get a glowing gold ring around their avatar
+                isPro = currentPlan == Plan.Supporter,
                 launchOverlay = launchOverlay
             )
         }
@@ -267,22 +271,41 @@ fun AccountScreenContent(
                     availableBytes = availableBytes,
                     totalReferrals = totalReferrals,
                     meanReliabilityWeight = meanReliabilityWeight,
-                    dailyByteCount = dailyBalanceBytes
+                    dailyByteCount = dailyBalanceBytes,
+                    onReferralClick = {
+                        launchOverlay(OverlayMode.Refer)
+                    }
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                /**
+                 * "Redeem balance code" gets its OWN row, as a full-width touch target.
+                 *
+                 * It used to be a small right-aligned text link tucked under the usage
+                 * bar, sharing space with the referral affordance -- a fiddly thing to
+                 * hit on a phone, and easy to miss entirely. The whole row is now
+                 * tappable, with a chevron so it reads as somewhere to go.
+                 */
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { launchRedeemTransferBalanceCodeSheet() }
+                        .padding(vertical = 14.dp, horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         stringResource(id = R.string.redeem_balance_code),
-                        style = TextStyle(color = BlueMedium),
-                        modifier = Modifier.clickable {
-                            launchRedeemTransferBalanceCodeSheet()
-                        }
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = BlueMedium
+                    )
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = BlueMedium
                     )
                 }
 
@@ -454,10 +477,6 @@ fun AccountScreenContent(
             }
         }
         HorizontalDivider()
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        URNodeCarousel()
 
     }
 }
