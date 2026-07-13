@@ -2,6 +2,7 @@ package com.bringyour.network.ui.login
 
 import android.util.Log
 import androidx.compose.foundation.clickable
+import java.util.Locale
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,19 +47,25 @@ import com.bringyour.network.ui.theme.Yellow
 import com.bringyour.sdk.Sdk
 
 private fun normalizeNetworkHost(raw: String): String {
-    var value = raw.trim().lowercase()
+    var value = raw.trim().lowercase(Locale.ROOT)
     val schemeSeparator = "://"
     if (value.contains(schemeSeparator)) {
         value = value.substringAfter(schemeSeparator)
     }
     value = value.substringBefore("/").substringBefore("?").substringBefore("#")
     value = value.substringAfter("@")
-    // Strip a trailing :port - the network domain field is a bare host used
-    // to derive api.<host>/connect.<host>; a custom port belongs in the
-    // explicit API/connect URL overrides below, not baked into the derived
-    // subdomain (which would otherwise produce invalid hosts like
-    // "api.192.168.1.5:8080").
-    value = value.substringBeforeLast(":")
+    // Strip a trailing :port when it looks like an IPv4 host:port or a
+    // bracketed IPv6 literal like [2001:db8::1]:8080. A bare IPv6
+    // address (no brackets) must not be mangled.
+    if (value.startsWith("[") && value.contains("]:")) {
+        // IPv6 with port: "[...]:port" — keep the brackets
+        value = value.substringBeforeLast(":")
+    } else if (!value.contains("[") && !value.contains(":")) {
+        // Plain hostname — no colon, nothing to strip
+    } else if (!value.contains("[")) {
+        // IPv4 host:port — strip after the last colon
+        value = value.substringBeforeLast(":")
+    }
     return value.trim().trim('.')
 }
 
@@ -234,7 +241,7 @@ fun NetworkServerSelector(
                 }
                 managerLocal.activeNetworkSpace = networkSpace
                 setStatus(context.getString(R.string.network_api_switched_to, normalizedHost))
-                Log.i(context.TAG, "Network API switched to host=$normalizedHost api=${networkSpace?.apiUrl} connect=${networkSpace?.platformUrl}")
+                Log.i(context.TAG, "Network API switched to host=$normalizedHost")
                 isPresenting = false
             } catch (e: Exception) {
                 Log.e(context.TAG, "Failed to switch Network API", e)

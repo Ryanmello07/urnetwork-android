@@ -50,6 +50,9 @@ suspend fun requestAndSignSolanaChallenge(
 
     val messageTemplate = suspendCancellableCoroutine<String?> { cont ->
         api.authWalletChallenge(challengeArgs) { result, err ->
+            if (!cont.isActive) {
+                return@authWalletChallenge
+            }
             when {
                 err != null -> {
                     challengeFetchFailureCause = err.message
