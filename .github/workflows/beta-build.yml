@@ -91,6 +91,13 @@ jobs:
           BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
         run: ./gradlew :app:assembleGithubDebug
 
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: urnetwork-android-apk
+          path: app/app/build/outputs/apk/github/debug/*.apk
+          if-no-files-found: error
+
       - name: Create prerelease
         if: github.event_name == 'push'
         env:
