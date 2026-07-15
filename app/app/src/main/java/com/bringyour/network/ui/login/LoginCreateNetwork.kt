@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -417,6 +418,53 @@ fun LoginCreateNetwork(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+
+                // Tab row: Instant | Email/Phone | Wallet
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TextButton(
+                        onClick = {
+                            navController.navigate("create-network-instant")
+                        }
+                    ) {
+                        Text(
+                            "Instant",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+
+                    Text(
+                        " | ",
+                        color = TextMuted
+                    )
+
+                    TextButton(
+                        onClick = {} // stays on current screen for email/phone
+                    ) {
+                        Text(
+                            "Email/Phone",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+
+                    Text(
+                        " | ",
+                        color = TextMuted
+                    )
+
+                    TextButton(
+                        onClick = {} // wallet tab stays here
+                    ) {
+                        Text(
+                            "Wallet",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Row {
                     Text(

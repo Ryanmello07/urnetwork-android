@@ -73,7 +73,7 @@ class AccountViewModel @Inject constructor(
 
         localState?.parseByJwt { jwt, success ->
             viewModelScope.launch {
-                setLoginMode(if (success && jwt?.guestMode != true) LoginMode.Authenticated else LoginMode.Guest)
+                setLoginMode(if (success && jwt?.network?.byJwt != null) LoginMode.Authenticated else LoginMode.Guest)
                // setNetworkName(jwt?.networkName ?: "guest")
             }
         }

@@ -209,6 +209,10 @@ fun LoginInitial(
         }
     }
 
+    val onSeedphraseLogin: () -> Unit = {
+        navController.navigate("login_seedphrase")
+    }
+
     LoginInitial(
         navController,
         userAuth = loginViewModel.userAuth,
@@ -218,8 +222,6 @@ fun LoginInitial(
         login = loginViewModel.login,
         loginError = loginViewModel.loginError,
         setLoginError = loginViewModel.setLoginError,
-        createGuestModeInProgress = loginViewModel.createGuestModeInProgress,
-        setCreateGuestModeInProgress = loginViewModel.setCreateGuestModeInProgress,
         solanaLogin = {
             connectSolanaWallet()
         },
@@ -236,7 +238,8 @@ fun LoginInitial(
         welcomeOverlayVisible = welcomeOverlayVisible,
         setWelcomeOverlayVisible = {
             welcomeOverlayVisible = it
-        }
+        },
+        onSeedphraseLogin = onSeedphraseLogin
     )
 
     if (noSolanaWalletsFound) {
@@ -266,8 +269,6 @@ fun LoginInitial(
     ) -> Unit,
     loginError: String?,
     setLoginError: (String?) -> Unit,
-    createGuestModeInProgress: Boolean,
-    setCreateGuestModeInProgress: (Boolean) -> Unit,
     solanaLogin: () -> Unit,
     solanaAuthInProgress: Boolean,
     bittensorLogin: () -> Unit,
@@ -277,20 +278,12 @@ fun LoginInitial(
     setContentVisible: (Boolean) -> Unit,
     welcomeOverlayVisible: Boolean,
     setWelcomeOverlayVisible: (Boolean) -> Unit,
+    onSeedphraseLogin: () -> Unit = {},
 ) {
 
     val context = LocalContext.current
     val application = context.applicationContext as? MainApplication
     val scope = rememberCoroutineScope()
-
-    var guestModeOverlayVisible by remember { mutableStateOf(false) }
-
-    val setGuestModeOverlayVisible: (Boolean) -> Unit = { isVisible ->
-        if (isVisible) {
-            setLoginError(null)
-        }
-        guestModeOverlayVisible = isVisible
-    }
 
     var authCodeLoginSheetVisible by remember { mutableStateOf(false) }
 
@@ -309,67 +302,6 @@ fun LoginInitial(
     }
 
     val createNetworkErrorMsg = stringResource(id = R.string.create_network_error)
-
-    val createGuestNetwork = createGuestNetwork@{
-        if (createGuestModeInProgress) {
-            return@createGuestNetwork
-        }
-
-        setLoginError(null)
-        setCreateGuestModeInProgress(true)
-
-        val args = NetworkCreateArgs()
-        args.terms = true
-        args.guestMode = true
-
-        application?.api?.networkCreate(args) { result, err ->
-            scope.launch {
-
-                if (err != null) {
-                    Log.i("OnboardingGuestModeOverlay", "error ${err.message}")
-                    setLoginError(err.message)
-                    setCreateGuestModeInProgress(false)
-                } else if (result.error != null) {
-                    Log.i("OnboardingGuestModeOverlay", "error ${result.error.message}")
-                    setLoginError(result.error.message)
-                    setCreateGuestModeInProgress(false)
-                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
-                    setLoginError(null)
-                    setGuestModeOverlayVisible(false)
-
-                    application.login(result.network.byJwt)
-
-                    setContentVisible(false)
-
-                    delay(500)
-
-                    setWelcomeOverlayVisible(true)
-
-                    delay(2250)
-
-                    loginActivity?.authClientAndFinish(
-                        { error ->
-                            setCreateGuestModeInProgress(false)
-
-                            setLoginError(error)
-
-                            if (error != null) {
-                                setContentVisible(true)
-                            }
-                        }
-                    )
-
-                } else {
-                    setLoginError(createNetworkErrorMsg)
-                    setCreateGuestModeInProgress(false)
-                }
-            }
-        } ?: run {
-            setLoginError(createNetworkErrorMsg)
-            setCreateGuestModeInProgress(false)
-        }
-
-    }
 
     AnimatedVisibility(
         visible = contentVisible,
@@ -402,8 +334,6 @@ fun LoginInitial(
                         setUserAuth = setUserAuth,
                         userAuthInProgress = userAuthInProgress,
                         isValidUserAuth = isValidUserAuth,
-                        setGuestModeOverlayVisible = setGuestModeOverlayVisible,
-                        createGuestModeInProgress = createGuestModeInProgress,
                         loginError = loginError,
                         onLogin = {
                             login(
@@ -419,7 +349,8 @@ fun LoginInitial(
                         bittensorAuthInProgress = bittensorAuthInProgress,
                         launchAuthCodeLoginSheet = {
                             setAuthCodeLoginSheetVisible(true)
-                        }
+                        },
+                        onSeedphraseLogin = onSeedphraseLogin
                     )
                 }
 
@@ -437,19 +368,6 @@ fun LoginInitial(
         }
     )
 
-
-    OnboardingGuestModeSheet(
-        isPresenting = guestModeOverlayVisible,
-        setIsPresenting = {
-            setGuestModeOverlayVisible(it)
-        },
-        onCreateGuestNetwork = {
-            createGuestNetwork()
-        },
-        createGuestModeInProgress = createGuestModeInProgress,
-        errorMessage = if (guestModeOverlayVisible) loginError else null
-    )
-
     if (welcomeOverlayVisible) {
 
         WelcomeAnimatedOverlayLogin()
@@ -463,8 +381,6 @@ fun LoginInitialActions(
     setUserAuth: (TextFieldValue) -> Unit,
     userAuthInProgress: Boolean,
     isValidUserAuth: Boolean,
-    setGuestModeOverlayVisible: (Boolean) -> Unit,
-    createGuestModeInProgress: Boolean,
     loginError: String?,
     onLogin: () -> Unit,
     onSolanaLogin: () -> Unit,
@@ -472,9 +388,9 @@ fun LoginInitialActions(
     onBittensorLogin: () -> Unit,
     bittensorAuthInProgress: Boolean,
     launchAuthCodeLoginSheet: () -> Unit,
+    onSeedphraseLogin: () -> Unit = {},
 ) {
-
-    val isLoginInProgress = userAuthInProgress || solanaAuthInProgress || bittensorAuthInProgress || createGuestModeInProgress
+    val isLoginInProgress = userAuthInProgress || solanaAuthInProgress || bittensorAuthInProgress
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -620,6 +536,30 @@ fun LoginInitialActions(
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            /**
+             * Seedphrase Sign in
+             */
+            URButton(
+                style = ButtonStyle.SECONDARY,
+                onClick = {
+                    onSeedphraseLogin()
+                },
+                enabled = !isLoginInProgress
+            ) { buttonTextStyle ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Sign in with Seedphrase",
+                        style = buttonTextStyle
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             if (!loginError.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 URInlineErrorText(loginError)
@@ -627,61 +567,10 @@ fun LoginInitialActions(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            TryGuestMode(
-                setGuestModeOverlayVisible = setGuestModeOverlayVisible,
-                enabled = !isLoginInProgress
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
             NetworkServerSelector(enabled = !isLoginInProgress)
         }
     }
 
-}
-
-@Composable
-private fun TryGuestMode(
-    setGuestModeOverlayVisible: (Boolean) -> Unit,
-    enabled: Boolean
-) {
-
-    var isFocused by remember { mutableStateOf(false) }
-
-    val guestModeStr = buildAnnotatedString {
-        append(stringResource(id = R.string.commitment_issues))
-
-        pushStringAnnotation(
-            tag = "GUEST_MODE",
-            annotation = "Guest Mode"
-        )
-        withStyle(
-            style = SpanStyle(
-                color = if (!enabled) TextMuted else if (isFocused) BlueMedium else Color.White
-            )
-        ) {
-            append(" ${stringResource(id = R.string.try_guest_mode)}")
-        }
-        pop()
-
-    }
-
-    Row {
-        Text(
-            text = guestModeStr,
-            modifier = Modifier
-                .clickable {
-                    if (enabled) {
-                        setGuestModeOverlayVisible(true)
-                    }
-                }
-                .onFocusChanged {
-                    isFocused = it.isFocused
-                }
-                .focusable(),
-            style = MaterialTheme.typography.bodyLarge.copy(color = TextMuted),
-        )
-    }
 }
 
 @Preview()
@@ -717,8 +606,6 @@ private fun LoginInitialPreview() {
                     login = login,
                     loginError = null,
                     setLoginError = {},
-                    createGuestModeInProgress = false,
-                    setCreateGuestModeInProgress = {},
                     solanaAuthInProgress = false,
                     solanaLogin = {},
                     bittensorAuthInProgress = false,
@@ -769,8 +656,6 @@ private fun LoginInitialLandscapePreview() {
                     login = login,
                     loginError = null,
                     setLoginError = {},
-                    createGuestModeInProgress = false,
-                    setCreateGuestModeInProgress = {},
                     solanaAuthInProgress = false,
                     solanaLogin = {},
                     bittensorAuthInProgress = false,

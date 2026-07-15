@@ -359,7 +359,9 @@ fun AccountScreenContent(
                                                 .offset(y = (-8).dp)
                                                 .clickable {
                                                     if (loginMode == LoginMode.Guest) {
-                                                        launchOverlay(OverlayMode.GuestMode)
+                                                        // redirect to login
+                                                        val context = LocalContext.current
+                                                        context.startActivity(android.content.Intent(context, com.bringyour.network.LoginActivity::class.java))
                                                     } else {
                                                         navController.navigate(Route.Wallets)
                                                     }
@@ -401,7 +403,9 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Profile)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    // redirect to login
+                    val context = LocalContext.current
+                    context.startActivity(android.content.Intent(context, com.bringyour.network.LoginActivity::class.java))
                 }
             }
         )
@@ -413,7 +417,10 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Settings)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    {
+                                                            val ctx_guest = LocalContext.current
+                                                            ctx_guest.startActivity(android.content.Intent(ctx_guest, com.bringyour.network.LoginActivity::class.java))
+                                                        }
                 }
             }
         )
@@ -425,7 +432,10 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Wallets)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    {
+                                                            val ctx_guest = LocalContext.current
+                                                            ctx_guest.startActivity(android.content.Intent(ctx_guest, com.bringyour.network.LoginActivity::class.java))
+                                                        }
                 }
             }
         )
@@ -437,7 +447,10 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     launchOverlay(OverlayMode.Refer)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    {
+                                                            val ctx_guest = LocalContext.current
+                                                            ctx_guest.startActivity(android.content.Intent(ctx_guest, com.bringyour.network.LoginActivity::class.java))
+                                                        }
                 }
             }
         )

@@ -249,6 +249,37 @@ class LoginCreateNetworkViewModel @Inject constructor(
         args
     }
 
+    fun createInstantAccount(
+        ctx: android.content.Context,
+        api: Api,
+        onResult: (seedphrase: String, jwt: String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        viewModelScope.launch {
+            try {
+                val args = NetworkCreateArgs()
+                args.terms = true
+                // No userAuth, userName, password, walletAuth — triggers seedphrase path
+
+                api.networkCreate(args) { result, err ->
+                    viewModelScope.launch {
+                        if (err != null) {
+                            onError(err.message ?: "Unable to connect. Please try again.")
+                        } else if (result?.seedphrase != null && result.network?.byJwt != null) {
+                            onResult(result.seedphrase, result.network.byJwt)
+                        } else if (result?.error != null) {
+                            onError(result.error.message ?: "Failed to create account")
+                        } else {
+                            onError("Failed to create account")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                onError(e.message ?: "Failed to create account")
+            }
+        }
+    }
+
     init {
         networkNameValidationVc = Sdk.newNetworkNameValidationViewController(
             networkSpaceManagerProvider.getNetworkSpace()?.api

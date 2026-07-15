@@ -235,17 +235,15 @@ fun LoginInitial(
         setGoogleAuthInProgress = loginViewModel.setGoogleAuthInProgress,
         setLoginError = loginViewModel.setLoginError,
         googleAuthInProgress = loginViewModel.googleAuthInProgress,
-        createGuestModeInProgress = loginViewModel.createGuestModeInProgress,
-        setCreateGuestModeInProgress = loginViewModel.setCreateGuestModeInProgress,
-        allowGoogleSso = loginViewModel.allowGoogleSso,
-        solanaLogin = {
-            connectSolanaWallet()
-                      },
-        solanaAuthInProgress = loginViewModel.solanaAuthInProgress,
-        bittensorLogin = {
-            connectBittensorWallet()
-        },
-        bittensorAuthInProgress = loginViewModel.bittensorAuthInProgress,
+        allowGoogleSso = allowGoogleSso,
+                        solanaLogin = {
+                            connectSolanaWallet()
+                        },
+                        solanaAuthInProgress = loginViewModel.solanaAuthInProgress,
+                        bittensorLogin = {
+                            connectBittensorWallet()
+                        },
+                        bittensorAuthInProgress = loginViewModel.bittensorAuthInProgress,
         onLogin = onLogin,
         contentVisible = contentVisible,
         setContentVisible = {
@@ -254,7 +252,8 @@ fun LoginInitial(
         welcomeOverlayVisible = welcomeOverlayVisible,
         setWelcomeOverlayVisible = {
             welcomeOverlayVisible = it
-        }
+        },
+        onSeedphraseLogin = onSeedphraseLogin
     )
 
     if (noSolanaWalletsFound) {
@@ -292,9 +291,7 @@ fun LoginInitial(
     loginError: String?,
     setLoginError: (String?) -> Unit,
     googleAuthInProgress: Boolean,
-    createGuestModeInProgress: Boolean,
     setGoogleAuthInProgress: (Boolean) -> Unit,
-    setCreateGuestModeInProgress: (Boolean) -> Unit,
     allowGoogleSso: () -> Boolean,
     solanaLogin: () -> Unit,
     solanaAuthInProgress: Boolean,
@@ -305,25 +302,22 @@ fun LoginInitial(
     setContentVisible: (Boolean) -> Unit,
     welcomeOverlayVisible: Boolean,
     setWelcomeOverlayVisible: (Boolean) -> Unit,
+    onSeedphraseLogin: () -> Unit = {},
+) {
 ) {
 
     val context = LocalContext.current
     val application = context.applicationContext as? MainApplication
     val scope = rememberCoroutineScope()
 
-    var guestModeOverlayVisible by remember { mutableStateOf(false) }
-
-    val setGuestModeOverlayVisible: (Boolean) -> Unit = { isVisible ->
-        if (isVisible) {
-            setLoginError(null)
-        }
-        guestModeOverlayVisible = isVisible
-    }
-
     var authCodeLoginSheetVisible by remember { mutableStateOf(false) }
 
     val setAuthCodeLoginSheetVisible: (Boolean) -> Unit = { isVisible ->
         authCodeLoginSheetVisible = isVisible
+    }
+
+    val onSeedphraseLogin: () -> Unit = {
+        navController.navigate("login_seedphrase")
     }
 
     val loginActivity = context as? LoginActivity
@@ -344,67 +338,6 @@ fun LoginInitial(
         .build()
     val googleSignInClient = GoogleSignIn.getClient(context, googleSignInOpts)
     val loginErrorMsg = stringResource(id = R.string.create_network_error)
-
-    val createGuestNetwork = createGuestNetwork@{
-        if (createGuestModeInProgress) {
-            return@createGuestNetwork
-        }
-
-        setLoginError(null)
-        setCreateGuestModeInProgress(true)
-
-        val args = NetworkCreateArgs()
-        args.terms = true
-        args.guestMode = true
-
-        application?.api?.networkCreate(args) { result, err ->
-            scope.launch {
-
-                if (err != null) {
-                    Log.i("OnboardingGuestModeOverlay", "error ${err.message}")
-                    setLoginError(err.message)
-                    setCreateGuestModeInProgress(false)
-                } else if (result.error != null) {
-                    Log.i("OnboardingGuestModeOverlay", "error ${result.error.message}")
-                    setLoginError(result.error.message)
-                    setCreateGuestModeInProgress(false)
-                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
-                    setLoginError(null)
-                    setGuestModeOverlayVisible(false)
-
-                    application.login(result.network.byJwt)
-
-                    setContentVisible(false)
-
-                    delay(500)
-
-                    setWelcomeOverlayVisible(true)
-
-                    delay(2250)
-
-                    loginActivity?.authClientAndFinish(
-                        { error ->
-                            setCreateGuestModeInProgress(false)
-
-                            setLoginError(error)
-
-                            if (error != null) {
-                                setContentVisible(true)
-                            }
-                        }
-                    )
-
-                } else {
-                    setLoginError(loginErrorMsg)
-                    setCreateGuestModeInProgress(false)
-                }
-            }
-        } ?: run {
-            setLoginError(loginErrorMsg)
-            setCreateGuestModeInProgress(false)
-        }
-
-    }
 
     LaunchedEffect(Unit) {
         googleSignInClient.signOut()
@@ -471,9 +404,7 @@ fun LoginInitial(
                         setUserAuth = setUserAuth,
                         userAuthInProgress = userAuthInProgress,
                         isValidUserAuth = isValidUserAuth,
-                        setGuestModeOverlayVisible = setGuestModeOverlayVisible,
                         googleAuthInProgress = googleAuthInProgress,
-                        createGuestModeInProgress = createGuestModeInProgress,
                         loginError = loginError,
                         onLogin = {
                             login(
@@ -509,18 +440,6 @@ fun LoginInitial(
         onLogin = onLogin
     )
 
-    OnboardingGuestModeSheet(
-        isPresenting = guestModeOverlayVisible,
-        setIsPresenting = {
-            setGuestModeOverlayVisible(it)
-        },
-        onCreateGuestNetwork = {
-            createGuestNetwork()
-        },
-        createGuestModeInProgress = createGuestModeInProgress,
-        errorMessage = if (guestModeOverlayVisible) loginError else null
-    )
-
     if (welcomeOverlayVisible) {
 
         WelcomeAnimatedOverlayLogin()
@@ -534,9 +453,7 @@ fun LoginInitialActions(
     setUserAuth: (TextFieldValue) -> Unit,
     userAuthInProgress: Boolean,
     isValidUserAuth: Boolean,
-    setGuestModeOverlayVisible: (Boolean) -> Unit,
     googleAuthInProgress: Boolean,
-    createGuestModeInProgress: Boolean,
     loginError: String?,
     onLogin: () -> Unit,
     onGoogleLogin: () -> Unit,
@@ -545,10 +462,11 @@ fun LoginInitialActions(
     solanaAuthInProgress: Boolean,
     onBittensorLogin: () -> Unit,
     bittensorAuthInProgress: Boolean,
-    launchAuthCodeLoginSheet: () -> Unit
+    launchAuthCodeLoginSheet: () -> Unit,
+    onSeedphraseLogin: () -> Unit = {}
 ) {
 
-    val isLoginInProgress = userAuthInProgress || googleAuthInProgress || solanaAuthInProgress || bittensorAuthInProgress || createGuestModeInProgress
+    val isLoginInProgress = userAuthInProgress || googleAuthInProgress || solanaAuthInProgress || bittensorAuthInProgress
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -728,6 +646,30 @@ fun LoginInitialActions(
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            /**
+             * Seedphrase Sign in
+             */
+            URButton(
+                style = ButtonStyle.SECONDARY,
+                onClick = {
+                    onSeedphraseLogin()
+                },
+                enabled = !isLoginInProgress
+            ) { buttonTextStyle ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Sign in with Seedphrase",
+                        style = buttonTextStyle
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             if (!loginError.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 URInlineErrorText(loginError)
@@ -735,61 +677,10 @@ fun LoginInitialActions(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            TryGuestMode(
-                setGuestModeOverlayVisible = setGuestModeOverlayVisible,
-                enabled = !isLoginInProgress
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
             NetworkServerSelector(enabled = !isLoginInProgress)
         }
     }
 
-}
-
-@Composable
-private fun TryGuestMode(
-    setGuestModeOverlayVisible: (Boolean) -> Unit,
-    enabled: Boolean
-) {
-
-    var isFocused by remember { mutableStateOf(false) }
-
-    val guestModeStr = buildAnnotatedString {
-        append(stringResource(id = R.string.commitment_issues))
-
-        pushStringAnnotation(
-            tag = "GUEST_MODE",
-            annotation = "Guest Mode"
-        )
-        withStyle(
-            style = SpanStyle(
-                color = if (!enabled) TextMuted else if (isFocused) BlueMedium else Color.White
-            )
-        ) {
-            append(" ${stringResource(id = R.string.try_guest_mode)}")
-        }
-        pop()
-
-    }
-
-    Row {
-        Text(
-            text = guestModeStr,
-            modifier = Modifier
-                .clickable {
-                    if (enabled) {
-                        setGuestModeOverlayVisible(true)
-                    }
-                }
-                .onFocusChanged {
-                    isFocused = it.isFocused
-                }
-                .focusable(),
-            style = MaterialTheme.typography.bodyLarge.copy(color = TextMuted),
-        )
-    }
 }
 
 @Preview()
@@ -837,9 +728,7 @@ private fun LoginInitialPreview() {
                     loginError = null,
                     setLoginError = {},
                     googleAuthInProgress = false,
-                    createGuestModeInProgress = false,
                     setGoogleAuthInProgress = {},
-                    setCreateGuestModeInProgress = {},
                     allowGoogleSso = { true },
                     solanaAuthInProgress = false,
                     solanaLogin = {},
@@ -849,64 +738,35 @@ private fun LoginInitialPreview() {
                     contentVisible = true,
                     setContentVisible = {},
                     welcomeOverlayVisible = false,
-                    setWelcomeOverlayVisible = {}
-                )
-            }
-        }
-    }
-}
+                            setWelcomeOverlayVisible = {},
+                            onSeedphraseLogin = {},
+                        )
+                    }
+                    }
+                    }
 
-@Preview(
-    name = "Landscape Preview",
-    device = "spec:width=1920dp,height=1080dp,dpi=480"
-)
-@Composable
-private fun LoginInitialLandscapePreview() {
-    val navController = rememberNavController()
-
-    val login: (
-        Context,
-        Api?,
-        (AuthLoginResult) -> Unit,
-        (AuthLoginResult) -> Unit,
-    ) -> Unit = { context, api, onLogin, onNewNetwork ->
-
-    }
-
-    val googleLogin : (
-        Context,
-        Api?,
-        GoogleSignInAccount,
-        (AuthLoginResult) -> Unit,
-        (email: String?, authJwt: String?, userName: String) -> Unit,
-    ) -> Unit = { context, api, account, onLogin, onNewNetwork ->
-
-    }
-
-    URNetworkTheme {
-        Scaffold(
-            modifier = Modifier.fillMaxSize()
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                LoginInitial(
-                    navController = navController,
-                    userAuth = TextFieldValue("hello@ur.io"),
-                    setUserAuth = {},
-                    userAuthInProgress = false,
-                    isValidUserAuth = true,
-                    login = login,
-                    googleLogin = googleLogin,
-                    loginError = null,
-                    setLoginError = {},
-                    googleAuthInProgress = false,
-                    createGuestModeInProgress = false,
-                    setGoogleAuthInProgress = {},
-                    setCreateGuestModeInProgress = {},
-                    allowGoogleSso = { true },
+                    URNetworkTheme {
+                    Scaffold(
+                    modifier = Modifier.fillMaxSize()
+                    ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        LoginInitial(
+                            navController = navController,
+                            userAuth = TextFieldValue("hello@ur.io"),
+                            setUserAuth = {},
+                            userAuthInProgress = false,
+                            isValidUserAuth = true,
+                            login = login,
+                            googleLogin = googleLogin,
+                            loginError = null,
+                            setLoginError = {},
+                            googleAuthInProgress = false,
+                            setGoogleAuthInProgress = {},
+                            allowGoogleSso = { true },
                     solanaAuthInProgress = false,
                     solanaLogin = {},
                     bittensorAuthInProgress = false,

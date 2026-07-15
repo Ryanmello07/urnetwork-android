@@ -236,7 +236,7 @@ class LoginActivity : AppCompatActivity() {
                         if (!success || jwt == null) {
                             Log.i(TAG, "guest login: local byJwt parse failed")
                             createGuestNetworkAndFinish(app)
-                        } else if (jwt.guestMode) {
+                        } else if (jwt.network?.byJwt != null) {
                             setLinksAndStartMain(targetUrl, defaultLocation)
                         } else {
                             currentNetworkName = jwt.networkName
@@ -332,7 +332,6 @@ class LoginActivity : AppCompatActivity() {
     private fun createGuestNetworkAndFinish(app: MainApplication) {
         val args = NetworkCreateArgs()
         args.terms = true
-        args.guestMode = true
 
         app.api?.networkCreate(args) { result, err ->
             lifecycleScope.launch {
