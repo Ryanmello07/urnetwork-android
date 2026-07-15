@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -139,8 +140,8 @@ fun CreateNetworkInstant(
                                     error = null
                                     inProgress = false
                                     onSeedphraseCreated(
-                                        seedphrase = result.seedphrase,
-                                        jwt = result.network.byJwt
+                                        result.seedphrase,
+                                        result.network.byJwt
                                     )
                                 } else {
                                     error = "Failed to create account"

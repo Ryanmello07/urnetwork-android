@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -38,6 +39,8 @@ import com.bringyour.network.ui.login.toWalletCreateBundle
 import com.bringyour.network.ui.login.handleLoginFlow
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginNavHost(
@@ -233,15 +236,17 @@ fun LoginNavHost(
                     }
 
                     composable("login_seedphrase") {
+                        val context = LocalContext.current
+                        val application = context.applicationContext as? com.bringyour.network.MainApplication
+                        val loginActivity = context as? com.bringyour.network.LoginActivity
+                        val coroutineScope = rememberCoroutineScope()
+
                         LoginSeedphrase(
                             onLoginSuccess = { jwt ->
-                                val context = LocalContext.current
-                                val application = context.applicationContext as? com.bringyour.network.MainApplication
-                                val loginActivity = context as? com.bringyour.network.LoginActivity
-                                kotlinx.coroutines.MainScope().launch {
+                                coroutineScope.launch {
                                     handleLoginFlow(
                                         networkJwt = jwt,
-                                        scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
+                                        scope = coroutineScope,
                                         appLogin = { application?.login(jwt) },
                                         onContentVisibilityChange = {},
                                         onErr = {
@@ -261,6 +266,11 @@ fun LoginNavHost(
                     }
 
                     composable("create-network-instant") {
+                        val context = LocalContext.current
+                        val application = context.applicationContext as? com.bringyour.network.MainApplication
+                        val loginActivity = context as? com.bringyour.network.LoginActivity
+                        val coroutineScope = rememberCoroutineScope()
+
                         var seedphraseResult by remember { mutableStateOf<Pair<String, String>?>(null) }
 
                         CreateNetworkInstant(
@@ -277,11 +287,8 @@ fun LoginNavHost(
                                 seedphrase = sp,
                                 onConfirmed = {
                                     seedphraseResult = null
-                                    val context = LocalContext.current
-                                    val application = context.applicationContext as? com.bringyour.network.MainApplication
-                                    val loginActivity = context as? com.bringyour.network.LoginActivity
                                     application?.login(jwt)
-                                    kotlinx.coroutines.MainScope().launch {
+                                    coroutineScope.launch {
                                         loginActivity?.authClientAndFinish { error ->
                                             if (error != null) {
                                                 android.util.Log.e("LoginNavHost", "auth client finish err: $error")

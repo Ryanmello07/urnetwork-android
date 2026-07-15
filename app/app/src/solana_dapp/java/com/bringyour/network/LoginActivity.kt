@@ -239,7 +239,7 @@ class LoginActivity : AppCompatActivity() {
                         if (!success || jwt == null) {
                             Log.i(TAG, "guest login: local byJwt parse failed")
                             createGuestNetworkAndFinish(app)
-                        } else if (jwt.network?.byJwt != null) {
+                        } else if (jwt.networkName != null) {
                             setLinksAndStartMain(targetUrl, defaultLocation)
                         } else {
                             currentNetworkName = jwt.networkName
