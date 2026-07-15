@@ -1,8 +1,6 @@
 package com.bringyour.network.ui.login
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,6 +36,7 @@ import com.bringyour.network.ui.components.TermsCheckbox
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URInlineErrorText
 import com.bringyour.network.ui.theme.Black
+import com.bringyour.sdk.NetworkCreateArgs
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,7 +123,7 @@ fun CreateNetworkInstant(
                             return@URButton
                         }
 
-                        val args = com.bringyour.sdk.NetworkCreateArgs()
+                        val args = NetworkCreateArgs()
                         args.terms = termsAgreed
                         // No userAuth, userName, password, walletAuth — triggers seedphrase path
 
