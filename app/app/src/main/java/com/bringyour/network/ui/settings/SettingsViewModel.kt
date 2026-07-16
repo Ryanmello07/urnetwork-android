@@ -27,6 +27,11 @@ import com.bringyour.sdk.ReferralNetwork
 import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.StripeCreateCustomerPortalArgs
 import com.bringyour.sdk.Sub
+import com.bringyour.sdk.GenerateSeedphraseArgs
+import com.bringyour.sdk.RegenerateSeedphraseArgs
+import com.bringyour.sdk.RemoveAuthArgs
+import com.bringyour.sdk.ChangeNetworkNameArgs
+import com.bringyour.sdk.ClaimNetworkNameArgs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -451,6 +456,170 @@ class SettingsViewModel @Inject constructor(
             _provideEnabled.value = device.provideEnabled
         }
 
+    }
+
+    // --- Seedphrase Management ---
+
+    private val _seedphrase = MutableStateFlow<String?>(null)
+    val seedphrase: StateFlow<String?> = _seedphrase
+
+    private val _seedphraseError = MutableStateFlow<String?>(null)
+    val seedphraseError: StateFlow<String?> = _seedphraseError
+
+    private val _isGeneratingSeedphrase = MutableStateFlow(false)
+    val isGeneratingSeedphrase: StateFlow<Boolean> = _isGeneratingSeedphrase
+
+    val generateSeedphrase: () -> Unit = {
+        if (_isGeneratingSeedphrase.value) return@generateSeedphrase
+        _isGeneratingSeedphrase.value = true
+        viewModelScope.launch {
+            val args = GenerateSeedphraseArgs()
+            deviceManager.device?.api?.generateSeedphrase(args) { result, error ->
+                viewModelScope.launch {
+                    if (error != null) {
+                        _seedphraseError.value = error.message
+                    } else if (result?.error != null) {
+                        _seedphraseError.value = result.error.message
+                    } else {
+                        _seedphrase.value = result?.seedphrase
+                        _seedphraseError.value = null
+                    }
+                    _isGeneratingSeedphrase.value = false
+                }
+            } ?: run {
+                _seedphraseError.value = "Unable to connect"
+                _isGeneratingSeedphrase.value = false
+            }
+        }
+    }
+
+    val regenerateSeedphrase: () -> Unit = {
+        if (_isGeneratingSeedphrase.value) return@regenerateSeedphrase
+        _isGeneratingSeedphrase.value = true
+        viewModelScope.launch {
+            val args = RegenerateSeedphraseArgs()
+            deviceManager.device?.api?.regenerateSeedphrase(args) { result, error ->
+                viewModelScope.launch {
+                    if (error != null) {
+                        _seedphraseError.value = error.message
+                    } else if (result?.error != null) {
+                        _seedphraseError.value = result.error.message
+                    } else {
+                        _seedphrase.value = result?.seedphrase
+                        _seedphraseError.value = null
+                    }
+                    _isGeneratingSeedphrase.value = false
+                }
+            } ?: run {
+                _seedphraseError.value = "Unable to connect"
+                _isGeneratingSeedphrase.value = false
+            }
+        }
+    }
+
+    fun clearSeedphrase() {
+        _seedphrase.value = null
+        _seedphraseError.value = null
+    }
+
+    // --- Remove Auth ---
+
+    private val _removeAuthError = MutableStateFlow<String?>(null)
+    val removeAuthError: StateFlow<String?> = _removeAuthError
+
+    private val _removeAuthSuccess = MutableStateFlow(false)
+    val removeAuthSuccess: StateFlow<Boolean> = _removeAuthSuccess
+
+    fun resetRemoveAuthState() {
+        _removeAuthSuccess.value = false
+        _removeAuthError.value = null
+    }
+
+    val removeAuth: (String) -> Unit = { authType ->
+        viewModelScope.launch {
+            val args = RemoveAuthArgs()
+            args.authType = authType
+            deviceManager.device?.api?.removeAuth(args) { result, error ->
+                viewModelScope.launch {
+                    if (error != null) {
+                        _removeAuthError.value = error.message
+                    } else if (result?.error != null) {
+                        _removeAuthError.value = result.error.message
+                    } else {
+                        _removeAuthSuccess.value = true
+                        _removeAuthError.value = null
+                    }
+                }
+            } ?: run {
+                _removeAuthError.value = "Unable to connect"
+            }
+        }
+    }
+
+    // --- Change Network Name ---
+
+    private val _changeNameResult = MutableStateFlow<String?>(null)
+    val changeNameResult: StateFlow<String?> = _changeNameResult
+
+    private val _changeNameError = MutableStateFlow<String?>(null)
+    val changeNameError: StateFlow<String?> = _changeNameError
+
+    private val _isChangingName = MutableStateFlow(false)
+    val isChangingName: StateFlow<Boolean> = _isChangingName
+
+    val changeNetworkName: (String) -> Unit = { newName ->
+        if (_isChangingName.value) return@changeNetworkName
+        _isChangingName.value = true
+        viewModelScope.launch {
+            val args = ChangeNetworkNameArgs()
+            args.newName = newName
+            deviceManager.device?.api?.changeNetworkName(args) { result, error ->
+                viewModelScope.launch {
+                    if (error != null) {
+                        _changeNameError.value = error.message
+                    } else if (result?.error != null) {
+                        _changeNameError.value = result.error.message
+                    } else {
+                        _changeNameResult.value = result?.networkName
+                        _changeNameError.value = null
+                    }
+                    _isChangingName.value = false
+                }
+            } ?: run {
+                _changeNameError.value = "Unable to connect"
+                _isChangingName.value = false
+            }
+        }
+    }
+
+    val claimNetworkName: (String) -> Unit = { newName ->
+        if (_isChangingName.value) return@claimNetworkName
+        _isChangingName.value = true
+        viewModelScope.launch {
+            val args = ClaimNetworkNameArgs()
+            args.newName = newName
+            deviceManager.device?.api?.claimNetworkName(args) { result, error ->
+                viewModelScope.launch {
+                    if (error != null) {
+                        _changeNameError.value = error.message
+                    } else if (result?.error != null) {
+                        _changeNameError.value = result.error.message
+                    } else {
+                        _changeNameResult.value = result?.networkName
+                        _changeNameError.value = null
+                    }
+                    _isChangingName.value = false
+                }
+            } ?: run {
+                _changeNameError.value = "Unable to connect"
+                _isChangingName.value = false
+            }
+        }
+    }
+
+    fun clearChangeNameResult() {
+        _changeNameResult.value = null
+        _changeNameError.value = null
     }
 
     override fun onCleared() {
