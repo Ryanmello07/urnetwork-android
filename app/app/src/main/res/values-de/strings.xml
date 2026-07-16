@@ -260,6 +260,7 @@
     <string name="payouts">Auszahlungen</string>
     <string name="payouts_amount_threshold">Auszahlungen erfolgen jeden Sonntag um 00:00 UTC und erfordern das Erreichen eines Mindest-USDC-Schwellenwerts.</string>
     <string name="pending_data_key">Ausstehend</string>
+    <string name="pending_mb_provided">Ausstehend: %1$s MB bereitgestellt</string>
     <string name="pending_payout">Ausstehende Auszahlung</string>
     <string name="plan">Planen</string>
     <string name="please_try_again">Bitte versuchen Sie es erneut.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Erneut versuchen</string>
     <string name="try_guest_mode">Gastmodus testen</string>
     <string name="unencrypted_dns">Unverschlüsseltes DNS</string>
+    <string name="unknown">unbekannt</string>
     <string name="unlink">Trennen</string>
     <string name="unlink_alert_description">Wenn Sie Ihr Empfehlungsnetzwerk trennen, können Sie keine Punkte mehr von %1$s erhalten</string>
     <string name="unlink_referral_network">Empfehlungsnetzwerk trennen</string>
@@ -396,7 +398,7 @@
     <string name="upgrade_subscription">Abonnement upgraden</string>
     <string name="urnetwork_intro_description">URnetwork ist das lokalste und privateste Netzwerk der Welt.</string>
     <string name="use_recommended_settings">Empfohlene Einstellungen verwenden</string>
-    <string name="used_data_key">Utilisiert</string>
+    <string name="used_data_key">Verbraucht</string>
     <string name="user_auth_label">E-Mail oder Telefon</string>
     <string name="user_auth_placeholder">Gib deine Telefonnummer oder E-Mail-Adresse ein</string>
     <string name="uses_ur_protocol">Nutzt das UR Protocol</string>
@@ -440,6 +442,10 @@
     <plurals name="new_items_count">
         <item quantity="one">%1$d neu</item>
         <item quantity="other">%1$d neu</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d weiterer</item>
+        <item quantity="other">+ %1$d weitere</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d Anbieter</item>

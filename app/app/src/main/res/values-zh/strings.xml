@@ -42,7 +42,7 @@
     <string name="available">可用</string>
     <string name="available_data_key">可用</string>
     <string name="average_reliability">平均可靠性</string>
-    <string name="balance">平衡</string>
+    <string name="balance">余额</string>
     <string name="balance_code">余额码</string>
     <string name="balance_code_where_to_buy">没有余额码？可在 ur.io 购买，购买后会通过电子邮件发送给你。</string>
     <string name="balance_codes_link">余额码</string>
@@ -216,7 +216,7 @@
     <string name="need_more_data_faster">需要更多数据，更快吗？</string>
     <string name="net_points_earned">净赚积分</string>
     <string name="net_provided">已提供网络量</string>
-    <string name="network_create_bonus_message">有人邀请你加入 🥳\\n创建网络即可领取你的奖励！</string>
+    <string name="network_create_bonus_message">"有人邀请你加入 🥳 \n创建网络即可领取你的奖励！"</string>
     <string name="network_name_check_error">不可用。必须与现有网络至少有 3 个字符不同。使其独特或更长。</string>
     <string name="network_name_label">网络名称</string>
     <string name="network_name_length_error">网络名称必须至少包含 6 个字符。</string>
@@ -260,6 +260,7 @@
     <string name="payouts">支付</string>
     <string name="payouts_amount_threshold">支付在每周日 00:00 UTC 进行，并且需要达到最低 USDC 门槛。</string>
     <string name="pending_data_key">待处理</string>
+    <string name="pending_mb_provided">待处理：提供了 %1$s MB</string>
     <string name="pending_payout">待支付款项</string>
     <string name="plan">计划</string>
     <string name="please_try_again">请再试一次。</string>
@@ -382,6 +383,7 @@
     <string name="try_again">重试</string>
     <string name="try_guest_mode">尝试访客模式</string>
     <string name="unencrypted_dns">未加密 DNS</string>
+    <string name="unknown">未知</string>
     <string name="unlink">解除关联</string>
     <string name="unlink_alert_description">解除推荐网络关联后，您将无法再从%1$s获得积分</string>
     <string name="unlink_referral_network">解除推荐网络关联</string>
@@ -434,6 +436,9 @@
     </plurals>
     <plurals name="new_items_count">
         <item quantity="other">%1$d 个新增</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="other">+ 另外 %1$d 个</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="other">%1$d 个提供商</item>

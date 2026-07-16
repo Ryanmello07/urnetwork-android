@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.settings
 
+import com.bringyour.network.BuildConfig
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -1073,6 +1074,9 @@ fun SettingsScreen(
                 }
             )
 
+            // The Seeker/Saga data multiplier is promoted only on the Solana Mobile flavor.
+            if (BuildConfig.BRINGYOUR_BUNDLE_STORE == "solana_dapp") {
+
             Spacer(modifier = Modifier.height(24.dp))
 
             /**
@@ -1146,6 +1150,7 @@ fun SettingsScreen(
                     )
                 }
             }
+            } // end Solana-only seeker multiplier block
 
             Spacer(modifier = Modifier.height(32.dp))
 

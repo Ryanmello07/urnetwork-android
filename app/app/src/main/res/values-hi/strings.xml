@@ -260,6 +260,7 @@
     <string name="payouts">भुगतान</string>
     <string name="payouts_amount_threshold">भुगतान हर रविवार 00:00 UTC पर होते हैं, और न्यूनतम USDC सीमा पूरी करनी होती है।</string>
     <string name="pending_data_key">लंबित</string>
+    <string name="pending_mb_provided">लंबित: %1$s एमबी प्रदान किए गए</string>
     <string name="pending_payout">लंबित भुगतान</string>
     <string name="plan">योजना</string>
     <string name="please_try_again">कृपया पुनः प्रयास करें।</string>
@@ -382,6 +383,7 @@
     <string name="try_again">पुनः प्रयास करें</string>
     <string name="try_guest_mode">गेस्ट मोड आज़माएँ</string>
     <string name="unencrypted_dns">अनएन्क्रिप्टेड DNS</string>
+    <string name="unknown">अज्ञात</string>
     <string name="unlink">अनलिंक करें</string>
     <string name="unlink_alert_description">जब आप अपने रेफ़रल नेटवर्क को अनलिंक करते हैं, तो आप अब %1$s से अंक अर्जित नहीं कर पाएंगे</string>
     <string name="unlink_referral_network">रेफ़रल नेटवर्क को अनलिंक करें</string>
@@ -440,6 +442,10 @@
     <plurals name="new_items_count">
         <item quantity="one">%1$d नया</item>
         <item quantity="other">%1$d नए</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d और</item>
+        <item quantity="other">+ %1$d और</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d प्रदाता</item>

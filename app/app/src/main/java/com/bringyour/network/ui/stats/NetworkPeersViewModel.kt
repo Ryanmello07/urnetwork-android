@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.bringyour.network.DeviceManager
 import com.bringyour.sdk.ConnectLocation
 import com.bringyour.sdk.ConnectLocationId
+import com.bringyour.sdk.PeerViewController
 import com.bringyour.sdk.Sub
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -45,34 +46,34 @@ class NetworkPeersViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val subs = mutableListOf<Sub>()
+    private var peerVc: PeerViewController? = null
 
     var connectedProvidePeers by mutableStateOf<List<NetworkPeerUi>>(listOf())
         private set
 
     init {
         deviceManager.device?.let { device ->
-            subs.add(device.addNetworkPeersChangeListener {
+            // the SDK peer view controller already filters to connected + provide-enabled peers
+            val vc = device.openPeerViewController()
+            peerVc = vc
+            subs.add(vc.addPeersListener {
                 viewModelScope.launch {
                     update()
                 }
             })
-            update()
+            vc.start()
         }
     }
 
     private fun update() {
-        val device = deviceManager.device ?: return
+        val vc = peerVc ?: return
         val peers = mutableListOf<NetworkPeerUi>()
-        val networkPeers = device.networkPeers
-        val connected = networkPeers?.connected
-        if (connected != null) {
-            val n = connected.len()
+        val list = vc.peers
+        if (list != null) {
+            val n = list.len()
             for (i in 0 until n) {
-                val peer = connected.get(i) ?: continue
+                val peer = list.get(i) ?: continue
                 val clientId = peer.clientId ?: continue
-                if (!peer.provideEnabled) {
-                    continue
-                }
                 peers.add(
                     NetworkPeerUi(
                         clientId = clientId.idStr,
@@ -90,13 +91,12 @@ class NetworkPeersViewModel @Inject constructor(
      * a direct connection to this peer device
      */
     fun connectLocationForPeer(peer: NetworkPeerUi): ConnectLocation? {
-        val device = deviceManager.device ?: return null
-        // reconstruct the peer client id from its string form
-        val networkPeers = device.networkPeers ?: return null
-        val connected = networkPeers.connected ?: return null
-        val n = connected.len()
+        val vc = peerVc ?: return null
+        // reconstruct the SDK client id (the ConnectLocationId needs the Id object, not its string)
+        val list = vc.peers ?: return null
+        val n = list.len()
         for (i in 0 until n) {
-            val p = connected.get(i) ?: continue
+            val p = list.get(i) ?: continue
             val clientId = p.clientId ?: continue
             if (clientId.idStr == peer.clientId) {
                 val location = ConnectLocation()
@@ -114,5 +114,7 @@ class NetworkPeersViewModel @Inject constructor(
         super.onCleared()
         subs.forEach { it.close() }
         subs.clear()
+        peerVc?.close()
+        peerVc = null
     }
 }

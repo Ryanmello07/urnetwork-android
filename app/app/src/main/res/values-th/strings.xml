@@ -260,6 +260,7 @@
     <string name="payouts">การจ่าย</string>
     <string name="payouts_amount_threshold">การจ่ายเงินจะเกิดขึ้นทุกวันอาทิตย์ เวลา 00:00 UTC และต้องถึงขั้นต่ำขั้นต่ำของ USDC</string>
     <string name="pending_data_key">รอดำเนินการ</string>
+    <string name="pending_mb_provided">รอดำเนินการ: ให้บริการ %1$s MB</string>
     <string name="pending_payout">ยอดที่รอจ่าย</string>
     <string name="plan">แพ็กเกจ</string>
     <string name="please_try_again">กรุณาลองใหม่อีกครั้ง</string>
@@ -382,6 +383,7 @@
     <string name="try_again">ลองอีกครั้ง</string>
     <string name="try_guest_mode">ลองใช้ในโหมดผู้เยี่ยมชม</string>
     <string name="unencrypted_dns">DNS ที่ไม่เข้ารหัส</string>
+    <string name="unknown">ไม่ทราบ</string>
     <string name="unlink">ยกเลิกการเชื่อม</string>
     <string name="unlink_alert_description">เมื่อคุณยกเลิกการเชื่อมรหัสเครือข่ายของคุณ คุณจะไม่สามารถรับคะแนนจาก %1$s อีกต่อไป</string>
     <string name="unlink_referral_network">ยกเลิกเชื่อมรหัสการแนะนำเครือข่าย</string>
@@ -434,6 +436,9 @@
     </plurals>
     <plurals name="new_items_count">
         <item quantity="other">ใหม่ %1$d รายการ</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="other">+ อีก %1$d รายการ</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="other">%1$d ผู้ให้บริการ</item>

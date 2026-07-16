@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.ui.theme.TextMuted
@@ -104,7 +105,10 @@ fun PayoutRow(
 
                 } else {
                     Text(
-                        "Pending: ${formatDecimalString(payoutByteCount / (1024.0 * 1024.0), 2)} MB provided",
+                        stringResource(
+                            id = R.string.pending_mb_provided,
+                            formatDecimalString(payoutByteCount / (1024.0 * 1024.0), 2),
+                        ),
                         style = MaterialTheme.typography.bodyLarge,
                         color = TextMuted
                     )

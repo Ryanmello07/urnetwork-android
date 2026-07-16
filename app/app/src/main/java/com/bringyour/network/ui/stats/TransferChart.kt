@@ -380,20 +380,30 @@ private fun DrawScope.drawTransferChart(
         }
     }
 
-    // pad the series so the baseline spans the full width: zeros back to the
-    // window start on the left (flat baseline over the not-yet-filled region)
-    // and a hold of the latest value out to the right edge
+    // pad the series so the baseline spans the full width: a flat run of zeros
+    // back to the window start on the left (the not-yet-filled region) and a
+    // hold of the latest value out to the right edge. the left zeros are laid
+    // at the sample cadence rather than as a single far-left point, so the
+    // points feeding the spline stay evenly spaced -- a lone real sample
+    // sitting after one giant gap back to the window start is what makes the
+    // curve loop on itself.
     val padded = mutableListOf<Pair<Long, ThroughputSampleUi>>()
     val windowStart = nowMillis - windowMillis
     val first = displaySamples.first()
     val last = displaySamples.last()
     if (windowStart < first.first) {
         val step = if (2 <= displaySamples.size) max(200L, displaySamples[1].first - displaySamples[0].first) else 1000L
+        // anchor the baseline at the window start so it reaches the left edge,
+        // then walk back from just before the first real sample one bucket at a
+        // time so the ramp-in from zero is uniform
         padded.add(windowStart to ThroughputSampleUi.Zero)
-        val rampTime = first.first - step
-        if (windowStart < rampTime) {
-            padded.add(rampTime to ThroughputSampleUi.Zero)
+        val ramp = mutableListOf<Long>()
+        var t = first.first - step
+        while (windowStart < t) {
+            ramp.add(t)
+            t -= step
         }
+        ramp.reversed().forEach { padded.add(it to ThroughputSampleUi.Zero) }
     }
     padded.addAll(displaySamples)
     if (last.first < nowMillis) {
@@ -522,8 +532,15 @@ private fun smoothPath(points: List<Offset>): Path {
         val p1 = points[i - 1]
         val p2 = points[i]
         val p3 = points[min(i + 1, points.size - 1)]
-        val c1 = Offset(p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f)
-        val c2 = Offset(p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f)
+        // the x axis is time and strictly increasing, so keep both control
+        // points within the segment's x span. clamping x keeps the cubic
+        // monotonic in x -- it can never bow back on itself into a loop when a
+        // neighbour is far away (an outlier, or the zero baseline across a gap).
+        // y is left free so the curve still eases naturally.
+        val loX = min(p1.x, p2.x)
+        val hiX = max(p1.x, p2.x)
+        val c1 = Offset((p1.x + (p2.x - p0.x) / 6f).coerceIn(loX, hiX), p1.y + (p2.y - p0.y) / 6f)
+        val c2 = Offset((p2.x - (p3.x - p1.x) / 6f).coerceIn(loX, hiX), p2.y - (p3.y - p1.y) / 6f)
         path.cubicTo(c1.x, c1.y, c2.x, c2.y, p2.x, p2.y)
     }
     return path

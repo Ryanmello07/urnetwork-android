@@ -82,6 +82,7 @@ fun ConnectScreen(
     blockActionsViewModel: com.bringyour.network.ui.stats.BlockActionsViewModel = hiltViewModel(),
     dnsSettingsViewModel: com.bringyour.network.ui.stats.DnsSettingsViewModel = hiltViewModel(),
     blockerViewModel: com.bringyour.network.ui.stats.BlockerViewModel = hiltViewModel(),
+    networkPeersViewModel: com.bringyour.network.ui.stats.NetworkPeersViewModel = hiltViewModel(),
 ) {
 
     val connectStatus by connectViewModel.connectStatus.collectAsState()
@@ -146,12 +147,21 @@ fun ConnectScreen(
 
     }
 
+    // For a selected network-peer location, resolve the device name from the LIVE peer list so
+    // the drawer shows the same label as the peer list (the location name is a connect-time
+    // snapshot that can be a stale client id).
+    val selectedPeerName = connectViewModel.selectedLocation?.connectLocationId?.clientId?.idStr?.let { cid ->
+        networkPeersViewModel.connectedProvidePeers.firstOrNull { it.clientId == cid }?.displayName
+    }
+
     ConnectActionsSheetScaffold(
         scaffoldState = scaffoldState,
         sheetContent = { minSheetHeight ->
             ConnectActions(
                 navController = navController,
                 selectedLocation = connectViewModel.selectedLocation,
+                peerCount = networkPeersViewModel.connectedProvidePeers.size,
+                selectedPeerName = selectedPeerName,
                 presentSelectProvider = {
                     navController.navigate(Route.BrowseLocations)
                 },

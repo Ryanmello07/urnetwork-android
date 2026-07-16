@@ -117,11 +117,11 @@ fun IntroductionReferral(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                BulletPoint(stringResource(id = R.string.refer_friends_perks, "30"))
+                BulletPoint(stringResource(id = R.string.refer_friends_perks, "3"))
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                BulletPoint(stringResource(id = R.string.refer_friends_they_get_data, "30"))
+                BulletPoint(stringResource(id = R.string.refer_friends_they_get_data, "3"))
 
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -145,7 +145,7 @@ fun IntroductionReferral(
                         )
 
                         Text(
-                            "${totalReferrals}/5",
+                            "${totalReferrals}/20",
                             style = TopBarTitleTextStyle
                         )
                     }
@@ -219,15 +219,15 @@ fun ReferralBar(
     totalReferrals: Long
 ) {
 
-    val maxReferrals = 5f
+    val maxReferrals = 20f
     val cornerRadius = 6.dp
     val usedColor = BlueMedium
     val availableColor = TextFaint
 
     var displayReferralCount = totalReferrals.toFloat()
 
-    if (displayReferralCount >= 5) {
-        displayReferralCount = 5f
+    if (displayReferralCount >= 20) {
+        displayReferralCount = 20f
     }
 
     val usedFraction = displayReferralCount / maxReferrals

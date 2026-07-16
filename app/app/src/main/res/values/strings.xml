@@ -195,6 +195,8 @@
     <string name="cancel">Cancel</string>
     <string name="chains_supported">Solana and Polygon wallets are currently supported</string>
     <string name="change">Change</string>
+    <string name="change_password">Change Password</string>
+    <string name="check_internet">Check your internet connection</string>
     <string name="check_ip">Check my IP</string>
     <string name="checking_payment">Checking payment</string>
     <string name="checking_solana_transactions">Checking for Solana Transactions</string>
@@ -357,6 +359,7 @@
     <string name="payouts">Payouts</string>
     <string name="payouts_amount_threshold">Payouts occur every Sunday at 00:00 UTC, and require meeting a minimum USDC threshold.</string>
     <string name="pending_data_key">Pending</string>
+    <string name="pending_mb_provided">Pending: %1$s MB provided</string>
     <string name="pending_payout">Pending payout</string>
     <string name="plan">Plan</string>
     <string name="please_try_again">Please try again.</string>
@@ -456,6 +459,7 @@
     <string name="trusted_by_private_networks">Trusted by over %1$s private networks</string>
     <string name="try_again">Try again</string>
     <string name="unencrypted_dns">Unencrypted DNS</string>
+    <string name="unknown">unknown</string>
     <string name="unlink">Unlink</string>
     <string name="unlink_alert_description">When unlinking your referral network, you will no longer be able to earn points from %1$s</string>
     <string name="unlink_referral_network">Unlink referral network</string>
@@ -506,9 +510,17 @@
         <item quantity="one">%1$d host</item>
         <item quantity="other">%1$d hosts</item>
     </plurals>
+    <plurals name="network_peer_count">
+        <item quantity="one">You have %1$d other device online</item>
+        <item quantity="other">You have %1$d other devices online</item>
+    </plurals>
     <plurals name="new_items_count">
         <item quantity="one">%1$d new</item>
         <item quantity="other">%1$d new</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d more</item>
+        <item quantity="other">+ %1$d more</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d provider</item>

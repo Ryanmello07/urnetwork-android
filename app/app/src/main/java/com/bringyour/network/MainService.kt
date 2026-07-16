@@ -68,13 +68,19 @@ import kotlin.concurrent.thread
     // clientIpv4 (the TUN interface address) is sourced at tunnel-build time from the
     // SDK device's tunnelLocalAddress() (reserved from connect's pool); see updatePfd.
     val clientIpv4PrefixLength = 32
-    // static fallback when the sdk device is unavailable; the builder dns normally
-    // comes from the device (see `tunnelDnsServers`)
-    // see:
+    // static fallback for when the sdk device is unavailable; the builder dns
+    // normally comes from the device (see `tunnelDnsServers`). matches the SDK
+    // default tunnel resolvers.
+    //
+    // order is deliberate, and OS-level encrypted DNS is exactly what it avoids:
     // https://security.googleblog.com/2022/07/dns-over-http3-in-android.html#fn2
-    // only Google DNS and CloudFlare DNS will auto-enable DoT/DoH on Android
-    // *important* removing the Google public server will disable DoT/DoH
-    val dnsIpv4s = listOf("1.1.1.1", "8.8.8.8")
+    // Android opportunistically upgrades well-known public resolvers (notably
+    // Google 8.8.8.8 and CloudFlare 1.1.1.1) to DoT/DoH. we do NOT want that: an
+    // OS-level encrypted resolver bypasses our UpgradeMux, which needs plain :53 to
+    // intercept unencrypted DNS and run our own DoH upgrade. Quad9 (9.9.9.9) leads
+    // because the OS does not auto-upgrade it, keeping the tunnel resolver on plain
+    // DNS; 1.1.1.1 follows as a secondary.
+    val dnsIpv4s = listOf("9.9.9.9", "1.1.1.1")
 
     val clientIpv6: String? = null
     val clientIpv6PrefixLength = 64

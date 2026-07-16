@@ -1,14 +1,10 @@
 package com.bringyour.network.ui.stats
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,6 +38,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,14 +49,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -297,12 +298,6 @@ fun ContractClientRow(
  * Two circles representing the client contract and the companion
  * contract, with directional transfer lines between them
  */
-private data class ContractCircleState(
-    val id: String,
-    val used: Long,
-    val total: Long,
-)
-
 @Composable
 fun ContractPairViz(
     row: ContractClientRowUi,
@@ -316,28 +311,19 @@ fun ContractPairViz(
         verticalAlignment = Alignment.Top
     ) {
 
-        // a replaced contract (new id) slides out to the side and fades while the
-        // new one fades into its place; within a contract the disc just resizes.
-        // the id/used/total travel through the animated state (with contentKey on
-        // the id) so the outgoing circle keeps its own data and only an id change
-        // triggers a swap.
-        AnimatedContent(
-            targetState = ContractCircleState(row.contractId, row.contractUsedByteCount, row.contractByteCount),
-            contentKey = { it.id },
-            transitionSpec = {
-                (fadeIn(tween(500)) togetherWith
-                    (slideOutHorizontally(tween(500)) { -it } + fadeOut(tween(500))))
-                    .apply { targetContentZIndex = 1f }
-            },
-            label = "contractCircleSwap"
-        ) { state ->
-            ContractCircle(
-                used = state.used,
-                total = state.total,
-                color = contractColor,
-                label = stringResource(id = R.string.contract),
-            )
-        }
+        // a replaced contract (new id) ejects its outer ring to the side and fades
+        // while the new ring fades into the same fixed slot; a closing row ejects
+        // the ring and shows nothing after. the inner disc persists across the swap
+        // and just resizes.
+        ContractCircle(
+            contractId = row.contractId,
+            used = row.contractUsedByteCount,
+            total = row.contractByteCount,
+            color = contractColor,
+            label = stringResource(id = R.string.contract),
+            slideLeft = true,
+            closing = row.closing,
+        )
 
         Column(
             modifier = Modifier
@@ -358,38 +344,36 @@ fun ContractPairViz(
             )
         }
 
-        AnimatedContent(
-            targetState = ContractCircleState(row.companionContractId, row.companionContractUsedByteCount, row.companionContractByteCount),
-            contentKey = { it.id },
-            transitionSpec = {
-                (fadeIn(tween(500)) togetherWith
-                    (slideOutHorizontally(tween(500)) { it } + fadeOut(tween(500))))
-                    .apply { targetContentZIndex = 1f }
-            },
-            label = "companionCircleSwap"
-        ) { state ->
-            ContractCircle(
-                used = state.used,
-                total = state.total,
-                color = companionColor,
-                label = stringResource(id = R.string.companion),
-            )
-        }
+        ContractCircle(
+            contractId = row.companionContractId,
+            used = row.companionContractUsedByteCount,
+            total = row.companionContractByteCount,
+            color = companionColor,
+            label = stringResource(id = R.string.companion),
+            slideLeft = false,
+            closing = row.closing,
+        )
 
     }
 }
 
 @Composable
 private fun ContractCircle(
+    contractId: String,
     used: Long,
     total: Long,
     color: Color,
     label: String,
+    slideLeft: Boolean,
+    closing: Boolean,
 ) {
 
     // area-proportional inner disc, with a minimum visible size
     val fraction = if (0 < total) min(1.0, used.toDouble() / total.toDouble()) else 0.0
-    // grow/shrink the disc smoothly, matching the 0.5s transfer-chart transition
+    // grow/shrink the disc smoothly, matching the 0.5s transfer-chart transition.
+    // this tracks the CURRENT contract's fill and, because the disc lives outside
+    // the ring's swap below, persists across a replacement -- morphing to the new
+    // level instead of popping.
     val animatedFraction by animateFloatAsState(
         targetValue = fraction.toFloat(),
         animationSpec = tween(durationMillis = 500, easing = EaseOut),
@@ -405,14 +389,27 @@ private fun ContractCircle(
             modifier = Modifier.size(56.dp),
             contentAlignment = Alignment.Center
         ) {
+
+            // the outer ring carries the contract identity: when a contract is
+            // replaced (new id) the old ring is ejected -- it slides out to the
+            // side and fades on its own fixed schedule and is never reversed, and
+            // the new ring fades into the slot once the last ejecting ring has
+            // left. a closing row ejects the ring and shows nothing after. only the
+            // ring ejects, so the disc drawn over it resizes smoothly across a swap.
+            ContractRing(
+                contractId = contractId,
+                color = color,
+                slideLeft = slideLeft,
+                circleSize = 56.dp,
+                visible = !closing,
+            )
+
+            // the inner disc has no id and lives outside the swap, so it persists
+            // across a contract replacement and just resizes. framing from zero
+            // animates the grow-in / drain instead of an insert/remove pop.
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val radius = size.minDimension / 2f
-                drawCircle(
-                    color = color.copy(alpha = 0.8f),
-                    radius = radius - 1.dp.toPx(),
-                    style = Stroke(width = 1.dp.toPx())
-                )
                 if (0 < animatedFraction) {
+                    val radius = size.minDimension / 2f
                     val innerRadius = kotlin.math.max(
                         3.dp.toPx(),
                         (radius - 1.dp.toPx()) * sqrt(animatedFraction)
@@ -509,5 +506,170 @@ private fun TransferLine(
             drawPath(path, color = color.copy(alpha = alpha))
         }
 
+    }
+}
+
+// eject timings for the identity ring, mirroring the shared design: the old ring
+// slides out + fades over the slide window, the incoming ring fades in
+private const val RING_SLIDE_MILLIS = 500
+private const val RING_FADE_IN_MILLIS = 350
+
+/**
+ * One in-flight ejection: an independent slide-out + fade that runs once to
+ * completion and is then removed. Its animatables live in this object (held by the
+ * state list, outside composition) so a change landing mid-slide never reverses an
+ * ejection already leaving.
+ */
+private class RingEjection {
+    val id: java.util.UUID = java.util.UUID.randomUUID()
+    val offset = Animatable(0f)
+    val alpha = Animatable(1f)
+}
+
+/**
+ * The outer identity ring of a contract circle.
+ *
+ * When [contractId] changes, the ring on screen is *ejected*: it slides out toward
+ * the removal edge ([slideLeft]) and fades on its own fixed schedule, and is never
+ * reversed even if further contracts change while it is still leaving. Each
+ * ejection is an independent instance, so multiple rings can be leaving at once and
+ * are all rendered; the incoming ring fades into the slot only once the LAST
+ * ejecting ring has finished leaving. This mirrors the Apple ContractRing and
+ * replaces the single interruptible cross-fade that slid a ring back in then out
+ * again when another change landed mid-slide.
+ *
+ * When [visible] goes false (the client's last contract closed) the on-screen ring
+ * ejects and nothing takes its place. The inner disc is drawn separately by the
+ * caller and is not part of this eject -- it persists across a swap and resizes.
+ */
+@Composable
+private fun ContractRing(
+    contractId: String,
+    color: Color,
+    slideLeft: Boolean,
+    circleSize: Dp,
+    visible: Boolean,
+) {
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
+    // slide fully clear of the circle's slot, toward the removal edge
+    val offscreenPx = with(density) { circleSize.toPx() } * 3f * if (slideLeft) -1f else 1f
+
+    // the ring currently occupying the slot (the latest contract id)
+    var currentId by remember { mutableStateOf(contractId) }
+    // whether the current ring has faded in; false while ejections are leaving so a
+    // not-yet-shown ring is never itself ejected (there is nothing to slide off)
+    var currentVisible by remember { mutableStateOf(visible) }
+    // mirrors `visible` in state so a deferred ejection completion reads the live
+    // intent (the input param would be captured stale in the launched coroutine)
+    var present by remember { mutableStateOf(visible) }
+    // opacity of the settled/incoming ring: snapped to 0 on eject (the ejection copy
+    // takes over the slide), animated to 1 on fade-in
+    val currentAlpha = remember { Animatable(if (visible) 1f else 0f) }
+    // in-flight ejections, each an independent slide-out + fade that runs once
+    val ejections = remember { mutableStateListOf<RingEjection>() }
+
+    fun fadeInCurrent() {
+        currentVisible = true
+        scope.launch {
+            currentAlpha.animateTo(1f, tween(durationMillis = RING_FADE_IN_MILLIS))
+        }
+    }
+
+    // spawn an independent slide-out of the on-screen ring; once started it always
+    // runs to completion (never reverses), even if more changes land meanwhile
+    fun ejectCurrentRing() {
+        val ejection = RingEjection()
+        ejections.add(ejection)
+        scope.launch {
+            val slide = launch {
+                ejection.offset.animateTo(offscreenPx, tween(durationMillis = RING_SLIDE_MILLIS))
+            }
+            val fade = launch {
+                ejection.alpha.animateTo(0f, tween(durationMillis = RING_SLIDE_MILLIS))
+            }
+            slide.join()
+            fade.join()
+            ejections.remove(ejection)
+            // admit the waiting ring only once the last one has left and a ring is
+            // still wanted in the slot
+            if (ejections.isEmpty() && present && !currentVisible) {
+                fadeInCurrent()
+            }
+        }
+    }
+
+    LaunchedEffect(contractId) {
+        // fires on first composition too; the guard lets the initial ring settle
+        // without an eject
+        if (contractId == currentId) return@LaunchedEffect
+        // eject the on-screen ring (if any), then admit the new id
+        if (currentVisible) {
+            ejectCurrentRing()
+        }
+        currentId = contractId
+        currentVisible = false
+        currentAlpha.snapTo(0f)
+        // nothing leaving -> the new ring can fade in right away
+        if (present && ejections.isEmpty()) {
+            fadeInCurrent()
+        }
+    }
+
+    LaunchedEffect(visible) {
+        present = visible
+        if (visible) {
+            if (!currentVisible && ejections.isEmpty()) {
+                fadeInCurrent()
+            }
+        } else if (currentVisible) {
+            // the client is leaving: eject the ring and show nothing after
+            ejectCurrentRing()
+            currentVisible = false
+            currentAlpha.snapTo(0f)
+        }
+    }
+
+    Box(
+        modifier = Modifier.size(circleSize),
+        contentAlignment = Alignment.Center
+    ) {
+        // ejecting rings, each leaving on its own schedule
+        ejections.forEach { ejection ->
+            key(ejection.id) {
+                RingStroke(
+                    color = color,
+                    modifier = Modifier.graphicsLayer {
+                        translationX = ejection.offset.value
+                        alpha = ejection.alpha.value
+                    }
+                )
+            }
+        }
+        // the incoming/settled ring; hidden (alpha 0) until every ejection has left
+        RingStroke(
+            color = color,
+            modifier = Modifier.graphicsLayer { alpha = currentAlpha.value }
+        )
+    }
+}
+
+/**
+ * The stroked identity ring, filling its slot. Drawn once for the settled ring and
+ * once per in-flight ejection.
+ */
+@Composable
+private fun RingStroke(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val radius = size.minDimension / 2f
+        drawCircle(
+            color = color.copy(alpha = 0.8f),
+            radius = radius - 1.dp.toPx(),
+            style = Stroke(width = 1.dp.toPx())
+        )
     }
 }

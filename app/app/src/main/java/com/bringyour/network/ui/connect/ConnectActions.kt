@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -46,8 +47,10 @@ import com.bringyour.network.ui.stats.BlockerViewModel
 import com.bringyour.network.ui.stats.ConnectStatsSections
 import com.bringyour.network.ui.stats.DnsSettingsViewModel
 import com.bringyour.network.ui.stats.ThroughputViewModel
+import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.theme.MainTintedBackgroundBase
 import com.bringyour.network.ui.theme.Pink
+import com.bringyour.network.ui.theme.Amber
 import com.bringyour.network.ui.theme.Red400
 import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
@@ -57,6 +60,8 @@ import com.bringyour.sdk.ConnectLocation
 fun ConnectActions(
     navController: NavController,
     selectedLocation: ConnectLocation?,
+    peerCount: Int,
+    selectedPeerName: String?,
     presentSelectProvider: (Boolean) -> Unit,
     getLocationColor: (String) -> Color,
     minHeight: Dp,
@@ -108,6 +113,7 @@ fun ConnectActions(
 
             OpenProviderListButton(
                 selectedLocation = selectedLocation,
+                selectedPeerName = selectedPeerName,
                 getLocationColor = getLocationColor,
                 onClick = { presentSelectProvider(true) }
             )
@@ -189,6 +195,20 @@ fun ConnectActions(
                     }
                 }
             }
+
+            // the extra top spacing pushes the peers line just below the collapsed
+            // drawer's peek fold, so it appears only when the drawer opens (iOS parity)
+            Spacer(modifier = Modifier.height(24.dp))
+
+            /**
+             * Network peers status line: a small dot (brand green when peers are online,
+             * amber at zero) + "{n} peers", always shown. Tapping opens the location
+             * chooser, which lists these peers at its top. Mirrors the iOS drawer.
+             */
+            NetworkPeersStatusLine(
+                peerCount = peerCount,
+                onClick = { presentSelectProvider(true) }
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -387,14 +407,17 @@ fun ConnectActions(
 @Composable
 fun OpenProviderListButton(
     selectedLocation: ConnectLocation?,
+    selectedPeerName: String?,
     getLocationColor: (String) -> Color,
     onClick: () -> Unit
 ) {
 
-    val text = if (selectedLocation == null || selectedLocation.connectLocationId.bestAvailable) {
-        stringResource(id = R.string.best_available_provider)
-    } else {
-        selectedLocation.name
+    val text = when {
+        // a selected network peer: show its live device name (the same label as the peer list)
+        selectedPeerName != null -> selectedPeerName
+        selectedLocation == null || selectedLocation.connectLocationId.bestAvailable ->
+            stringResource(id = R.string.best_available_provider)
+        else -> selectedLocation.name
     }
 
     val iconTint = if (selectedLocation == null || selectedLocation.connectLocationId.bestAvailable) {
@@ -469,6 +492,42 @@ fun OpenProviderListButton(
                 color = Pink
             )
         }
+    }
+}
+
+@Composable
+fun NetworkPeersStatusLine(
+    peerCount: Int,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+
+        // status dot: brand green when peers are online, amber when none
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(
+                    color = if (peerCount > 0) Green else Amber,
+                    shape = CircleShape
+                )
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Text(
+            pluralStringResource(
+                id = R.plurals.network_peer_count,
+                count = peerCount,
+                peerCount,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMuted
+        )
     }
 }
 
