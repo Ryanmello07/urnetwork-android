@@ -195,7 +195,6 @@
     <string name="cancel">Cancel</string>
     <string name="chains_supported">Solana and Polygon wallets are currently supported</string>
     <string name="change">Change</string>
-    <string name="check_internet">Check your internet connection</string>
     <string name="check_ip">Check my IP</string>
     <string name="checking_payment">Checking payment</string>
     <string name="checking_solana_transactions">Checking for Solana Transactions</string>
