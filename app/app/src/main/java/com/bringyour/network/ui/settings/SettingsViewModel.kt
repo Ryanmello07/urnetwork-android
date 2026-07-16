@@ -552,6 +552,7 @@ class SettingsViewModel @Inject constructor(
                 }
             } ?: run {
                 _removeAuthError.value = "Unable to connect"
+                resetRemoveAuthState()
             }
         }
     }

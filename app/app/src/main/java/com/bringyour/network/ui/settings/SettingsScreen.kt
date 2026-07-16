@@ -121,7 +121,6 @@ import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.bringyour.network.TAG
 import com.bringyour.network.ui.components.CopyReferralCode
 import com.bringyour.network.ui.components.ProvideCellPicker
 import com.bringyour.network.ui.components.ProvideControlModePicker
@@ -807,12 +806,20 @@ fun SettingsScreen(
                     color = com.bringyour.network.ui.theme.Green,
                     style = MaterialTheme.typography.bodySmall
                 )
+                // Auto-clear after 2 seconds
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(2000)
+                    resetRemoveAuthState()
+                }
             }
 
             // Remove auth confirmation dialog
             if (confirmRemoveAuthType != null) {
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { confirmRemoveAuthType = null },
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = {
+                    confirmRemoveAuthType = null
+                    resetRemoveAuthState()
+                },
                     title = { Text("Remove Sign-In Method") },
                     text = { Text("Are you sure you want to remove this sign-in method?") },
                     confirmButton = {
