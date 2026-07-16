@@ -147,6 +147,15 @@ fun SettingsScreen(
     val isPresentingAuthCodeDialog = settingsViewModel.isPresentingAuthCodeDialog.collectAsState().value
     val authCode = settingsViewModel.authCode.collectAsState().value
 
+    val seedphrase = settingsViewModel.seedphrase.collectAsState().value
+    val seedphraseError = settingsViewModel.seedphraseError.collectAsState().value
+    val isGeneratingSeedphrase = settingsViewModel.isGeneratingSeedphrase.collectAsState().value
+    val changeNameResult = settingsViewModel.changeNameResult.collectAsState().value
+    val changeNameError = settingsViewModel.changeNameError.collectAsState().value
+    val isChangingName = settingsViewModel.isChangingName.collectAsState().value
+    val removeAuthSuccess = settingsViewModel.removeAuthSuccess.collectAsState().value
+    val removeAuthError = settingsViewModel.removeAuthError.collectAsState().value
+
     val scope = rememberCoroutineScope()
 
     val updateReferralNetworkSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -273,7 +282,23 @@ fun SettingsScreen(
         setDisplayAuthCodeDialog = settingsViewModel.setIsPresentingAuthCodeDialog,
         provideIndicatorColor = settingsViewModel.provideIndicatorColor,
         stripePortalUrl = settingsViewModel.stripePortalUrl.collectAsState().value,
-        totalReferrals = totalReferrals
+        totalReferrals = totalReferrals,
+        seedphrase = seedphrase,
+        seedphraseError = seedphraseError,
+        isGeneratingSeedphrase = isGeneratingSeedphrase,
+        generateSeedphrase = settingsViewModel.generateSeedphrase,
+        regenerateSeedphrase = settingsViewModel.regenerateSeedphrase,
+        clearSeedphrase = settingsViewModel::clearSeedphrase,
+        changeNameResult = changeNameResult,
+        changeNameError = changeNameError,
+        isChangingName = isChangingName,
+        changeNetworkName = settingsViewModel.changeNetworkName,
+        claimNetworkName = settingsViewModel.claimNetworkName,
+        clearChangeNameResult = settingsViewModel::clearChangeNameResult,
+        removeAuthSuccess = removeAuthSuccess,
+        removeAuthError = removeAuthError,
+        removeAuth = settingsViewModel.removeAuth,
+        resetRemoveAuthState = settingsViewModel::resetRemoveAuthState
     )
 
     if (isPresentingRenameDevice) {
@@ -399,7 +424,23 @@ fun SettingsScreen(
     setDisplayAuthCodeDialog: (Boolean) -> Unit,
     provideIndicatorColor: Color,
     stripePortalUrl: String?,
-    totalReferrals: Long = 0L
+    totalReferrals: Long = 0L,
+    seedphrase: String? = null,
+    seedphraseError: String? = null,
+    isGeneratingSeedphrase: Boolean = false,
+    generateSeedphrase: () -> Unit = {},
+    regenerateSeedphrase: () -> Unit = {},
+    clearSeedphrase: () -> Unit = {},
+    changeNameResult: String? = null,
+    changeNameError: String? = null,
+    isChangingName: Boolean = false,
+    changeNetworkName: (String) -> Unit = {},
+    claimNetworkName: (String) -> Unit = {},
+    clearChangeNameResult: () -> Unit = {},
+    removeAuthSuccess: Boolean = false,
+    removeAuthError: String? = null,
+    removeAuth: (String) -> Unit = {},
+    resetRemoveAuthState: () -> Unit = {}
 ) {
 
     val context = LocalContext.current
@@ -611,6 +652,204 @@ fun SettingsScreen(
                 )
             }
 
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            /**
+             * Seedphrase Management
+             */
+            URTextInputLabel(text = "Seedphrase")
+
+            if (seedphrase == null) {
+                URButton(
+                    onClick = generateSeedphrase,
+                    enabled = !isGeneratingSeedphrase,
+                    isProcessing = isGeneratingSeedphrase
+                ) { buttonTextStyle ->
+                    Text("Generate Seedphrase", style = buttonTextStyle)
+                }
+            }
+
+            if (seedphraseError != null) {
+                Text(
+                    seedphraseError,
+                    color = com.bringyour.network.ui.theme.Red,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            if (seedphrase != null) {
+                // Show seedphrase dialog inline
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = clearSeedphrase,
+                    title = { Text("Your Seedphrase") },
+                    text = {
+                        Column {
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    seedphrase,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                    )
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "\u26A0\uFE0F This is the ONLY time you'll see this seedphrase. Save it somewhere safe.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Seedphrase", seedphrase))
+                            android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                        }) {
+                            Text("Copy to Clipboard")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = clearSeedphrase) {
+                            Text("I've Saved It")
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+                URButton(
+                    onClick = regenerateSeedphrase,
+                    enabled = !isGeneratingSeedphrase,
+                    isProcessing = isGeneratingSeedphrase
+                ) { buttonTextStyle ->
+                    Text("Regenerate Seedphrase", style = buttonTextStyle)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            /**
+             * Network Name
+             */
+            URTextInputLabel(text = "Network Name")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                var nameInput by remember { mutableStateOf("") }
+                androidx.compose.material3.OutlinedTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("Enter network name", color = TextMuted) },
+                    label = { Text("Name") }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                URButton(
+                    onClick = {
+                        if (nameInput.isNotBlank()) {
+                            changeNetworkName(nameInput.trim())
+                        }
+                    },
+                    enabled = nameInput.isNotBlank() && !isChangingName,
+                    isProcessing = isChangingName
+                ) { buttonTextStyle ->
+                    Text("Save", style = buttonTextStyle)
+                }
+            }
+
+            if (changeNameError != null) {
+                Text(
+                    changeNameError,
+                    color = com.bringyour.network.ui.theme.Red,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            // LaunchedEffect to clear result after snackbar
+            LaunchedEffect(changeNameResult) {
+                if (changeNameResult != null) {
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "Network name changed to: $changeNameResult",
+                            withDismissAction = true,
+                            duration = SnackbarDuration.Short
+                        )
+                        clearChangeNameResult()
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            /**
+             * Sign-In Methods
+             */
+            URTextInputLabel(text = "Sign-In Methods")
+
+            // Remove Auth section
+            var confirmRemoveAuthType by remember { mutableStateOf<String?>(null) }
+
+            if (removeAuthError != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    removeAuthError,
+                    color = com.bringyour.network.ui.theme.Red,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            if (removeAuthSuccess) {
+                Text(
+                    "Auth method removed successfully.",
+                    color = com.bringyour.network.ui.theme.Green,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            // Remove auth confirmation dialog
+            if (confirmRemoveAuthType != null) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { confirmRemoveAuthType = null },
+                    title = { Text("Remove Sign-In Method") },
+                    text = { Text("Are you sure you want to remove this sign-in method?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            removeAuth(confirmRemoveAuthType!!)
+                            confirmRemoveAuthType = null
+                        }) {
+                            Text("Remove", color = com.bringyour.network.ui.theme.Red)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirmRemoveAuthType = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            // Quick remove auth buttons for common types
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("email", "google", "solana", "seedphrase").forEach { authType ->
+                    TextButton(
+                        onClick = { confirmRemoveAuthType = authType },
+                        modifier = Modifier.wrapContentWidth()
+                    ) {
+                        Text(authType, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Text(
+                "Tap a method above to remove it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 
