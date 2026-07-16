@@ -260,6 +260,7 @@
     <string name="payouts">Πληρωμές</string>
     <string name="payouts_amount_threshold">Οι πληρωμές πραγματοποιούνται κάθε Κυριακή στις 00:00 UTC και απαιτούν την επίτευξη ενός ελάχιστου ορίου USDC.</string>
     <string name="pending_data_key">Σε εκκρεμότητα</string>
+    <string name="pending_mb_provided">Σε εκκρεμότητα: παρέχονται %1$s MB</string>
     <string name="pending_payout">Εκκρεμής πληρωμή</string>
     <string name="plan">Πρόγραμμα</string>
     <string name="please_try_again">Παρακαλώ δοκιμάστε ξανά.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Δοκιμάστε ξανά</string>
     <string name="try_guest_mode">Δοκιμάστε τη λειτουργία επισκέπτη</string>
     <string name="unencrypted_dns">Μη κρυπτογραφημένο DNS</string>
+    <string name="unknown">άγνωστο</string>
     <string name="unlink">Αποσύνδεση</string>
     <string name="unlink_alert_description">Όταν αποσυνδέετε το δίκτυο παραπομπών σας, δεν θα μπορείτε πλέον να κερδίζετε πόντους από το %1$s</string>
     <string name="unlink_referral_network">Αποσύνδεση δικτύου παραπομπών</string>
@@ -440,6 +442,10 @@
     <plurals name="new_items_count">
         <item quantity="one">%1$d νέο</item>
         <item quantity="other">%1$d νέα</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d ακόμη</item>
+        <item quantity="other">+ %1$d ακόμη</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d πάροχος</item>

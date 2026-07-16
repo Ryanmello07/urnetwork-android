@@ -260,6 +260,7 @@
     <string name="payouts">Malipo</string>
     <string name="payouts_amount_threshold">Malipo hufanyika kila Jumapili saa 00:00 UTC, na yanahitaji kufikia kizingiti cha chini cha USDC.</string>
     <string name="pending_data_key">Inasubiri</string>
+    <string name="pending_mb_provided">Inasubiri: MB %1$s zimetolewa</string>
     <string name="pending_payout">Malipo yanayosubiri</string>
     <string name="plan">Mpango</string>
     <string name="please_try_again">Tafadhali jaribu tena.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Jaribu tena</string>
     <string name="try_guest_mode">Jaribu Hali ya Mgeni</string>
     <string name="unencrypted_dns">DNS isiyosimbwa</string>
+    <string name="unknown">haijulikani</string>
     <string name="unlink">Ondoa kiungo</string>
     <string name="unlink_alert_description">Ukiondoa kiungo cha mtandao wako wa rufaa, hutaweza tena kupata pointi kutoka %1$s</string>
     <string name="unlink_referral_network">Ondoa kiungo cha mtandao wa rufaa</string>
@@ -440,6 +442,10 @@
     <plurals name="new_items_count">
         <item quantity="one">%1$d mpya</item>
         <item quantity="other">%1$d mpya</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d zaidi</item>
+        <item quantity="other">+ %1$d zaidi</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d mtoa huduma</item>

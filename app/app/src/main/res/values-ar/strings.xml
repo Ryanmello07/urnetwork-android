@@ -260,6 +260,7 @@
     <string name="payouts">المدفوعات</string>
     <string name="payouts_amount_threshold">تحدث الدفعات كل يوم أحد في الساعة 00:00 بتوقيت UTC، ويتطلب ذلك تحقيق حد أدنى من USDC.</string>
     <string name="pending_data_key">معلّق</string>
+    <string name="pending_mb_provided">قيد الانتظار: تم توفير %1$s ميغابايت</string>
     <string name="pending_payout">دفعة معلقة</string>
     <string name="plan">خطة</string>
     <string name="please_try_again">يرجى المحاولة مرة أخرى.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">حاول مرة أخرى</string>
     <string name="try_guest_mode">جرب وضع الضيف</string>
     <string name="unencrypted_dns">DNS غير مشفر</string>
+    <string name="unknown">غير معروف</string>
     <string name="unlink">فك الارتباط</string>
     <string name="unlink_alert_description">عند فك ارتباط شبكة الإحالة الخاصة بك، لن تتمكن بعد الآن من كسب النقاط من %1$s</string>
     <string name="unlink_referral_network">فك ارتباط شبكة الإحالة</string>
@@ -464,6 +466,14 @@
         <item quantity="few">%1$d جديدة</item>
         <item quantity="many">%1$d جديدًا</item>
         <item quantity="other">%1$d جديد</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="zero">+ %1$d أخرى</item>
+        <item quantity="one">+ %1$d آخر</item>
+        <item quantity="two">+ %1$d آخران</item>
+        <item quantity="few">+ %1$d أخرى</item>
+        <item quantity="many">+ %1$d أخرى</item>
+        <item quantity="other">+ %1$d أخرى</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="zero">%1$d مزود</item>

@@ -6,14 +6,19 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bringyour.network.DeviceManager
-import com.bringyour.sdk.ContractDetailsList
+import com.bringyour.sdk.ContractDetailsViewController
 import com.bringyour.sdk.Sub
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Aggregated contract pairs for one peer client
+ * Aggregated contract pairs for one peer client, ready to render.
+ *
+ * The per-peer aggregation, the egress+ingress coalescing, the renewal-atomic
+ * replace, and the closing/eject lifecycle all live in the shared SDK
+ * ContractDetailsViewController now (used by every platform); this is just the
+ * rendered shape.
  */
 data class ContractClientRowUi(
     val clientId: String,
@@ -28,28 +33,31 @@ data class ContractClientRowUi(
     val companionContractByteCount: Long = 0,
     val companionContractBitRate: Long = 0,
     val pairCount: Int = 0,
+    // the client's last contract closed and the row is being ejected: it is kept
+    // briefly (by the SDK view controller) so its circles slide off, then removed
+    val closing: Boolean = false,
 )
 
 /**
- * Publishes the live contract details grouped per peer client id.
- * Egress and ingress contract pairs are merged into one row per peer.
- * `provider` selects the provider contracts (traffic relayed for
- * remote clients) instead of this device's own traffic.
+ * Thin adapter over the shared SDK ContractDetailsViewController. It opens the
+ * view controller, subscribes to its row changes, and republishes the mode's
+ * rows: `provider` selects the provider contracts (traffic relayed for remote
+ * clients) instead of this device's own traffic.
+ *
+ * All of the work -- coalescing the egress+ingress change streams, holding a
+ * renewing contract's slot so a replace is atomic, per-peer aggregation, and the
+ * closing/eject lifecycle -- is done by the view controller; this view model no
+ * longer re-implements any of it.
  */
 @HiltViewModel
 class ContractStatsViewModel @Inject constructor(
     private val deviceManager: DeviceManager,
 ) : ViewModel() {
 
+    private var contractDetailsVc: ContractDetailsViewController? = null
     private val subs = mutableListOf<Sub>()
     private var provider = false
     private var started = false
-
-    /**
-     * keeps row order stable across updates: clients keep their
-     * first-seen position, new clients append
-     */
-    private val clientOrder = mutableMapOf<String, Int>()
 
     var rows by mutableStateOf<List<ContractClientRowUi>>(listOf())
         private set
@@ -62,118 +70,58 @@ class ContractStatsViewModel @Inject constructor(
         this.provider = provider
 
         deviceManager.device?.let { device ->
-            if (provider) {
-                subs.add(device.addProviderEgressContractDetailsChangeListener {
-                    viewModelScope.launch { update() }
-                })
-                subs.add(device.addProviderIngressContractDetailsChangeListener {
-                    viewModelScope.launch { update() }
-                })
-            } else {
-                subs.add(device.addEgressContractDetailsChangeListener {
-                    viewModelScope.launch { update() }
-                })
-                subs.add(device.addIngressContractDetailsChangeListener {
-                    viewModelScope.launch { update() }
-                })
-            }
+            val vc = device.openContractDetailsViewController()
+            contractDetailsVc = vc
+
+            subs.add(vc.addContractRowsListener {
+                viewModelScope.launch {
+                    update()
+                }
+            })
+
+            vc.start()
             update()
         }
     }
 
     private fun update() {
-        val device = deviceManager.device ?: return
+        val vc = contractDetailsVc ?: return
 
-        val egress: ContractDetailsList?
-        val ingress: ContractDetailsList?
-        if (provider) {
-            egress = device.providerEgressContractDetails
-            ingress = device.providerIngressContractDetails
-        } else {
-            egress = device.egressContractDetails
-            ingress = device.ingressContractDetails
-        }
+        val list = if (provider) vc.providerContractRows else vc.clientContractRows
 
-        val ownClientId = device.clientId?.idStr
-
-        val rowsByClient = mutableMapOf<String, ContractClientRowUi>()
-        val contractIdsByClient = mutableMapOf<String, MutableList<String>>()
-        val companionIdsByClient = mutableMapOf<String, MutableList<String>>()
-
-        val merge = { list: ContractDetailsList? ->
-            if (list != null) {
-                val n = list.len()
-                for (i in 0 until n) {
-                    val details = list.get(i) ?: continue
-                    val clientId = peerClientId(details, ownClientId)
-                    val row = rowsByClient[clientId] ?: ContractClientRowUi(clientId = clientId)
-                    rowsByClient[clientId] = row.copy(
-                        contractUsedByteCount = row.contractUsedByteCount + details.contractUsedByteCount,
-                        contractByteCount = row.contractByteCount + details.contractByteCount,
-                        contractBitRate = row.contractBitRate + details.contractBitRate,
-                        companionContractUsedByteCount = row.companionContractUsedByteCount + details.companionContractUsedByteCount,
-                        companionContractByteCount = row.companionContractByteCount + details.companionContractByteCount,
-                        companionContractBitRate = row.companionContractBitRate + details.companionContractBitRate,
-                        pairCount = row.pairCount + 1,
+        val newRows = mutableListOf<ContractClientRowUi>()
+        if (list != null) {
+            val n = list.len()
+            for (i in 0 until n) {
+                val r = list.get(i) ?: continue
+                newRows.add(
+                    ContractClientRowUi(
+                        clientId = r.clientId,
+                        contractId = r.contractId,
+                        companionContractId = r.companionContractId,
+                        contractUsedByteCount = r.contractUsedByteCount,
+                        contractByteCount = r.contractByteCount,
+                        contractBitRate = r.contractBitRate,
+                        companionContractUsedByteCount = r.companionContractUsedByteCount,
+                        companionContractByteCount = r.companionContractByteCount,
+                        companionContractBitRate = r.companionContractBitRate,
+                        pairCount = r.pairCount.toInt(),
+                        closing = r.closing,
                     )
-                    details.contractId?.idStr?.let {
-                        contractIdsByClient.getOrPut(clientId) { mutableListOf() }.add(it)
-                    }
-                    details.companionContractId?.idStr?.let {
-                        companionIdsByClient.getOrPut(clientId) { mutableListOf() }.add(it)
-                    }
-                }
-            }
-        }
-        merge(egress)
-        merge(ingress)
-
-        // newest first: newly seen clients are prepended to the top, existing
-        // clients keep their relative order
-        for (clientId in rowsByClient.keys) {
-            if (!clientOrder.containsKey(clientId)) {
-                clientOrder[clientId] = clientOrder.size
-            }
-        }
-        rows = rowsByClient.values
-            .map {
-                it.copy(
-                    contractId = contractIdsByClient[it.clientId]?.sorted()?.joinToString(",") ?: "",
-                    companionContractId = companionIdsByClient[it.clientId]?.sorted()?.joinToString(",") ?: ""
                 )
             }
-            .sortedByDescending { clientOrder[it.clientId] ?: 0 }
-    }
-
-    /**
-     * the peer end of the contract transfer path
-     */
-    private fun peerClientId(details: com.bringyour.sdk.ContractDetails, ownClientId: String?): String {
-        val path = details.contractTransferPath
-        if (path != null) {
-            val sourceId = path.sourceId?.idStr
-            val destinationId = path.destinationId?.idStr
-            if (ownClientId != null) {
-                if (sourceId == ownClientId && destinationId != null) {
-                    return destinationId
-                }
-                if (destinationId == ownClientId && sourceId != null) {
-                    return sourceId
-                }
-            }
-            if (destinationId != null) {
-                return destinationId
-            }
-            if (sourceId != null) {
-                return sourceId
-            }
         }
-        return details.contractId?.idStr ?: "unknown"
+
+        rows = newRows
     }
 
     override fun onCleared() {
         super.onCleared()
         subs.forEach { it.close() }
         subs.clear()
+        contractDetailsVc?.let { vc ->
+            deviceManager.device?.closeViewController(vc)
+        }
+        contractDetailsVc = null
     }
 }

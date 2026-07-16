@@ -260,6 +260,7 @@
     <string name="payouts">支払い</string>
     <string name="payouts_amount_threshold">支払いは毎週日曜日の00:00 UTCに行われ、最低USDC基準を満たす必要があります。</string>
     <string name="pending_data_key">保留中</string>
+    <string name="pending_mb_provided">保留中: %1$s MB 提供済み</string>
     <string name="pending_payout">保留中の支払い</string>
     <string name="plan">プラン</string>
     <string name="please_try_again">もう一度お試しください。</string>
@@ -382,6 +383,7 @@
     <string name="try_again">再試行</string>
     <string name="try_guest_mode">ゲストモードを試す</string>
     <string name="unencrypted_dns">暗号化なしのDNS</string>
+    <string name="unknown">不明</string>
     <string name="unlink">リンク解除</string>
     <string name="unlink_alert_description">紹介ネットワークのリンクを解除すると、%1$s からポイントを獲得できなくなります</string>
     <string name="unlink_referral_network">紹介ネットワークのリンクを解除する</string>
@@ -434,6 +436,9 @@
     </plurals>
     <plurals name="new_items_count">
         <item quantity="other">新着%1$d件</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="other">+ 他%1$d件</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="other">%1$d プロバイダー</item>

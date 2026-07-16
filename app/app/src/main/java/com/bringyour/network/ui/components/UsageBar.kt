@@ -245,7 +245,7 @@ fun UsageBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    stringResource(R.string.referral_bonus, totalReferrals * 30),
+                    stringResource(R.string.referral_bonus, totalReferrals * 3),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
                 )

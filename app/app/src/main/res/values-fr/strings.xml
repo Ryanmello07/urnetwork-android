@@ -260,6 +260,7 @@
     <string name="payouts">Paiements</string>
     <string name="payouts_amount_threshold">Les paiements ont lieu chaque dimanche à 00h00 UTC et nécessitent d’atteindre un seuil minimum de USDC.</string>
     <string name="pending_data_key">En attente</string>
+    <string name="pending_mb_provided">En attente : %1$s MB fournis</string>
     <string name="pending_payout">Paiement en attente</string>
     <string name="plan">Plan</string>
     <string name="please_try_again">Veuillez réessayer.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Réessayer</string>
     <string name="try_guest_mode">Essayer le mode invité</string>
     <string name="unencrypted_dns">DNS non chiffré</string>
+    <string name="unknown">inconnu</string>
     <string name="unlink">Dissocier</string>
     <string name="unlink_alert_description">En dissociant votre réseau de parrainage, vous ne pourrez plus gagner de points depuis %1$s</string>
     <string name="unlink_referral_network">Dissocier le réseau de parrainage</string>
@@ -440,6 +442,10 @@
     <plurals name="new_items_count">
         <item quantity="one">%1$d nouveau</item>
         <item quantity="other">%1$d nouveaux</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d de plus</item>
+        <item quantity="other">+ %1$d de plus</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d fournisseur</item>

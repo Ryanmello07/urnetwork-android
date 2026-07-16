@@ -260,6 +260,7 @@
     <string name="payouts">Uitbetalingen</string>
     <string name="payouts_amount_threshold">Uitbetalingen vinden elke zondag om 00:00 UTC plaats en vereisen het behalen van een minimale USDC-drempel.</string>
     <string name="pending_data_key">In behandeling</string>
+    <string name="pending_mb_provided">In behandeling: %1$s MB geleverd</string>
     <string name="pending_payout">Uitbetaling in behandeling</string>
     <string name="plan">Plan</string>
     <string name="please_try_again">Probeer het alstublieft opnieuw.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Opnieuw proberen</string>
     <string name="try_guest_mode">Probeer de gastmodus</string>
     <string name="unencrypted_dns">Onversleutelde DNS</string>
+    <string name="unknown">onbekend</string>
     <string name="unlink">Ontkoppelen</string>
     <string name="unlink_alert_description">Als je je referentienetwerk ontkoppelt, kun je geen punten meer verdienen van %1$s</string>
     <string name="unlink_referral_network">Referentienetwerk ontkoppelen</string>
@@ -440,6 +442,10 @@
     <plurals name="new_items_count">
         <item quantity="one">%1$d nieuw</item>
         <item quantity="other">%1$d nieuw</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d meer</item>
+        <item quantity="other">+ %1$d meer</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d aanbieder</item>
