@@ -260,6 +260,7 @@
     <string name="payouts">Выплаты</string>
     <string name="payouts_amount_threshold">Выплаты происходят каждое воскресенье в 00:00 UTC и требуют достижения минимального порога USDC.</string>
     <string name="pending_data_key">В ожидании</string>
+    <string name="pending_mb_provided">В ожидании: предоставлено %1$s МБ</string>
     <string name="pending_payout">Ожидаемая выплата</string>
     <string name="plan">Тариф</string>
     <string name="please_try_again">Пожалуйста, попробуйте снова.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Попробовать снова</string>
     <string name="try_guest_mode">Попробуйте гостевой режим</string>
     <string name="unencrypted_dns">Незашифрованный DNS</string>
+    <string name="unknown">неизвестно</string>
     <string name="unlink">Отвязать</string>
     <string name="unlink_alert_description">После отвязки реферальной сети вы больше не сможете зарабатывать очки от %1$s</string>
     <string name="unlink_referral_network">Отвязать реферальную сеть</string>
@@ -452,6 +454,12 @@
         <item quantity="few">%1$d новых</item>
         <item quantity="many">%1$d новых</item>
         <item quantity="other">Новых: %1$d</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ ещё %1$d</item>
+        <item quantity="few">+ ещё %1$d</item>
+        <item quantity="many">+ ещё %1$d</item>
+        <item quantity="other">+ ещё %1$d</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d провайдер</item>

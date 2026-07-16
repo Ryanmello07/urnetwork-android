@@ -1,5 +1,7 @@
 package com.bringyour.network.ui.stats
 
+import android.icu.text.RelativeDateTimeFormatter
+import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -366,10 +369,11 @@ private fun SplitRuleRow(
     onClick: () -> Unit,
 ) {
 
+    val context = LocalContext.current
     val displayText = remember(rule.hosts) {
         val hostNames = rule.hosts.filter { !isIpAddressValue(it) }
         val ips = rule.hosts.filter { isIpAddressValue(it) }
-        formatHostClusterText(hostNames, ips)
+        formatHostClusterText(context, hostNames, ips)
     }
 
     Row(
@@ -416,8 +420,9 @@ private fun BlockActionRow(
     onClick: () -> Unit,
 ) {
 
+    val context = LocalContext.current
     val displayText = remember(action.hosts, action.ips) {
-        formatHostClusterText(action.hosts, action.ips)
+        formatHostClusterText(context, action.hosts, action.ips)
     }
 
     Row(
@@ -495,13 +500,18 @@ fun StateChip(
 }
 
 private fun relativeTime(timeMillis: Long): String {
-    val seconds = ((System.currentTimeMillis() - timeMillis) / 1000).coerceAtLeast(0)
-    return when {
-        seconds < 5 -> "now"
-        seconds < 60 -> "${seconds}s ago"
-        seconds < 3600 -> "${seconds / 60}m ago"
-        else -> "${seconds / 3600}h ago"
+    // the platform formatters localize for every locale; under 5s reads as "now"
+    val now = System.currentTimeMillis()
+    if (now - timeMillis < 5_000) {
+        return RelativeDateTimeFormatter.getInstance()
+            .format(RelativeDateTimeFormatter.Direction.PLAIN, RelativeDateTimeFormatter.AbsoluteUnit.NOW)
     }
+    return DateUtils.getRelativeTimeSpanString(
+        timeMillis,
+        now,
+        DateUtils.SECOND_IN_MILLIS,
+        DateUtils.FORMAT_ABBREV_RELATIVE,
+    ).toString()
 }
 
 /**

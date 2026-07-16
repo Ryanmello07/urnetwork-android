@@ -121,7 +121,7 @@ fun AccountPoints(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     painter = painterResource(R.drawable.point_multiplier),
-                                    contentDescription = "Earning double points",
+                                    contentDescription = "Data multiplier",
                                     tint = Color.Unspecified,
                                     modifier = Modifier.width(36.dp)
                                 )

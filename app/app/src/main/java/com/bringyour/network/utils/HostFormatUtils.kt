@@ -1,5 +1,7 @@
 package com.bringyour.network.utils
 
+import android.content.Context
+import com.bringyour.network.R
 import com.bringyour.sdk.Sdk
 
 private val ipv4Regex = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
@@ -20,7 +22,7 @@ fun isIpAddressValue(value: String): Boolean {
  * are shown as the first, middle, and last 7 in alphanumeric order with
  * the omitted count.
  */
-fun formatHostClusterText(hosts: List<String>, ips: List<String>): String {
+fun formatHostClusterText(context: Context, hosts: List<String>, ips: List<String>): String {
 
     // host names collapse to base names when there are more than 10
     var displayHosts = hosts
@@ -38,17 +40,17 @@ fun formatHostClusterText(hosts: List<String>, ips: List<String>): String {
 
     val items = displayHosts + ips
     if (items.isEmpty()) {
-        return "unknown"
+        return context.getString(R.string.unknown)
     }
 
-    return compactValueList(items)
+    return compactValueList(context, items)
 }
 
 /**
  * Shows all values when there are 20 or fewer, else the first, middle,
  * and last 7 in alphanumeric order (21 max) with the omitted count
  */
-private fun compactValueList(values: List<String>): String {
+private fun compactValueList(context: Context, values: List<String>): String {
 
     if (values.size <= 20) {
         return values.joinToString(", ")
@@ -66,7 +68,8 @@ private fun compactValueList(values: List<String>): String {
         ", …, " + middle.joinToString(", ") +
         ", …, " + last.joinToString(", ")
     if (0 < omitted) {
-        text += " + $omitted more"
+        // plural rules live in res ("plus_n_more")
+        text += " " + context.resources.getQuantityString(R.plurals.plus_n_more, omitted, omitted)
     }
     return text
 }

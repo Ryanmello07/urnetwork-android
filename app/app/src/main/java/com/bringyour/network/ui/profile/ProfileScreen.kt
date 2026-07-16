@@ -162,7 +162,7 @@ fun ProfileScreen(
     var debounceJob by remember { mutableStateOf<Job?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val resetPasswordErr = stringResource(id = R.string.something_went_wrong)
-    val resetPasswordEmailSentMsg = stringResource(id = R.string.reset_password_email_sent, userAuth ?: "unknown")
+    val resetPasswordEmailSentMsg = stringResource(id = R.string.reset_password_email_sent, userAuth ?: stringResource(id = R.string.unknown))
 
     Scaffold(
         topBar = {

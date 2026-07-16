@@ -260,6 +260,7 @@
     <string name="payouts">Pagos</string>
     <string name="payouts_amount_threshold">Los pagos se realizan cada domingo a las 00:00 UTC y requieren cumplir con un umbral mínimo de USDC.</string>
     <string name="pending_data_key">Pendiente</string>
+    <string name="pending_mb_provided">Pendiente: %1$s MB proporcionados</string>
     <string name="pending_payout">Pago pendiente</string>
     <string name="plan">Plan</string>
     <string name="please_try_again">Por favor, inténtalo de nuevo.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Reintentar</string>
     <string name="try_guest_mode">Probar el modo invitado</string>
     <string name="unencrypted_dns">DNS sin cifrar</string>
+    <string name="unknown">desconocido</string>
     <string name="unlink">Desvincular</string>
     <string name="unlink_alert_description">Al desvincular tu red de referidos, ya no podrás ganar puntos de %1$s</string>
     <string name="unlink_referral_network">Desvincular red de referidos</string>
@@ -440,6 +442,10 @@
     <plurals name="new_items_count">
         <item quantity="one">%1$d nuevo</item>
         <item quantity="other">%1$d nuevos</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d más</item>
+        <item quantity="other">+ %1$d más</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d proveedor</item>

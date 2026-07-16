@@ -260,6 +260,7 @@
     <string name="payouts">Výplaty</string>
     <string name="payouts_amount_threshold">Výplaty probíhají každou neděli v 00:00 UTC a vyžadují dosažení minimální hranice USDC.</string>
     <string name="pending_data_key">Čekající</string>
+    <string name="pending_mb_provided">Čekající: %1$s MB poskytnuto</string>
     <string name="pending_payout">Čeká se na výplatu</string>
     <string name="plan">Plán</string>
     <string name="please_try_again">Prosím, zkuste to znovu.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Zkusit znovu</string>
     <string name="try_guest_mode">Zkuste režim hosta</string>
     <string name="unencrypted_dns">Nešifrovaný DNS</string>
+    <string name="unknown">neznámé</string>
     <string name="unlink">Odpojení</string>
     <string name="unlink_alert_description">Po zrušení propojení sítě doporučení již nebudete moci získávat body z %1$s.</string>
     <string name="unlink_referral_network">Odpojení od referenční sítě</string>
@@ -452,6 +454,12 @@
         <item quantity="few">%1$d nové</item>
         <item quantity="many">%1$d nové</item>
         <item quantity="other">Nové: %1$d</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ %1$d další</item>
+        <item quantity="few">+ %1$d další</item>
+        <item quantity="many">+ %1$d dalšího</item>
+        <item quantity="other">+ %1$d dalších</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d poskytovatel</item>

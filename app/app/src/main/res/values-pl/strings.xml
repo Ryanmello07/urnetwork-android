@@ -260,6 +260,7 @@
     <string name="payouts">Wypłaty</string>
     <string name="payouts_amount_threshold">Wypłaty odbywają się w każdą niedzielę o 00:00 UTC i wymagają spełnienia minimalnego progu USDC.</string>
     <string name="pending_data_key">Oczekujące</string>
+    <string name="pending_mb_provided">Oczekujące: dostarczono %1$s MB</string>
     <string name="pending_payout">Oczekująca wypłata</string>
     <string name="plan">Plan</string>
     <string name="please_try_again">Proszę spróbować ponownie.</string>
@@ -382,6 +383,7 @@
     <string name="try_again">Spróbuj ponownie</string>
     <string name="try_guest_mode">Wypróbuj tryb gościa</string>
     <string name="unencrypted_dns">Niezaszyfrowany DNS</string>
+    <string name="unknown">nieznane</string>
     <string name="unlink">Odłącz</string>
     <string name="unlink_alert_description">Po odłączeniu swojej sieci poleceń nie będziesz już mógł zdobywać punktów z %1$s</string>
     <string name="unlink_referral_network">Odłącz sieć poleceń</string>
@@ -452,6 +454,12 @@
         <item quantity="few">%1$d nowe</item>
         <item quantity="many">%1$d nowych</item>
         <item quantity="other">Nowe: %1$d</item>
+    </plurals>
+    <plurals name="plus_n_more">
+        <item quantity="one">+ jeszcze %1$d</item>
+        <item quantity="few">+ jeszcze %1$d</item>
+        <item quantity="many">+ jeszcze %1$d</item>
+        <item quantity="other">+ jeszcze %1$d</item>
     </plurals>
     <plurals name="provider_count">
         <item quantity="one">%1$d dostawca</item>
