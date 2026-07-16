@@ -470,49 +470,51 @@ class SettingsViewModel @Inject constructor(
     val isGeneratingSeedphrase: StateFlow<Boolean> = _isGeneratingSeedphrase
 
     val generateSeedphrase: () -> Unit = {
-        if (_isGeneratingSeedphrase.value) return@generateSeedphrase
-        _isGeneratingSeedphrase.value = true
-        viewModelScope.launch {
-            val args = GenerateSeedphraseArgs()
-            deviceManager.device?.api?.generateSeedphrase(args) { result, error ->
-                viewModelScope.launch {
-                    if (error != null) {
-                        _seedphraseError.value = error.message
-                    } else if (result?.error != null) {
-                        _seedphraseError.value = result.error.message
-                    } else {
-                        _seedphrase.value = result?.seedphrase
-                        _seedphraseError.value = null
+        if (!_isGeneratingSeedphrase.value) {
+            _isGeneratingSeedphrase.value = true
+            viewModelScope.launch {
+                val args = GenerateSeedphraseArgs()
+                deviceManager.device?.api?.generateSeedphrase(args) { result, error ->
+                    viewModelScope.launch {
+                        if (error != null) {
+                            _seedphraseError.value = error.message
+                        } else if (result?.error != null) {
+                            _seedphraseError.value = result.error.message
+                        } else {
+                            _seedphrase.value = result?.seedphrase
+                            _seedphraseError.value = null
+                        }
+                        _isGeneratingSeedphrase.value = false
                     }
+                } ?: run {
+                    _seedphraseError.value = "Unable to connect"
                     _isGeneratingSeedphrase.value = false
                 }
-            } ?: run {
-                _seedphraseError.value = "Unable to connect"
-                _isGeneratingSeedphrase.value = false
             }
         }
     }
 
     val regenerateSeedphrase: () -> Unit = {
-        if (_isGeneratingSeedphrase.value) return@regenerateSeedphrase
-        _isGeneratingSeedphrase.value = true
-        viewModelScope.launch {
-            val args = RegenerateSeedphraseArgs()
-            deviceManager.device?.api?.regenerateSeedphrase(args) { result, error ->
-                viewModelScope.launch {
-                    if (error != null) {
-                        _seedphraseError.value = error.message
-                    } else if (result?.error != null) {
-                        _seedphraseError.value = result.error.message
-                    } else {
-                        _seedphrase.value = result?.seedphrase
-                        _seedphraseError.value = null
+        if (!_isGeneratingSeedphrase.value) {
+            _isGeneratingSeedphrase.value = true
+            viewModelScope.launch {
+                val args = RegenerateSeedphraseArgs()
+                deviceManager.device?.api?.regenerateSeedphrase(args) { result, error ->
+                    viewModelScope.launch {
+                        if (error != null) {
+                            _seedphraseError.value = error.message
+                        } else if (result?.error != null) {
+                            _seedphraseError.value = result.error.message
+                        } else {
+                            _seedphrase.value = result?.seedphrase
+                            _seedphraseError.value = null
+                        }
+                        _isGeneratingSeedphrase.value = false
                     }
+                } ?: run {
+                    _seedphraseError.value = "Unable to connect"
                     _isGeneratingSeedphrase.value = false
                 }
-            } ?: run {
-                _seedphraseError.value = "Unable to connect"
-                _isGeneratingSeedphrase.value = false
             }
         }
     }
@@ -569,51 +571,53 @@ class SettingsViewModel @Inject constructor(
     val isChangingName: StateFlow<Boolean> = _isChangingName
 
     val changeNetworkName: (String) -> Unit = { newName ->
-        if (_isChangingName.value) return@changeNetworkName
-        _isChangingName.value = true
-        viewModelScope.launch {
-            val args = ChangeNetworkNameArgs()
-            args.newName = newName
-            deviceManager.device?.api?.changeNetworkName(args) { result, error ->
-                viewModelScope.launch {
-                    if (error != null) {
-                        _changeNameError.value = error.message
-                    } else if (result?.error != null) {
-                        _changeNameError.value = result.error.message
-                    } else {
-                        _changeNameResult.value = result?.networkName
-                        _changeNameError.value = null
+        if (!_isChangingName.value) {
+            _isChangingName.value = true
+            viewModelScope.launch {
+                val args = ChangeNetworkNameArgs()
+                args.newName = newName
+                deviceManager.device?.api?.changeNetworkName(args) { result, error ->
+                    viewModelScope.launch {
+                        if (error != null) {
+                            _changeNameError.value = error.message
+                        } else if (result?.error != null) {
+                            _changeNameError.value = result.error.message
+                        } else {
+                            _changeNameResult.value = result?.networkName
+                            _changeNameError.value = null
+                        }
+                        _isChangingName.value = false
                     }
+                } ?: run {
+                    _changeNameError.value = "Unable to connect"
                     _isChangingName.value = false
                 }
-            } ?: run {
-                _changeNameError.value = "Unable to connect"
-                _isChangingName.value = false
             }
         }
     }
 
     val claimNetworkName: (String) -> Unit = { newName ->
-        if (_isChangingName.value) return@claimNetworkName
-        _isChangingName.value = true
-        viewModelScope.launch {
-            val args = ClaimNetworkNameArgs()
-            args.newName = newName
-            deviceManager.device?.api?.claimNetworkName(args) { result, error ->
-                viewModelScope.launch {
-                    if (error != null) {
-                        _changeNameError.value = error.message
-                    } else if (result?.error != null) {
-                        _changeNameError.value = result.error.message
-                    } else {
-                        _changeNameResult.value = result?.networkName
-                        _changeNameError.value = null
+        if (!_isChangingName.value) {
+            _isChangingName.value = true
+            viewModelScope.launch {
+                val args = ClaimNetworkNameArgs()
+                args.newName = newName
+                deviceManager.device?.api?.claimNetworkName(args) { result, error ->
+                    viewModelScope.launch {
+                        if (error != null) {
+                            _changeNameError.value = error.message
+                        } else if (result?.error != null) {
+                            _changeNameError.value = result.error.message
+                        } else {
+                            _changeNameResult.value = result?.networkName
+                            _changeNameError.value = null
+                        }
+                        _isChangingName.value = false
                     }
+                } ?: run {
+                    _changeNameError.value = "Unable to connect"
                     _isChangingName.value = false
                 }
-            } ?: run {
-                _changeNameError.value = "Unable to connect"
-                _isChangingName.value = false
             }
         }
     }

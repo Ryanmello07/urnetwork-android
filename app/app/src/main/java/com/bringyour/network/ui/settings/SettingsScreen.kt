@@ -770,14 +770,12 @@ fun SettingsScreen(
             // LaunchedEffect to clear result after snackbar
             LaunchedEffect(changeNameResult) {
                 if (changeNameResult != null) {
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = "Network name changed to: $changeNameResult",
-                            withDismissAction = true,
-                            duration = SnackbarDuration.Short
-                        )
-                        clearChangeNameResult()
-                    }
+                    snackbarHostState.showSnackbar(
+                        message = "Network name changed to: $changeNameResult",
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Short
+                    )
+                    clearChangeNameResult()
                 }
             }
 
