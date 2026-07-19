@@ -49,6 +49,11 @@ once and every flavor gets it automatically.
 
 - **Replace PR #2 entirely** — new branch cut from `beta/custom-server`, PR
   #2 closed. Not extending its branch.
+- **PR1 → PR2 → PR3 are sequential, not parallel**: each branches from
+  `beta/custom-server` only after the previous one has merged into it. PR2
+  and PR3 don't depend on PR1's code, but doing them in this order keeps
+  `beta/custom-server` as the single source of truth each new branch forks
+  from, avoiding merge-order surprises.
 - **All 4 flavors** in scope (`google`, `ungoogle`, `ethos_dapp`,
   `solana_dapp`), not just `google`.
 - **New per-flavor UI code is copy-pasted per flavor**, matching the
