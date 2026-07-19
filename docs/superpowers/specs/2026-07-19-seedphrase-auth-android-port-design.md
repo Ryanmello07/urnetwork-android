@@ -76,20 +76,54 @@ once and every flavor gets it automatically.
 
 ## Phases
 
+### Phase 0 — Fix CI to actually build the real flavors (prerequisite)
+
+Discovered during PR #2 review: `beta-build.yml` only runs `./gradlew
+:app:assembleGithubDebug`. The `github` flavor is `isDefault true` with no
+dedicated source directory (`app/app/src/github/` doesn't exist) — it builds
+`main` only and never touches `google`/`ungoogle`/`ethos_dapp`/
+`solana_dapp`'s per-flavor code. Confirmed concretely: PR #2's current head
+(`1b6166b7`) has a literal duplicated `) {` — a genuine Kotlin syntax
+error — sitting in `google/.../LoginInitial.kt`'s `LoginInitial` composable's
+parameter list, yet the PR shows CI green, because CI never compiles that
+file.
+
+Fix: extend `beta-build.yml` to also run `assembleGoogleDebug`,
+`assembleUngoogleDebug`, `assembleEthosDappDebug`, `assembleSolanaDappDebug`
+(matrix or sequential steps). This lands as its own small PR, merged into
+`beta/custom-server` before PR1's branch is cut, so PR1's very first push
+gets accurate CI feedback instead of the same false-confidence gap that let
+PR #2 ship broken.
+
 ### Phase 1 — PR1: Guest-mode removal + seedphrase login/signup (4 flavors)
 
-New per-flavor files (×4): `LoginSeedphrase.kt`, `CreateNetworkInstant.kt`,
-`SeedphraseDisplayScreen.kt`.
+**Correction from initial review**: the new screens are NOT per-flavor.
+`LoginSeedphrase.kt`, `CreateNetworkInstant.kt`, `SeedphraseDisplayScreen.kt`,
+and `LoginNavHost.kt` all live in the shared `main` source set (confirmed via
+PR #2's actual file paths) — there's no existing per-flavor precedent
+forcing them to be duplicated, since they're brand new files, not
+modifications to files that already exist as 4 separate copies.
 
-Modified per-flavor: `LoginInitial.kt`, `LoginViewModel.kt`,
-`LoginNavHost.kt`, `LoginActivity.kt`.
+Only 3 files are genuinely per-flavor (×4) here, because only these 3
+already exist as 4 separate copies pre-feature:
+- `LoginInitial.kt` — add seedphrase-login + instant-account buttons
+- `LoginViewModel.kt` — add `loginWithSeedphrase(...)`, remove guest-mode
+  state
+- `LoginActivity.kt` — drop the `guestMode` arg (~3 line diff per flavor)
 
-Modified in `main`: `LoginCreateNetwork.kt`/ViewModel (instant-account tab),
+New files, written once in `main`: `LoginSeedphrase.kt`,
+`CreateNetworkInstant.kt`, `SeedphraseDisplayScreen.kt`.
+
+Modified in `main`: `LoginNavHost.kt` (new routes), `LoginCreateNetwork.kt`/
+`LoginCreateNetworkViewModel.kt` (instant-account tab),
 `AccountScreen.kt`/`AccountViewModel.kt`/`FullScreenOverlay.kt`/
-`SwitchAccountScreen.kt` (drop guest-mode branches).
+`SwitchAccountScreen.kt`/`OnboardingOverlay.kt`/`OverlayBackground.kt`/
+`WelcomeAnimatedLoginOverlay.kt`/`WelcomeAnimatedMainOverlay.kt` (drop
+guest-mode branches).
 
 Deleted: `OnboardingGuestModeSheet.kt`, `GuestModeOverlay.kt`, guest-mode
-drawables.
+drawables (all density variants, both `app/src/main/res/` and top-level
+`res/`).
 
 Known bug to avoid re-introducing: iOS's `isSeedphraseValid` originally only
 checked non-empty, not actual word count (12/24) — gate correctly from the
@@ -162,11 +196,19 @@ Once PR1, PR2, PR3 are merged into the Android fork's `beta/custom-server`:
 
 ## Verification
 
-No local Android toolchain available. Same pattern as iOS: push → `Beta
-Build — Android` GitHub Actions workflow (confirmed existing and working) →
-download unsigned APK artifact for manual testing against the beta server.
-Expect multiple rounds of CI-driven build-error fixes before green, same as
-iOS hit ~8 rounds of Swift-compiler-timeout/build-error commits.
+No local Android toolchain available (confirmed: `./gradlew tasks` fails
+immediately on the missing `warpctl` binary / SDK sibling checkout, same
+constraint as iOS's no-Xcode situation). Same pattern as iOS: push → `Beta
+Build — Android` GitHub Actions workflow → download unsigned APK artifact for
+manual testing against the beta server. Expect multiple rounds of CI-driven
+build-error fixes before green, same as iOS hit ~8 rounds of
+Swift-compiler-timeout/build-error commits.
+
+**Important**: "CI green" only means what Phase 0 makes it mean. Before
+Phase 0, CI only built a stub flavor that skips all 4 real login screens —
+confirmed by finding a real syntax error in PR #2's `google` flavor that CI
+never caught. After Phase 0, treat CI green as trustworthy for the 4 real
+flavors; don't assume it was trustworthy for PR #2's history.
 
 ## Out of scope
 
