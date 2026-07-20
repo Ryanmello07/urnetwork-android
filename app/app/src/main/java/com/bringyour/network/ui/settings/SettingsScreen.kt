@@ -167,6 +167,16 @@ fun SettingsScreen(
     var pendingSeedphraseAction by remember { mutableStateOf<SeedphraseAction?>(null) }
     var seedphraseActionError by remember { mutableStateOf<String?>(null) }
 
+    // Close the confirm dialog only once the request actually succeeds (mirrors
+    // the remove-sign-in-method dialog, which closes on its onSuccess callback,
+    // not eagerly on tap) -- otherwise an async error has nowhere to render,
+    // since seedphraseActionError lives inside this dialog's own content.
+    LaunchedEffect(generatedSeedphrase) {
+        if (generatedSeedphrase != null) {
+            pendingSeedphraseAction = null
+        }
+    }
+
     val scope = rememberCoroutineScope()
 
     val updateReferralNetworkSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -482,7 +492,6 @@ fun SettingsScreen(
                     } else {
                         settingsViewModel.generateSeedphrase(onError)
                     }
-                    pendingSeedphraseAction = null
                 },
                 enabled = !isGeneratingSeedphrase && !isRegeneratingSeedphrase,
                 isProcessing = isGeneratingSeedphrase || isRegeneratingSeedphrase
