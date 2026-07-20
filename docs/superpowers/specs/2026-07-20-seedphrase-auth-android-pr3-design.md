@@ -273,11 +273,20 @@ happens to be open.
 This file already has one `DisposableEffect(lifecycleOwner,
 pendingSolanaSubReference) { LifecycleEventObserver { _, event -> if
 (event == Lifecycle.Event.ON_RESUME) { ... } } }` block (a Solana
-pending-subscription poll, `MainNavHost.kt:356-369`) — add a sibling
-observer of the same shape calling `device?.refreshToken(0)`, matching
-this file's own established lifecycle-observation convention (also used
-in `SettingsScreen.kt:1313-1320` for a battery-optimization check) rather
-than introducing a new one.
+pending-subscription poll, `MainNavHost.kt:356-369`), and — same as that
+block, which resumes by calling a ViewModel method
+(`subscriptionBalanceViewModel.pollSolanaTransaction()`), not raw device
+access — the new observer should follow the same shape rather than
+reaching for `deviceManager` directly, which `MainNavHost.kt` doesn't
+have in scope. `MainNavViewModel` (already Hilt-injected as a
+`MainNavHost` parameter with a default,
+`mainNavViewModel: MainNavViewModel = hiltViewModel<MainNavViewModel>()`)
+already takes `deviceManager: DeviceManager` in its constructor and
+already closes over it in a property lambda
+(`setIntroFunnelLastPrompted`) — add a sibling method there, e.g.
+`val refreshTokenOnForeground: () -> Unit = { deviceManager.device?.refreshToken(0) }`,
+and call `mainNavViewModel.refreshTokenOnForeground()` from the new
+lifecycle observer in `MainNavHost.kt`.
 
 ## Data flow
 
