@@ -22,8 +22,10 @@ import com.bringyour.network.ui.shared.models.ProvideNetworkMode
 import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.theme.Red
 import com.bringyour.network.ui.theme.Yellow
+import com.bringyour.sdk.AddAuthArgs
 import com.bringyour.sdk.AuthCodeCreateArgs
 import com.bringyour.sdk.ReferralNetwork
+import com.bringyour.sdk.RemoveAuthArgs
 import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.StripeCreateCustomerPortalArgs
 import com.bringyour.sdk.Sub
@@ -288,6 +290,67 @@ class SettingsViewModel @Inject constructor(
             }
         } ?: run {
             _isDeletingAccount.value = false
+        }
+    }
+
+    private val _isAddingAuth = MutableStateFlow(false)
+    val isAddingAuth: StateFlow<Boolean> = _isAddingAuth
+
+    val addAuth: (
+        args: AddAuthArgs,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) -> Unit = { args, onSuccess, onError ->
+
+        _isAddingAuth.value = true
+
+        deviceManager.device?.api?.addAuth(args) { result, err ->
+            viewModelScope.launch {
+                _isAddingAuth.value = false
+
+                if (err != null) {
+                    onError(err.message ?: "Failed to add sign-in method")
+                } else if (result?.error != null) {
+                    onError(result.error.message ?: "Failed to add sign-in method")
+                } else {
+                    onSuccess()
+                }
+            }
+        } ?: run {
+            _isAddingAuth.value = false
+            onError("Unable to connect. Please try again.")
+        }
+    }
+
+    private val _isRemovingAuth = MutableStateFlow(false)
+    val isRemovingAuth: StateFlow<Boolean> = _isRemovingAuth
+
+    val removeAuth: (
+        authType: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) -> Unit = { authType, onSuccess, onError ->
+
+        _isRemovingAuth.value = true
+
+        val args = RemoveAuthArgs()
+        args.authType = authType
+
+        deviceManager.device?.api?.removeAuth(args) { result, err ->
+            viewModelScope.launch {
+                _isRemovingAuth.value = false
+
+                if (err != null) {
+                    onError(err.message ?: "Failed to remove sign-in method")
+                } else if (result?.error != null) {
+                    onError(result.error.message ?: "Failed to remove sign-in method")
+                } else {
+                    onSuccess()
+                }
+            }
+        } ?: run {
+            _isRemovingAuth.value = false
+            onError("Unable to connect. Please try again.")
         }
     }
 
