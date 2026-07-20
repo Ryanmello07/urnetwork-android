@@ -89,8 +89,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import com.bringyour.network.ui.components.URTextInputLabel
 import com.bringyour.network.ui.components.URTextInput
 import com.bringyour.network.ui.components.URDialog
+import com.bringyour.network.ui.components.URInlineErrorText
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.BlueLight
+import com.bringyour.network.ui.theme.TextDanger
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.bringyour.network.ui.theme.URNetworkTheme
@@ -146,6 +148,15 @@ fun SettingsScreen(
     val referralNetwork = settingsViewModel.referralNetwork.collectAsState().value
     val isPresentingAuthCodeDialog = settingsViewModel.isPresentingAuthCodeDialog.collectAsState().value
     val authCode = settingsViewModel.authCode.collectAsState().value
+
+    val networkUser = accountViewModel.networkUser.collectAsState().value
+    val authMethods = networkUser?.let { parseAuthMethods(it) } ?: emptyList()
+    val isAddingAuth = settingsViewModel.isAddingAuth.collectAsState().value
+    val isRemovingAuth = settingsViewModel.isRemovingAuth.collectAsState().value
+
+    var presentAddAuthSheet by remember { mutableStateOf(false) }
+    var pendingRemoveMethod by remember { mutableStateOf<String?>(null) }
+    var removeAuthError by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
 
@@ -273,7 +284,10 @@ fun SettingsScreen(
         setDisplayAuthCodeDialog = settingsViewModel.setIsPresentingAuthCodeDialog,
         provideIndicatorColor = settingsViewModel.provideIndicatorColor,
         stripePortalUrl = settingsViewModel.stripePortalUrl.collectAsState().value,
-        totalReferrals = totalReferrals
+        totalReferrals = totalReferrals,
+        authMethods = authMethods,
+        onRemoveAuthMethod = { method -> pendingRemoveMethod = method },
+        onAddAuthMethodClick = { presentAddAuthSheet = true },
     )
 
     if (isPresentingRenameDevice) {
@@ -358,6 +372,64 @@ fun SettingsScreen(
         )
     }
 
+    AddAuthMethodSheet(
+        visible = presentAddAuthSheet,
+        onDismiss = { presentAddAuthSheet = false },
+        showGoogleOption = BuildConfig.BRINGYOUR_BUNDLE_SSO_GOOGLE,
+        activityResultSender = activityResultSender,
+        isAddingAuth = isAddingAuth,
+        addAuth = settingsViewModel.addAuth,
+        onAdded = {
+            presentAddAuthSheet = false
+            accountViewModel.refreshNetworkUser()
+        }
+    )
+
+    URDialog(
+        visible = pendingRemoveMethod != null,
+        onDismiss = {
+            pendingRemoveMethod = null
+            removeAuthError = null
+        }
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Remove ${pendingRemoveMethod?.let { methodDisplayName(it) } ?: ""}?",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "You won't be able to sign in with this method anymore.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White
+            )
+            if (removeAuthError != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                URInlineErrorText(removeAuthError)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            URButton(
+                onClick = {
+                    val method = pendingRemoveMethod ?: return@URButton
+                    removeAuthError = null
+                    settingsViewModel.removeAuth(
+                        method,
+                        {
+                            pendingRemoveMethod = null
+                            accountViewModel.refreshNetworkUser()
+                        },
+                        { msg -> removeAuthError = msg }
+                    )
+                },
+                enabled = !isRemovingAuth,
+                isProcessing = isRemovingAuth
+            ) { buttonTextStyle ->
+                Text("Remove", style = buttonTextStyle)
+            }
+        }
+    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -399,7 +471,10 @@ fun SettingsScreen(
     setDisplayAuthCodeDialog: (Boolean) -> Unit,
     provideIndicatorColor: Color,
     stripePortalUrl: String?,
-    totalReferrals: Long = 0L
+    totalReferrals: Long = 0L,
+    authMethods: List<String>,
+    onRemoveAuthMethod: (String) -> Unit,
+    onAddAuthMethodClick: () -> Unit,
 ) {
 
     val context = LocalContext.current
@@ -611,6 +686,43 @@ fun SettingsScreen(
                 )
             }
 
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            /**
+             * Sign-In Methods
+             */
+            URTextInputLabel(text = "Sign-In Methods")
+
+            authMethods.forEach { method ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        methodDisplayName(method),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White
+                    )
+
+                    TextButton(onClick = { onRemoveAuthMethod(method) }) {
+                        Text(
+                            "Remove",
+                            color = TextDanger
+                        )
+                    }
+                }
+            }
+
+            TextButton(onClick = onAddAuthMethodClick) {
+                Text(
+                    "Add sign-in method",
+                    color = BlueMedium
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -1297,7 +1409,10 @@ private fun SettingsScreenPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1372,7 +1487,10 @@ private fun SettingsScreenSupporterPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1415,7 +1533,10 @@ private fun SettingsScreenNotificationsDisabledPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1458,7 +1579,10 @@ private fun SettingsScreenNotificationsAllowedPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1501,7 +1625,10 @@ private fun SettingsScreenDeleteAccountDialogPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
