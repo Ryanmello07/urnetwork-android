@@ -255,6 +255,9 @@
     <string name="earnings">Earnings</string>
     <string name="earnings_doubled">You\'re earning x2 points</string>
     <string name="edit_device_name">Edit device name</string>
+    <string name="edit_network_name">Edit network name</string>
+    <string name="claim_network_name_hint">Claim a custom network name to replace your auto-generated one</string>
+    <string name="change_network_name_hint">Tap the edit icon to change your network name</string>
     <string name="edit_referral_code">Edit referral code</string>
     <string name="edit_split_rule">Edit split rule</string>
     <string name="enjoying_urnetwork">Enjoying URnetwork?</string>
