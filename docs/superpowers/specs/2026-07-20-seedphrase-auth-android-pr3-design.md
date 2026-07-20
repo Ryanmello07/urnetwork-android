@@ -163,24 +163,103 @@ explicitly, so it stays an explicit requirement for this task too.
 
 ### `ProfileScreen.kt` (modified, same directory)
 
-Re-enable the currently-commented-out edit-icon + Save/Cancel controls
-(the block starting `// todo - temporarily remove edits until new API
-changes are made`). Save routes to `profileViewModel.claimNetworkName` if
-`needsNameClaim` else `profileViewModel.saveNetworkName`, matching iOS's
-`ProfileView.swift:74-80` branch exactly. Remove the outer composable's
-`DisposableEffect(Unit) { profileViewModel.updateSuccessSub { ... } }`
-block (no longer needed — the new methods take direct `onSuccess`/
-`onError` callbacks, same shape as PR2's `AddAuthMethodSheet` call sites).
-On save success: `accountViewModel.refreshNetworkUser()` +
-`profileViewModel.setIsEditingProfile(false)` (moved from the old
-`updateSuccessSub` callback into the new `onSuccess` callback, same
-effect).
+**Correction (user feedback after first spec draft): do not resurrect the
+old commented-out UI.** The dead block (`// todo - temporarily remove
+edits until new API changes are made`) is Android's own pre-existing,
+pre-this-feature design — a plain `Text("Edit profile")`/`Text("Save")`/
+`Text("Cancel")` set of clickable links, no pencil icon, no read/edit view
+swap, and (confirmed while re-checking this section) it has no
+`needsNameClaim` awareness at all, since that concept didn't exist yet
+when it was written. Reusing it would not match iOS and would leave the
+claim-vs-change UX to be invented from scratch anyway. Instead, this
+section is rebuilt from scratch to copy iOS's actual `ProfileView.swift`
+flow (pencil-icon-triggered dual-view swap between a read-only display and
+an editing form), using Android's existing component library
+(`URTextInput`, `URButton`, `TextButton`, `URInlineErrorText` — all
+already proven in PR2's `AddAuthMethodSheet`/`SettingsScreen.kt`), not the
+old dead code. The currently-*active* (non-commented) `URTextInput`
+that's always rendered with `enabled = isEditingProfile && !isUpdating`
+is also replaced — iOS never shows an edit-capable field in read-only
+mode, it shows a separate plain `Text`, so Android's single-always-visible-
+input structure changes too, not just the commented block.
 
-Text/copy for the claim-vs-change distinction should follow the existing
-read-only-view precedent already present in this file (the two-branch
-`if (needsNameClaim) { ... } else { ... }` Text block already exists at
-lines 111-119 for read-only mode — extend the same branching to the
-Save-button-visible/editing-mode copy, rather than inventing new copy).
+Read-only mode (`!isEditingProfile`), modeled on `ProfileView.swift:93-122`,
+using this codebase's own existing edit-affordance convention verbatim
+(confirmed at `SettingsScreen.kt:684-711`, the device-rename row: a
+`.clickable`-wrapped `Row` with a trailing `Icons.Filled.Edit` icon, not
+a separate `IconButton`):
+
+```kotlin
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .clickable { setIsEditingProfile(true) },
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Text(networkName, style = MaterialTheme.typography.bodyLarge, color = Color.White)
+    Icon(
+        Icons.Filled.Edit,
+        contentDescription = stringResource(id = R.string.edit_network_name), // new string resource, mirrors existing edit_device_name
+        tint = TextMuted,
+        modifier = Modifier.size(16.dp)
+    )
+}
+Text(
+    if (needsNameClaim) "Claim a custom network name to replace your auto-generated one"
+    else "Tap the edit icon to change your network name",
+    style = MaterialTheme.typography.bodySmall,
+    color = TextMuted
+)
+```
+
+Editing mode (`isEditingProfile`):
+
+```kotlin
+URTextInput(
+    value = networkNameTextFieldValue,
+    onValueChange = { /* existing debounce + validateNetworkName wiring, unchanged */ },
+    label = stringResource(id = R.string.network_name_label),
+    isValidating = networkNameIsValidating,
+    isValid = networkNameIsValid,
+    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+)
+if (networkNameError != null) {
+    URInlineErrorText(networkNameError)
+}
+Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Box(modifier = Modifier.weight(1f)) {
+        URButton(
+            onClick = {
+                if (needsNameClaim) claimNetworkName(onSuccess, onError)
+                else saveNetworkName(onSuccess, onError)
+            },
+            enabled = !isSavingNetworkName && networkNameTextFieldValue.text.isNotBlank(),
+            isProcessing = isSavingNetworkName
+        ) { buttonTextStyle -> Text("Save", style = buttonTextStyle) }
+    }
+    TextButton(onClick = cancelEdits) { Text("Cancel") }
+}
+```
+
+This mirrors iOS exactly: `UrButton("Save", ...)` → `URButton(...)` (this
+codebase's own equivalent primary button, no `modifier` param — same
+`Box(modifier = Modifier.weight(1f)) { URButton(...) }` wrapper pattern
+PR2 already established for exactly this "URButton has no modifier param"
+constraint), plain `Button(action:) { Text("Cancel") }` → `TextButton`
+(already this codebase's established lightweight-secondary-action
+component, used for "Remove"/"Add sign-in method" in PR2's
+`SettingsScreen.kt`), and the `needsNameClaim` caption branching directly
+mirrors `ProfileView.swift:111-119`.
+
+`onSuccess`/`onError` passed into `saveNetworkName`/`claimNetworkName`:
+`onSuccess = { accountViewModel.refreshNetworkUser();
+profileViewModel.setIsEditingProfile(false) }`, `onError = { msg ->
+/* surfaced via profileViewModel.networkNameError, already set by the
+ViewModel method itself before invoking onError */ }` — same shape as
+PR2's `AddAuthMethodSheet` call sites, no `DisposableEffect`/`Sub`
+subscription needed (unlike the old `updateSuccessSub` mechanism being
+deleted from the ViewModel).
 
 ### `MainNavHost.kt` (modified, `app/app/src/main/java/com/bringyour/network/ui/`)
 
