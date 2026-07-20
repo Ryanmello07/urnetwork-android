@@ -32,6 +32,33 @@ class DeviceManager @Inject constructor(
     private var provideSecretKeysSub: Sub? = null
     private val localStateChangeSubs = mutableListOf<Sub>()
 
+    // Device lifecycle listeners: view models wire their SDK subscriptions per
+    // device, and the device is (re)created asynchronously (login, network
+    // change) — an init-time `device?.let` silently wires NOTHING when the view
+    // model is created first. Listeners fire immediately with the current
+    // device on add, then on every init/clear.
+    private val deviceChangeListeners = mutableListOf<(DeviceLocal?) -> Unit>()
+
+    fun addDeviceChangeListener(listener: (DeviceLocal?) -> Unit): () -> Unit {
+        synchronized(deviceLock) {
+            deviceChangeListeners.add(listener)
+        }
+        // fire with the current device so late subscribers wire immediately
+        listener(device)
+        return {
+            synchronized(deviceLock) {
+                deviceChangeListeners.remove(listener)
+            }
+        }
+    }
+
+    private fun notifyDeviceChanged(device: DeviceLocal?) {
+        val listeners = synchronized(deviceLock) {
+            deviceChangeListeners.toList()
+        }
+        listeners.forEach { it(device) }
+    }
+
     val networkSpace get() = device?.networkSpace
     val asyncLocalState get() = device?.networkSpace?.asyncLocalState
 
@@ -123,7 +150,12 @@ class DeviceManager @Inject constructor(
         val canPromptIntroFunnel = localState.canPromptIntroFunnel
         val provideControlMode = ProvideControlMode.fromString(localState.provideControlMode) ?: ProvideControlMode.NEVER
         val provideNetworkMode = ProvideNetworkMode.fromString(localState.provideNetworkMode) ?: ProvideNetworkMode.WIFI
-        val provideMode = if (provideControlMode == ProvideControlMode.ALWAYS) Sdk.ProvideModePublic else localState.provideMode
+        val provideMode = when (provideControlMode) {
+            ProvideControlMode.ALWAYS -> Sdk.ProvideModePublic
+            // the private provider: always on, but only for same-network peers
+            ProvideControlMode.NETWORK -> Sdk.ProvideModeNetwork
+            else -> localState.provideMode
+        }
         val vpnInterfaceWhileOffline = localState.vpnInterfaceWhileOffline
         val canRefer = localState.canRefer
         val allowForeground = localState.allowForeground
@@ -225,6 +257,7 @@ class DeviceManager @Inject constructor(
                 onAuthLogout?.invoke()
             }
         }
+        notifyDeviceChanged(newDevice)
         return true
     }
 
@@ -322,6 +355,7 @@ class DeviceManager @Inject constructor(
             device = null
             jwtManager.clearJwt()
         }
+        notifyDeviceChanged(null)
     }
 
     private fun closeDeviceSubscriptionsLocked() {

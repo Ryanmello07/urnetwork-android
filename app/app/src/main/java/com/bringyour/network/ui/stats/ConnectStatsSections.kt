@@ -36,8 +36,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.graphics.drawable.toBitmap
 import androidx.navigation.NavController
@@ -53,6 +55,7 @@ import com.bringyour.network.ui.theme.Red
 import com.bringyour.network.ui.theme.MutedCoral
 import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
+import com.bringyour.sdk.Sdk
 
 /**
  * The statistics sections in the connect sheet: client statistics,
@@ -162,6 +165,10 @@ fun ConnectStatsSections(
         }
     ) {
 
+        // sits at the top of the card, above the status rows, when the applied
+        // settings differ from the recommended ones
+        DnsRecommendationPill(dnsSettingsViewModel)
+
         val settings = dnsSettingsViewModel.settings
 
         if (settings != null) {
@@ -242,18 +249,19 @@ fun AppSplitRulesPanel(
     onClick: () -> Unit,
 ) {
 
-    val text = if (0 < includedCount) {
-        pluralStringResource(
+    val text = when {
+        0 < includedCount -> pluralStringResource(
             id = R.plurals.apps_included_count,
             count = includedCount,
             includedCount,
         )
-    } else {
-        pluralStringResource(
+        0 < excludedCount -> pluralStringResource(
             id = R.plurals.apps_excluded_count,
             count = excludedCount,
             excludedCount,
         )
+        // no rules configured yet: a generic starter label rather than "0 apps excluded"
+        else -> stringResource(R.string.app_split_starter)
     }
 
     val icons = rememberAppIcons(activeAppIds)
@@ -377,6 +385,91 @@ private fun rememberAppIcons(packageNames: List<String>): List<ImageBitmap> {
         }
     }
     return icons
+}
+
+/**
+ * A small pill at the top of the custom dns card, shown when the applied dns
+ * settings differ from the recommended ones.
+ *
+ * A connected country with a known-better regional recommendation takes
+ * precedence: the pill reads "unapplied recommended settings for {country}" and
+ * carries that country's color dot. Otherwise, when the safe defaults are not
+ * applied, it reads "the default safe settings are not applied" with no dot.
+ * Renders nothing once the applied settings already match the best
+ * recommendation. This condenses the recommendation logic on the dns settings
+ * screen into a single glanceable pill.
+ *
+ * Kept in its own composable so it only recomposes when the dns settings change,
+ * rather than with the rest of the card.
+ */
+@Composable
+private fun DnsRecommendationPill(
+    dnsSettingsViewModel: DnsSettingsViewModel,
+) {
+    // the currently applied settings; no pill until they load
+    val current = dnsSettingsViewModel.settings ?: return
+
+    val message: String
+    val countryCode: String?
+
+    val recommended = dnsSettingsViewModel.recommendedSettings
+    if (recommended != null) {
+        // a connected country with a known-better regional recommendation
+        if (current == recommended) return // already on the regional recommendation
+        val code = dnsSettingsViewModel.connectedCountryCode
+        val name = dnsSettingsViewModel.connectedCountryName
+            ?: code?.uppercase()
+            ?: stringResource(id = R.string.this_region)
+        message = stringResource(id = R.string.dns_pill_recommended, name)
+        countryCode = code
+    } else {
+        // otherwise nudge toward the safe defaults when they are not applied
+        val defaults = dnsSettingsViewModel.defaultSettings ?: return
+        if (current == defaults) return
+        message = stringResource(id = R.string.dns_pill_defaults)
+        countryCode = null
+    }
+
+    Row(
+        modifier = Modifier
+            .padding(bottom = 8.dp)
+            .background(
+                MutedCoral.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(50)
+            )
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // a regional recommendation dots the pill with the connected country color
+        if (countryCode != null) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(
+                        color = countryColor(countryCode),
+                        shape = CircleShape
+                    )
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+        Text(
+            message,
+            style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+            color = Color.White
+        )
+    }
+}
+
+/**
+ * The color associated with a country code, falling back to a muted gray when
+ * the sdk has no color or the hex is unparseable.
+ */
+private fun countryColor(countryCode: String): Color {
+    return try {
+        Color(android.graphics.Color.parseColor("#${Sdk.getColorHex(countryCode)}"))
+    } catch (e: Throwable) {
+        TextMuted
+    }
 }
 
 @Composable

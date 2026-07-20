@@ -604,6 +604,9 @@ class MainApplication : Application() {
     fun updateVpnService() {
         val device = device ?: return
 
+        // the vpn service is the packet router: it must run whenever the device
+        // is connected, providing (any mode — including Network, which relays
+        // for same-network peers), or routing remotely
         val provideEnabled = device.provideEnabled
         val providePaused = device.providePaused
         val connectEnabled = device.connectEnabled
