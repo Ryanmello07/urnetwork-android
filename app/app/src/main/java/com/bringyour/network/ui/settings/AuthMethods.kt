@@ -9,7 +9,7 @@ fun authTypesContains(authTypes: StringList?, method: String): Boolean {
 }
 
 fun parseAuthMethods(networkUser: NetworkUser): List<String> {
-    val fromAuthTypes = sdkStringListToList(networkUser.authTypes)
+    val fromAuthTypes = sdkStringListToList(networkUser.authTypes).filter { it.isNotEmpty() }
     if (fromAuthTypes.isNotEmpty()) {
         return fromAuthTypes
     }
