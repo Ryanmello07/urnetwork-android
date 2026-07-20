@@ -26,7 +26,7 @@
     <string name="app_split_active_none">No app split — all apps use the VPN</string>
     <string name="app_split_precedence_note">Included apps take precedence: when any app is included, only included apps use the VPN and exclusions have no effect.</string>
     <string name="app_split_rules">App split rules</string>
-    <string name="app_split_starter">0 app splits</string>
+    <string name="app_split_starter">0 split apps</string>
     <string name="apply_bonus">Apply bonus</string>
     <string name="apps">Apps</string>
     <string name="are_you_sure_delete_account">Are you sure you want to delete your account?</string>
@@ -121,10 +121,7 @@
     <string name="default_wallet">Default</string>
     <string name="delete_account">Delete Account</string>
     <string name="device">Device</string>
-    <string name="device_discoverable">This device is discoverable</string>
-    <string name="device_discoverable_as">This device is discoverable as %1$s</string>
     <string name="device_name_label">Name</string>
-    <string name="device_not_discoverable">Enable provide mode to make this device discoverable</string>
     <string name="device_spec_label">Spec</string>
     <string name="devices">Devices</string>
     <string name="disable_ignore_battery_hint">To disable, please go to App Battery Usage in System Settings</string>
@@ -476,26 +473,4 @@
         <item quantity="one">Total referrals: %1$d</item>
         <item quantity="other">Total referrals: %1$d</item>
     </plurals>
-    <string name="change_network_api_title">Change Network API</string>
-    <string name="change_network_api">Change Network API</string>
-    <string name="contract_stack_max">max %1$s</string>
-    <string name="dns_pill_defaults">The default safe settings are not applied</string>
-    <string name="dns_pill_recommended">There are unapplied recommended settings for %1$s</string>
-    <string name="network_api_api_url_help">Leave blank to derive from the network domain.</string>
-    <string name="network_api_api_url_label">API URL (optional)</string>
-    <string name="network_api_apply">Apply Network API</string>
-    <string name="network_api_connect_url_help">Use wss:// for secure custom connect servers.</string>
-    <string name="network_api_connect_url_label">Connect URL (optional)</string>
-    <string name="network_api_current_api">Current API: %1$s</string>
-    <string name="network_api_current_connect">Current connect: %1$s</string>
-    <string name="network_api_description">Choose the network domain used by the app. Leave the API and connect URLs blank to derive them from the domain.</string>
-    <string name="network_api_domain_help">Example: ur.network or your custom domain.</string>
-    <string name="network_api_domain_label">Network domain</string>
-    <string name="network_api_enter_domain">Enter a network domain</string>
-    <string name="network_api_failed">Failed: %1$s</string>
-    <string name="network_api_insecure_warning">Warning: one or more custom endpoints are not using HTTPS/WSS. Traffic may be unencrypted.</string>
-    <string name="network_api_manager_unavailable">Network manager unavailable</string>
-    <string name="network_api_switched_to">Switched to %1$s</string>
-    <string name="network_api_use_default">Use default network</string>
-    <string name="receive">Receive</string>
 </resources>
