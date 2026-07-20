@@ -91,6 +91,7 @@ import com.bringyour.network.ui.components.URTextInput
 import com.bringyour.network.ui.components.URDialog
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.BlueLight
+import com.bringyour.network.ui.theme.TextDanger
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.bringyour.network.ui.theme.URNetworkTheme
@@ -399,7 +400,10 @@ fun SettingsScreen(
     setDisplayAuthCodeDialog: (Boolean) -> Unit,
     provideIndicatorColor: Color,
     stripePortalUrl: String?,
-    totalReferrals: Long = 0L
+    totalReferrals: Long = 0L,
+    authMethods: List<String>,
+    onRemoveAuthMethod: (String) -> Unit,
+    onAddAuthMethodClick: () -> Unit,
 ) {
 
     val context = LocalContext.current
@@ -611,6 +615,43 @@ fun SettingsScreen(
                 )
             }
 
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            /**
+             * Sign-In Methods
+             */
+            URTextInputLabel(text = "Sign-In Methods")
+
+            authMethods.forEach { method ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        methodDisplayName(method),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White
+                    )
+
+                    TextButton(onClick = { onRemoveAuthMethod(method) }) {
+                        Text(
+                            "Remove",
+                            color = TextDanger
+                        )
+                    }
+                }
+            }
+
+            TextButton(onClick = onAddAuthMethodClick) {
+                Text(
+                    "Add sign-in method",
+                    color = BlueMedium
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -1297,7 +1338,10 @@ private fun SettingsScreenPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1372,7 +1416,10 @@ private fun SettingsScreenSupporterPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1415,7 +1462,10 @@ private fun SettingsScreenNotificationsDisabledPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1458,7 +1508,10 @@ private fun SettingsScreenNotificationsAllowedPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
@@ -1501,7 +1554,10 @@ private fun SettingsScreenDeleteAccountDialogPreview() {
             isCreatingAuthCode = false,
             setDisplayAuthCodeDialog = {},
             provideIndicatorColor = Green,
-            stripePortalUrl = null
+            stripePortalUrl = null,
+            authMethods = listOf("email"),
+            onRemoveAuthMethod = {},
+            onAddAuthMethodClick = {}
         )
     }
 }
