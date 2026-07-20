@@ -13,6 +13,7 @@
 - Direct structural port of iOS's `AddAuthSheet.swift` / `AuthMethods.swift` / `SettingsForm-iOS.swift`'s "Sign-In Methods" section — same 5 methods conceptually (Apple/Google/Wallet/Email/Seedphrase), same list+remove+add UX shape.
 - **Apple is omitted entirely** from the Android method picker — no disabled/informational placeholder entry, just not present as an option.
 - **Google is conditionally shown** based on `BuildConfig.BRINGYOUR_BUNDLE_SSO_GOOGLE` (`false` on `github` flavor, `true` on `play`/`solana_dapp`/`ethos_dapp`) — this is an existing per-flavor `buildConfigField`, not a new mechanism.
+- **Google Sign-In code cannot live in shared `main`** — `com.google.android.gms.auth.api.signin.*` (`play-services-auth`) is only on the classpath via `playImplementation`/`solana_dappImplementation`/`ethos_dappImplementation`; `github` has no equivalent dependency line (deliberately — it's the de-Googled flavor) and would fail to compile if `main` imported those symbols unconditionally. Task 3 isolates this to a small `GoogleAddAuthButton(...)` composable that every flavor's source set implements separately (real on `google`/`solana_dapp`/`ethos_dapp`, no-op stub on `ungoogle`), matching the "flavor source set supplies the symbol" mechanism this codebase already uses for `MainActivity.kt`/`LoginInitial.kt`, just at a single-function scale instead of a whole file.
 - **Wallet uses Mobile Wallet Adapter (MWA)**, not a deep-link-and-poll pattern — verified against `SolanaWalletAuth.kt`'s existing `requestAndSignSolanaChallenge(activityResultSender, api): SolanaChallengeSignResult` suspend function, already proven in the login flow. No separate Phantom/Solflare buttons; MWA's own OS-level wallet picker handles provider selection.
 - **Refresh only on the success path** of every add/remove, never unconditionally after a catch (a real bug in iOS's shipped version — do not reintroduce it here).
 - **Wallet-connect coroutine must be cancelled on sheet dismiss** — since Android's flow is a single suspend call (not two separate connect/sign polling stages like iOS), this is a single `Job.cancel()`, simpler than iOS's own incomplete fix.
@@ -184,24 +185,31 @@ git commit -m "feat: add addAuth/removeAuth mutation methods to SettingsViewMode
 
 ---
 
-### Task 3: Create `AddAuthMethodSheet.kt` (shared `main`)
+### Task 3: Create `AddAuthMethodSheet.kt` (shared `main`) + per-flavor `GoogleAddAuthButton.kt`
+
+**Correction (found during implementation, before Task 3 was ever committed):** an earlier draft of this task put the Google Sign-In code (`com.google.android.gms.auth.api.signin.*` imports) directly inside `AddAuthMethodSheet.kt` in shared `main`. That cannot compile: `play-services-auth` is only on the classpath via `playImplementation`/`solana_dappImplementation`/`ethos_dappImplementation` in `app/app/build.gradle` — there is no `githubImplementation` (or plain `implementation`) line for it, and adding one would contradict `github`'s deliberate de-Googled purpose. Every existing Google-Sign-In-touching composable in this codebase (`LoginInitial.kt`) already lives per-flavor for exactly this reason.
+
+The fix applies that same principle at minimal surface: the bulk of the sheet (Wallet/Email/Seedphrase — verified safe, since `mobile-wallet-adapter-clientlib-ktx` is a plain `implementation`, not per-flavor) stays one shared `main` file. Only the ~30-line Google-specific piece moves into a small function, `GoogleAddAuthButton(...)`, that **every flavor's source set must provide its own implementation of** — three real implementations (`play`→`src/google`, `solana_dapp`, `ethos_dapp`) and one no-op stub (`github`→`src/ungoogle`). `main`'s code calls `GoogleAddAuthButton(...)` uniformly, trusting the active flavor's source set to supply exactly one implementation — the same "flavor source set provides the symbol" mechanism Gradle already uses for `MainActivity.kt`/`LoginInitial.kt`, just applied to a single function instead of a whole file.
 
 **Files:**
-- Create: `app/app/src/main/java/com/bringyour/network/ui/settings/AddAuthMethodSheet.kt`
+- Create: `app/app/src/main/java/com/bringyour/network/ui/settings/AddAuthMethodSheet.kt` (shared `main`, no `com.google.android.gms.*` imports)
+- Create: `app/app/src/google/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt` (real impl, `play` flavor)
+- Create: `app/app/src/solana_dapp/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt` (real impl)
+- Create: `app/app/src/ethos_dapp/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt` (real impl)
+- Create: `app/app/src/ungoogle/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt` (no-op stub, `github` flavor)
 
 **Interfaces:**
 - Consumes: `SettingsViewModel.addAuth`/`.isAddingAuth` (Task 2), `com.bringyour.network.ui.login.requestAndSignSolanaChallenge`/`SolanaChallengeSignResult` (existing, `SolanaWalletAuth.kt`), `com.bringyour.sdk.{AddAuthArgs, WalletAuthArgs}` (SDK), `com.bringyour.network.ui.components.{URButton, URTextInput}` (existing).
 - Produces: `@Composable fun AddAuthMethodSheet(visible: Boolean, onDismiss: () -> Unit, showGoogleOption: Boolean, activityResultSender: ActivityResultSender?, isAddingAuth: Boolean, addAuth: (AddAuthArgs, () -> Unit, (String) -> Unit) -> Unit, onAdded: () -> Unit)` — consumed by Task 5 (`SettingsScreen.kt`).
+- Internal (all 4 `GoogleAddAuthButton.kt` files must define this **exact same signature**, package `com.bringyour.network.ui.settings`, or the flavor lacking a match won't compile): `@Composable fun GoogleAddAuthButton(addAuth: (AddAuthArgs, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit, isAddingAuth: Boolean, onAdded: () -> Unit, onError: (String) -> Unit)`.
 
-- [ ] **Step 1: Write the file**
+- [ ] **Step 1: Write `AddAuthMethodSheet.kt` (shared `main`, no GMS imports)**
 
 ```kotlin
 package com.bringyour.network.ui.settings
 
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -237,9 +245,6 @@ import com.bringyour.network.ui.login.requestAndSignSolanaChallenge
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.sdk.AddAuthArgs
 import com.bringyour.sdk.WalletAuthArgs
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import kotlinx.coroutines.launch
 
@@ -283,40 +288,6 @@ fun AddAuthMethodSheet(
     DisposableEffect(Unit) {
         onDispose {
             walletConnectJob?.cancel()
-        }
-    }
-
-    val googleClientId = androidx.compose.ui.res.stringResource(id = com.bringyour.network.R.string.google_client_id)
-    val googleSignInOpts = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-        .requestIdToken(googleClientId)
-        .requestEmail()
-        .build()
-    val googleSignInClient = GoogleSignIn.getClient(context, googleSignInOpts)
-
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            val idToken = account.idToken
-            if (idToken == null) {
-                addError = "Could not get Google ID token"
-                return@rememberLauncherForActivityResult
-            }
-            val args = AddAuthArgs()
-            args.authJwt = idToken
-            args.authJwtType = "google"
-            addAuth(
-                args,
-                {
-                    Toast.makeText(context, "Google sign-in method added", Toast.LENGTH_SHORT).show()
-                    onAdded()
-                },
-                { msg -> addError = msg }
-            )
-        } catch (e: ApiException) {
-            addError = "Error signing in with Google"
         }
     }
 
@@ -415,18 +386,17 @@ fun AddAuthMethodSheet(
 
             when (selectedMethod) {
                 AddAuthMethod.GOOGLE -> {
-                    Text(
-                        "Sign in with Google to add it as a sign-in method.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted
+                    // Google Sign-In is per-flavor code (com.google.android.gms.*
+                    // is not on github's classpath) -- every flavor's source set
+                    // provides its own GoogleAddAuthButton with this exact
+                    // signature (real impl on google/solana_dapp/ethos_dapp,
+                    // no-op stub on ungoogle/github). See Task 3 note above.
+                    GoogleAddAuthButton(
+                        addAuth = addAuth,
+                        isAddingAuth = isAddingAuth,
+                        onAdded = onAdded,
+                        onError = { msg -> addError = msg }
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    URButton(
-                        onClick = { googleSignInLauncher.launch(googleSignInClient.signInIntent) },
-                        enabled = !isAddingAuth
-                    ) { buttonTextStyle ->
-                        Text("Sign in with Google", style = buttonTextStyle)
-                    }
                 }
                 AddAuthMethod.WALLET -> {
                     Text(
@@ -537,11 +507,133 @@ fun AddAuthMethodSheet(
 
 Note: `ButtonStyle.PRIMARY` — check `com.bringyour.network.ui.components.ButtonStyle` during implementation for the exact default/selected-state enum value name (used elsewhere as `ButtonStyle.SECONDARY` for the non-default case throughout this codebase; confirm the default/no-arg style's exact name — it may not literally be called `PRIMARY`, check the enum definition and use its real default value name if different).
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Commit the shared sheet**
 
 ```bash
 git add app/app/src/main/java/com/bringyour/network/ui/settings/AddAuthMethodSheet.kt
-git commit -m "feat: add AddAuthMethodSheet (Google/Wallet/Email/Seedphrase)"
+git commit -m "feat: add AddAuthMethodSheet (Wallet/Email/Seedphrase, Google via per-flavor slot)"
+```
+
+- [ ] **Step 3: Write the real `GoogleAddAuthButton.kt` (identical content in all three real-Google flavors)**
+
+Create this exact file at all three paths — `app/app/src/google/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt`, `app/app/src/solana_dapp/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt`, and `app/app/src/ethos_dapp/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt`:
+
+```kotlin
+package com.bringyour.network.ui.settings
+
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.bringyour.network.R
+import com.bringyour.network.ui.components.URButton
+import com.bringyour.network.ui.theme.TextMuted
+import com.bringyour.sdk.AddAuthArgs
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+
+@Composable
+fun GoogleAddAuthButton(
+    addAuth: (AddAuthArgs, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
+    isAddingAuth: Boolean,
+    onAdded: () -> Unit,
+    onError: (String) -> Unit,
+) {
+    val context = LocalContext.current
+
+    val googleClientId = stringResource(id = R.string.google_client_id)
+    val googleSignInOpts = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+        .requestIdToken(googleClientId)
+        .requestEmail()
+        .build()
+    val googleSignInClient = GoogleSignIn.getClient(context, googleSignInOpts)
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val idToken = account.idToken
+            if (idToken == null) {
+                onError("Could not get Google ID token")
+                return@rememberLauncherForActivityResult
+            }
+            val args = AddAuthArgs()
+            args.authJwt = idToken
+            args.authJwtType = "google"
+            addAuth(
+                args,
+                {
+                    Toast.makeText(context, "Google sign-in method added", Toast.LENGTH_SHORT).show()
+                    onAdded()
+                },
+                { msg -> onError(msg) }
+            )
+        } catch (e: ApiException) {
+            onError("Error signing in with Google")
+        }
+    }
+
+    Text(
+        "Sign in with Google to add it as a sign-in method.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = TextMuted
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    URButton(
+        onClick = { googleSignInLauncher.launch(googleSignInClient.signInIntent) },
+        enabled = !isAddingAuth
+    ) { buttonTextStyle ->
+        Text("Sign in with Google", style = buttonTextStyle)
+    }
+}
+```
+
+Note: `R.string.google_client_id` already exists at `app/app/src/main/res/values/google.xml` (a shared `main` resource, distinct from the Kotlin-source per-flavor split) plus duplicate copies under `src/solana_dapp/res/values/google.xml` and `src/ethos_dapp/res/values/google.xml` — resource resolution isn't the blocker here (Gradle merges `main` + flavor resources regardless of flavor), only the `com.google.android.gms.*` Kotlin symbols are. No new resource work needed.
+
+- [ ] **Step 4: Write the no-op `GoogleAddAuthButton.kt` stub for `github`**
+
+Create `app/app/src/ungoogle/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt`:
+
+```kotlin
+package com.bringyour.network.ui.settings
+
+import androidx.compose.runtime.Composable
+import com.bringyour.sdk.AddAuthArgs
+
+// github is deliberately de-Googled (no play-services-auth dependency), so
+// this flavor never shows the Google option (showGoogleOption is false via
+// BuildConfig.BRINGYOUR_BUNDLE_SSO_GOOGLE) and this body is unreachable in
+// practice. It must still exist so AddAuthMethodSheet.kt's call to
+// GoogleAddAuthButton(...) resolves for this flavor's compilation.
+@Composable
+fun GoogleAddAuthButton(
+    addAuth: (AddAuthArgs, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
+    isAddingAuth: Boolean,
+    onAdded: () -> Unit,
+    onError: (String) -> Unit,
+) {
+}
+```
+
+- [ ] **Step 5: Commit the per-flavor Google pieces**
+
+```bash
+git add app/app/src/google/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt \
+        app/app/src/solana_dapp/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt \
+        app/app/src/ethos_dapp/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt \
+        app/app/src/ungoogle/java/com/bringyour/network/ui/settings/GoogleAddAuthButton.kt
+git commit -m "feat: add per-flavor GoogleAddAuthButton (github gets a no-op stub)"
 ```
 
 ---
