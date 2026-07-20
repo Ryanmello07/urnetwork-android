@@ -5,16 +5,21 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,13 +41,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.theme.Black
+import com.bringyour.network.ui.theme.MainTintedBackgroundBase
 import com.bringyour.network.ui.theme.TextMuted
+import com.bringyour.network.ui.theme.Yellow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,7 +91,12 @@ fun SeedphraseDisplayScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = {},
+                title = {
+                    Text(
+                        "Secure Your Account",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = {
                         showBackConfirmDialog = true
@@ -114,7 +128,7 @@ fun SeedphraseDisplayScreen(
                 modifier = Modifier.widthIn(max = 512.dp)
             ) {
                 Text(
-                    "Your Account Seedphrase",
+                    "Your Seedphrase",
                     style = MaterialTheme.typography.headlineLarge,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -123,7 +137,17 @@ fun SeedphraseDisplayScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    "⚠️ This is the ONLY time you'll see this seedphrase. Save it somewhere safe — you'll need it to sign in.",
+                    "⚠️ This is the ONLY time you'll see this.",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center,
+                    color = Yellow,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    "Write it down and store it somewhere safe. If you lose it, you'll lose access to your account.",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                     color = TextMuted,
@@ -133,19 +157,41 @@ fun SeedphraseDisplayScreen(
                 Spacer(modifier = Modifier.height(32.dp))
 
                 SelectionContainer {
-                    Text(
-                        text = seedphrase,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        textAlign = TextAlign.Center,
+                    val words = seedphrase.split(" ").filter { it.isNotEmpty() }
+
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp)
-                    )
+                            .border(
+                                width = 1.dp,
+                                color = TextMuted.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        words.withIndex().toList().chunked(2).forEach { rowWords ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                rowWords.forEach { (wordIndex, word) ->
+                                    SeedWordChip(
+                                        number = wordIndex + 1,
+                                        word = word,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                // odd word count on the last row: keep the grid's 2 columns aligned
+                                if (rowWords.size < 2) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 URButton(
                     onClick = {
@@ -167,5 +213,37 @@ fun SeedphraseDisplayScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SeedWordChip(
+    number: Int,
+    word: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .background(
+                color = MainTintedBackgroundBase,
+                shape = RoundedCornerShape(6.dp)
+            )
+            .padding(vertical = 6.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "$number.",
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = TextMuted,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(24.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            word,
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+            color = Color.White,
+            maxLines = 1
+        )
     }
 }
