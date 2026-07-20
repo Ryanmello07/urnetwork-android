@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -127,6 +128,7 @@ import com.bringyour.network.TAG
 import com.bringyour.network.ui.components.CopyReferralCode
 import com.bringyour.network.ui.components.ProvideCellPicker
 import com.bringyour.network.ui.components.ProvideControlModePicker
+import com.bringyour.network.ui.login.SeedphraseDisplayScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -157,6 +159,13 @@ fun SettingsScreen(
     var presentAddAuthSheet by remember { mutableStateOf(false) }
     var pendingRemoveMethod by remember { mutableStateOf<String?>(null) }
     var removeAuthError by remember { mutableStateOf<String?>(null) }
+
+    val generatedSeedphrase = settingsViewModel.generatedSeedphrase.collectAsState().value
+    val isGeneratingSeedphrase = settingsViewModel.isGeneratingSeedphrase.collectAsState().value
+    val isRegeneratingSeedphrase = settingsViewModel.isRegeneratingSeedphrase.collectAsState().value
+
+    var pendingSeedphraseAction by remember { mutableStateOf<SeedphraseAction?>(null) }
+    var seedphraseActionError by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
 
@@ -288,6 +297,10 @@ fun SettingsScreen(
         authMethods = authMethods,
         onRemoveAuthMethod = { method -> pendingRemoveMethod = method },
         onAddAuthMethodClick = { presentAddAuthSheet = true },
+        hasSeedphrase = authTypesContains(networkUser?.authTypes, "seedphrase"),
+        isGeneratingSeedphrase = isGeneratingSeedphrase,
+        isRegeneratingSeedphrase = isRegeneratingSeedphrase,
+        onSeedphraseActionClick = { action -> pendingSeedphraseAction = action },
     )
 
     if (isPresentingRenameDevice) {
@@ -430,11 +443,72 @@ fun SettingsScreen(
         }
     }
 
+    URDialog(
+        visible = pendingSeedphraseAction != null,
+        onDismiss = {
+            pendingSeedphraseAction = null
+            seedphraseActionError = null
+        }
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            val isRegenerate = pendingSeedphraseAction == SeedphraseAction.REGENERATE
+            Text(
+                if (isRegenerate) "Regenerate your seedphrase?" else "Generate a seedphrase?",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                if (isRegenerate) {
+                    "Your current seedphrase will stop working. You'll be shown a new one to save."
+                } else {
+                    "A seedphrase lets you recover your account if you lose access. You'll be shown it once."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White
+            )
+            if (seedphraseActionError != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                URInlineErrorText(seedphraseActionError)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            URButton(
+                onClick = {
+                    seedphraseActionError = null
+                    val onError: (String) -> Unit = { msg -> seedphraseActionError = msg }
+                    if (isRegenerate) {
+                        settingsViewModel.regenerateSeedphrase(onError)
+                    } else {
+                        settingsViewModel.generateSeedphrase(onError)
+                    }
+                    pendingSeedphraseAction = null
+                },
+                enabled = !isGeneratingSeedphrase && !isRegeneratingSeedphrase,
+                isProcessing = isGeneratingSeedphrase || isRegeneratingSeedphrase
+            ) { buttonTextStyle ->
+                Text(if (isRegenerate) "Regenerate" else "Generate", style = buttonTextStyle)
+            }
+        }
+    }
+
+    if (generatedSeedphrase != null) {
+        SeedphraseDisplayScreen(
+            seedphrase = generatedSeedphrase,
+            onConfirmed = {
+                settingsViewModel.dismissSeedphraseDisplay()
+                accountViewModel.refreshNetworkUser()
+            },
+            onBack = {
+                settingsViewModel.dismissSeedphraseDisplay()
+            }
+        )
+    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(
+private fun SettingsScreen(
     navController: NavController,
     clientId: String,
     currentPlan: Plan,
@@ -475,6 +549,10 @@ fun SettingsScreen(
     authMethods: List<String>,
     onRemoveAuthMethod: (String) -> Unit,
     onAddAuthMethodClick: () -> Unit,
+    hasSeedphrase: Boolean,
+    isGeneratingSeedphrase: Boolean,
+    isRegeneratingSeedphrase: Boolean,
+    onSeedphraseActionClick: (SeedphraseAction) -> Unit,
 ) {
 
     val context = LocalContext.current
@@ -686,6 +764,49 @@ fun SettingsScreen(
                 )
             }
 
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            /**
+             * Seedphrase
+             */
+            URTextInputLabel(text = "Seedphrase")
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (hasSeedphrase) "Regenerate Seedphrase" else "Generate Seedphrase",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if ((hasSeedphrase && isRegeneratingSeedphrase) || (!hasSeedphrase && isGeneratingSeedphrase)) {
+                        CircularProgressIndicator(modifier = Modifier.width(16.dp))
+                    } else {
+                        TextButton(onClick = {
+                            onSeedphraseActionClick(
+                                if (hasSeedphrase) SeedphraseAction.REGENERATE else SeedphraseAction.GENERATE
+                            )
+                        }) {
+                            Text(
+                                if (hasSeedphrase) "Regenerate" else "Generate",
+                                color = BlueMedium
+                            )
+                        }
+                    }
+                }
+            }
+            Text(
+                "A seedphrase lets you recover your account if you lose access.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -1412,7 +1533,11 @@ private fun SettingsScreenPreview() {
             stripePortalUrl = null,
             authMethods = listOf("email"),
             onRemoveAuthMethod = {},
-            onAddAuthMethodClick = {}
+            onAddAuthMethodClick = {},
+            hasSeedphrase = false,
+            isGeneratingSeedphrase = false,
+            isRegeneratingSeedphrase = false,
+            onSeedphraseActionClick = {},
         )
     }
 }
@@ -1490,7 +1615,11 @@ private fun SettingsScreenSupporterPreview() {
             stripePortalUrl = null,
             authMethods = listOf("email"),
             onRemoveAuthMethod = {},
-            onAddAuthMethodClick = {}
+            onAddAuthMethodClick = {},
+            hasSeedphrase = false,
+            isGeneratingSeedphrase = false,
+            isRegeneratingSeedphrase = false,
+            onSeedphraseActionClick = {},
         )
     }
 }
@@ -1536,7 +1665,11 @@ private fun SettingsScreenNotificationsDisabledPreview() {
             stripePortalUrl = null,
             authMethods = listOf("email"),
             onRemoveAuthMethod = {},
-            onAddAuthMethodClick = {}
+            onAddAuthMethodClick = {},
+            hasSeedphrase = false,
+            isGeneratingSeedphrase = false,
+            isRegeneratingSeedphrase = false,
+            onSeedphraseActionClick = {},
         )
     }
 }
@@ -1582,7 +1715,11 @@ private fun SettingsScreenNotificationsAllowedPreview() {
             stripePortalUrl = null,
             authMethods = listOf("email"),
             onRemoveAuthMethod = {},
-            onAddAuthMethodClick = {}
+            onAddAuthMethodClick = {},
+            hasSeedphrase = false,
+            isGeneratingSeedphrase = false,
+            isRegeneratingSeedphrase = false,
+            onSeedphraseActionClick = {},
         )
     }
 }
@@ -1628,7 +1765,13 @@ private fun SettingsScreenDeleteAccountDialogPreview() {
             stripePortalUrl = null,
             authMethods = listOf("email"),
             onRemoveAuthMethod = {},
-            onAddAuthMethodClick = {}
+            onAddAuthMethodClick = {},
+            hasSeedphrase = false,
+            isGeneratingSeedphrase = false,
+            isRegeneratingSeedphrase = false,
+            onSeedphraseActionClick = {},
         )
     }
 }
+
+private enum class SeedphraseAction { GENERATE, REGENERATE }
