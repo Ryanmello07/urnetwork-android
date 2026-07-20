@@ -63,6 +63,8 @@
     <string name="cancel">Brich ab</string>
     <string name="chains_supported">Solana- und Polygon-Wallets werden derzeit unterstützt</string>
     <string name="change">Ändere</string>
+    <string name="change_network_api">Netzwerk-API ändern</string>
+    <string name="change_network_api_title">Netzwerk-API ändern</string>
     <string name="change_password">Passwort ändern</string>
     <string name="check_internet">Überprüfe deine Internetverbindung</string>
     <string name="check_ip">Meine IP prüfen</string>
@@ -96,6 +98,7 @@
     <string name="connectivity_label">Konnektivität</string>
     <string name="continue_txt">Weiter</string>
     <string name="contract">Vertrag</string>
+    <string name="contract_stack_max">max %1$s</string>
     <string name="contracts_appear_connected">Verträge erscheinen hier, während du verbunden bist.</string>
     <string name="contracts_appear_providing">Verträge erscheinen hier, während die Bereitstellung läuft.</string>
     <string name="copy">Kopiere</string>
@@ -118,7 +121,10 @@
     <string name="default_wallet">Standard</string>
     <string name="delete_account">Konto löschen</string>
     <string name="device">Gerät</string>
+    <string name="device_discoverable">Dieses Gerät ist auffindbar</string>
+    <string name="device_discoverable_as">Dieses Gerät ist auffindbar als %1$s</string>
     <string name="device_name_label">Name</string>
+    <string name="device_not_discoverable">Aktiviere den Bereitstellungsmodus, um dieses Gerät auffindbar zu machen</string>
     <string name="device_spec_label">Spezifikation</string>
     <string name="devices">Geräte</string>
     <string name="disable_ignore_battery_hint">Zum Deaktivieren gehe bitte zu App-Akkuverbrauch in den Systemeinstellungen</string>
@@ -126,6 +132,8 @@
     <string name="dismiss">Schließen</string>
     <string name="display_network_on_leaderboard">Netzwerk in Bestenliste anzeigen</string>
     <string name="dns_over_https">DNS über HTTPS</string>
+    <string name="dns_pill_defaults">Die sicheren Standardeinstellungen sind nicht angewendet</string>
+    <string name="dns_pill_recommended">Für %1$s gibt es nicht angewendete empfohlene Einstellungen</string>
     <string name="dns_recommendation_message">Die strengsten Sicherheitsregeln funktionieren in %1$s bekanntermaßen nicht. Es gibt weniger sichere, empfohlene DNS-Einstellungen, die besser funktionieren.</string>
     <string name="dns_restore_secure_message">Stelle die sichersten Einstellungen wieder her: verschlüsseltes DNS über HTTPS durch den Tunnel.</string>
     <string name="dns_settings_unavailable">DNS-Einstellungen nicht verfügbar</string>
@@ -216,6 +224,22 @@
     <string name="need_more_data_faster">Benötigen Sie mehr Daten, schneller?</string>
     <string name="net_points_earned">Netto-Punkte verdient</string>
     <string name="net_provided">Bereitgestelltes Netz</string>
+    <string name="network_api_api_url_help">Leer lassen, um sie von der Netzwerkdomain abzuleiten.</string>
+    <string name="network_api_api_url_label">API-URL (optional)</string>
+    <string name="network_api_apply">Netzwerk-API anwenden</string>
+    <string name="network_api_connect_url_help">Verwende wss:// für sichere eigene Connect-Server.</string>
+    <string name="network_api_connect_url_label">Connect-URL (optional)</string>
+    <string name="network_api_current_api">Aktuelle API: %1$s</string>
+    <string name="network_api_current_connect">Aktueller Connect: %1$s</string>
+    <string name="network_api_description">Wähle die Netzwerkdomain, die die App verwendet. Lass die API- und Connect-URLs leer, um sie von der Domain abzuleiten.</string>
+    <string name="network_api_domain_help">Beispiel: ur.network oder deine eigene Domain.</string>
+    <string name="network_api_domain_label">Netzwerkdomain</string>
+    <string name="network_api_enter_domain">Gib eine Netzwerkdomain ein</string>
+    <string name="network_api_failed">Fehlgeschlagen: %1$s</string>
+    <string name="network_api_insecure_warning">Warnung: Ein oder mehrere eigene Endpunkte verwenden kein HTTPS/WSS. Der Datenverkehr ist möglicherweise unverschlüsselt.</string>
+    <string name="network_api_manager_unavailable">Netzwerkmanager nicht verfügbar</string>
+    <string name="network_api_switched_to">Gewechselt zu %1$s</string>
+    <string name="network_api_use_default">Standardnetzwerk verwenden</string>
     <string name="network_create_bonus_message">Jemand hat dich zum Mitmachen eingeladen 🥳\\nSichere dir deinen Bonus durch die Erstellung eines Netzwerks!</string>
     <string name="network_name_check_error">Nicht verfügbar. Muss mindestens 3 Zeichen von einem bestehenden Netzwerk abweichen. Mach es einzigartig oder länger.</string>
     <string name="network_name_label">Netzwerkname</string>
@@ -275,6 +299,7 @@
     <string name="provider_statistics">Anbieter-Statistiken</string>
     <string name="providing_disabled">Bereitstellung ist deaktiviert</string>
     <string name="ready_to_connect">Bereit zur Verbindung</string>
+    <string name="receive">Empfange</string>
     <string name="receive_notifications">Verbindungsbenachrichtigungen erhalten</string>
     <string name="reconnect">Erneut verbinden</string>
     <string name="reconnect_tunnel_status_indicator">VPN-Tunnel getrennt 😓</string>

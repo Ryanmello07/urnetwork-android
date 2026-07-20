@@ -63,6 +63,8 @@
     <string name="cancel">취소</string>
     <string name="chains_supported">현재 Solana와 Polygon 지갑이 지원됩니다</string>
     <string name="change">변경</string>
+    <string name="change_network_api">네트워크 API 변경</string>
+    <string name="change_network_api_title">네트워크 API 변경</string>
     <string name="change_password">비밀번호 변경</string>
     <string name="check_internet">인터넷 연결을 확인하세요</string>
     <string name="check_ip">내 IP 확인</string>
@@ -96,6 +98,7 @@
     <string name="connectivity_label">연결성</string>
     <string name="continue_txt">계속</string>
     <string name="contract">계약</string>
+    <string name="contract_stack_max">최대 %1$s</string>
     <string name="contracts_appear_connected">연결 중에 계약이 여기에 표시됩니다.</string>
     <string name="contracts_appear_providing">제공 중에 계약이 여기에 표시됩니다.</string>
     <string name="copy">복사</string>
@@ -118,7 +121,10 @@
     <string name="default_wallet">기본값</string>
     <string name="delete_account">계정 삭제</string>
     <string name="device">기기</string>
+    <string name="device_discoverable">이 기기는 검색될 수 있습니다</string>
+    <string name="device_discoverable_as">이 기기는 %1$s(으)로 검색될 수 있습니다</string>
     <string name="device_name_label">이름</string>
+    <string name="device_not_discoverable">제공 모드를 켜면 이 기기가 검색될 수 있습니다</string>
     <string name="device_spec_label">사양</string>
     <string name="devices">기기</string>
     <string name="disable_ignore_battery_hint">비활성화하려면 시스템 설정의 앱 배터리 사용으로 이동하세요</string>
@@ -126,6 +132,8 @@
     <string name="dismiss">닫기</string>
     <string name="display_network_on_leaderboard">리더보드에 네트워크 표시</string>
     <string name="dns_over_https">DNS over HTTPS</string>
+    <string name="dns_pill_defaults">기본 안전 설정이 적용되어 있지 않습니다</string>
+    <string name="dns_pill_recommended">%1$s에 대한 권장 설정이 적용되지 않았습니다</string>
     <string name="dns_recommendation_message">가장 강력한 보안 규칙은 %1$s에서 작동하지 않는 것으로 알려져 있습니다. 보안 수준은 낮지만 더 잘 작동하는 권장 DNS 설정이 있습니다.</string>
     <string name="dns_restore_secure_message">가장 안전한 설정으로 복원합니다: 터널을 통한 암호화된 DNS over HTTPS.</string>
     <string name="dns_settings_unavailable">DNS 설정을 사용할 수 없습니다</string>
@@ -216,6 +224,22 @@
     <string name="need_more_data_faster">더 많은 데이터를 더 빠르게 원하십니까?</string>
     <string name="net_points_earned">순 포인트 획득</string>
     <string name="net_provided">제공된 넷</string>
+    <string name="network_api_api_url_help">비워 두면 네트워크 도메인에서 파생됩니다.</string>
+    <string name="network_api_api_url_label">API URL(선택 사항)</string>
+    <string name="network_api_apply">네트워크 API 적용</string>
+    <string name="network_api_connect_url_help">안전한 사용자 지정 connect 서버에는 wss://를 사용하세요.</string>
+    <string name="network_api_connect_url_label">Connect URL(선택 사항)</string>
+    <string name="network_api_current_api">현재 API: %1$s</string>
+    <string name="network_api_current_connect">현재 connect: %1$s</string>
+    <string name="network_api_description">앱이 사용할 네트워크 도메인을 선택하세요. API 및 connect URL을 비워 두면 도메인에서 파생됩니다.</string>
+    <string name="network_api_domain_help">예: ur.network 또는 사용자 지정 도메인.</string>
+    <string name="network_api_domain_label">네트워크 도메인</string>
+    <string name="network_api_enter_domain">네트워크 도메인을 입력하세요</string>
+    <string name="network_api_failed">실패: %1$s</string>
+    <string name="network_api_insecure_warning">경고: 하나 이상의 사용자 지정 엔드포인트가 HTTPS/WSS를 사용하지 않습니다. 트래픽이 암호화되지 않을 수 있습니다.</string>
+    <string name="network_api_manager_unavailable">네트워크 관리자를 사용할 수 없습니다</string>
+    <string name="network_api_switched_to">%1$s(으)로 전환했습니다</string>
+    <string name="network_api_use_default">기본 네트워크 사용</string>
     <string name="network_create_bonus_message">누군가가 당신을 초대했어요 🥳\\n네트워크를 만들어 보너스를 받아보세요!</string>
     <string name="network_name_check_error">사용할 수 없습니다. 기존 네트워크와 최소 3자 이상 달라야 합니다. 고유하게 만들거나 더 길게 만드세요.</string>
     <string name="network_name_label">네트워크 이름</string>
@@ -275,6 +299,7 @@
     <string name="provider_statistics">제공자 통계</string>
     <string name="providing_disabled">제공이 비활성화되어 있습니다</string>
     <string name="ready_to_connect">연결 준비 완료</string>
+    <string name="receive">받기</string>
     <string name="receive_notifications">연결 알림 받기</string>
     <string name="reconnect">다시 연결</string>
     <string name="reconnect_tunnel_status_indicator">VPN 터널 연결 해제됨 😓</string>
