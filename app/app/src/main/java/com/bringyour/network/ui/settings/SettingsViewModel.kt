@@ -52,8 +52,10 @@ class SettingsViewModel @Inject constructor(
     private val _requestPermission = MutableStateFlow(false)
     val requestPermission: StateFlow<Boolean> = _requestPermission
 
-    private val _provideEnabled = MutableStateFlow(false)
-    val provideEnabled: StateFlow<Boolean> = _provideEnabled
+    // the LIVE effective provide mode — drives the provide indicator.
+    // ProvideMode is a bit set: compare per-case, never with ranges.
+    private val _provideMode = MutableStateFlow(Sdk.ProvideModeNone)
+    val provideMode: StateFlow<Long> = _provideMode
 
     private val _providePaused = MutableStateFlow(false)
     val providePaused: StateFlow<Boolean> = _providePaused
@@ -455,9 +457,13 @@ class SettingsViewModel @Inject constructor(
 
     val addProvideEnabledListener: () -> Unit = {
         deviceManager.device?.let { device ->
-            val sub = device.addProvideChangeListener {
+            // track the LIVE effective provide mode: Network provide (same-network
+            // peers) is always active, so the provider merely existing
+            // (provideEnabled) no longer means the device provides publicly.
+            // ProvideMode is a bit set: compare per-case, never with ranges.
+            val sub = device.addProvideModeChangeListener { provideMode ->
                 viewModelScope.launch {
-                    _provideEnabled.value = device.provideEnabled
+                    _provideMode.value = provideMode
                 }
             }
             sub?.let { subs.add(it) }
@@ -475,9 +481,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // the indicator encodes the LIVE effective provide tier (apple parity):
+    // Network provide (incl. Auto while idle) = solid green dot; Public
+    // provide = green dot + outer green ring (yellow while paused, which
+    // stops public only); not providing = red dot, no ring
     val provideIndicatorColor: Color
+        get() = when (provideMode.value) {
+            Sdk.ProvideModePublic -> if (providePaused.value) Yellow else Green
+            Sdk.ProvideModeNetwork, Sdk.ProvideModeFriendsAndFamily -> Green
+            else -> Red
+        }
+
+    val provideIndicatorRingColor: Color?
         get() = when {
-            !provideEnabled.value -> Red
+            provideMode.value != Sdk.ProvideModePublic -> null
             providePaused.value -> Yellow
             else -> Green
         }
@@ -511,7 +528,7 @@ class SettingsViewModel @Inject constructor(
 
         deviceManager.device?.let { device ->
             _providePaused.value = device.providePaused
-            _provideEnabled.value = device.provideEnabled
+            _provideMode.value = device.provideMode
         }
 
     }

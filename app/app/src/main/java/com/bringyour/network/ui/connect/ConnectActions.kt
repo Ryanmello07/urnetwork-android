@@ -61,6 +61,8 @@ fun ConnectActions(
     navController: NavController,
     selectedLocation: ConnectLocation?,
     peerCount: Int,
+    providerDiscoverable: Boolean,
+    deviceName: String,
     selectedPeerName: String?,
     presentSelectProvider: (Boolean) -> Unit,
     getLocationColor: (String) -> Color,
@@ -208,6 +210,28 @@ fun ConnectActions(
             NetworkPeersStatusLine(
                 peerCount = peerCount,
                 onClick = { presentSelectProvider(true) }
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            /**
+             * Second line under the peers count: whether this device is itself
+             * discoverable/connectable as a peer (providing to same-network peers).
+             */
+            Text(
+                when {
+                    providerDiscoverable && deviceName.isNotEmpty() ->
+                        stringResource(id = R.string.device_discoverable_as, deviceName)
+                    providerDiscoverable ->
+                        stringResource(id = R.string.device_discoverable)
+                    else ->
+                        stringResource(id = R.string.device_not_discoverable)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp)
             )
 
             Spacer(modifier = Modifier.height(16.dp))

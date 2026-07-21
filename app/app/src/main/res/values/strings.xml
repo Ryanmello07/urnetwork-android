@@ -158,6 +158,7 @@
     <string name="app_split_active_none">No app split — all apps use the VPN</string>
     <string name="app_split_precedence_note">Included apps take precedence: when any app is included, only included apps use the VPN and exclusions have no effect.</string>
     <string name="app_split_rules">App split rules</string>
+    <string name="app_split_starter">0 split apps</string>
     <string name="apply_bonus">Apply bonus</string>
     <string name="apps">Apps</string>
     <string name="are_you_sure_delete_account">Are you sure you want to delete your account?</string>
@@ -324,6 +325,7 @@
     <string name="need_more_data_faster">Need more data, faster?</string>
     <string name="net_points_earned">net points earned</string>
     <string name="net_provided">Net Provided</string>
+    <string name="network">Network</string>
     <string name="network_create_bonus_message">"Someone invited you to join 🥳 \nClaim your bonus by creating a network!"</string>
     <string name="network_name_check_error">Not available. Must be at least 3 characters different than an existing network. Make it unique or longer.</string>
     <string name="network_name_ready_to_connect">%1$s is ready to connect</string>
@@ -450,6 +452,8 @@
     <string name="switch_account">Switch Account</string>
     <string name="switch_account_details">Do you want to disconnect from %1$s and switch accounts?</string>
     <string name="this_region">this region</string>
+    <string name="tile_status_connected">Connected</string>
+    <string name="tile_status_disconnected">Disconnected</string>
     <string name="total_account_points">Total account points</string>
     <string name="total_clients">Total Clients</string>
     <string name="total_referrals">Total referrals</string>
@@ -510,6 +514,10 @@
     <plurals name="host_count">
         <item quantity="one">%1$d host</item>
         <item quantity="other">%1$d hosts</item>
+    </plurals>
+    <plurals name="ip_count">
+        <item quantity="one">%1$d IP</item>
+        <item quantity="other">%1$d IPs</item>
     </plurals>
     <plurals name="network_peer_count">
         <item quantity="one">You have %1$d other device online</item>

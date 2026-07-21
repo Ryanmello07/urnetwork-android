@@ -283,6 +283,7 @@ fun SettingsScreen(
         isCreatingAuthCode = settingsViewModel.isCreatingAuthCode.collectAsState().value,
         setDisplayAuthCodeDialog = settingsViewModel.setIsPresentingAuthCodeDialog,
         provideIndicatorColor = settingsViewModel.provideIndicatorColor,
+        provideIndicatorRingColor = settingsViewModel.provideIndicatorRingColor,
         stripePortalUrl = settingsViewModel.stripePortalUrl.collectAsState().value,
         totalReferrals = totalReferrals,
         authMethods = authMethods,
@@ -470,6 +471,7 @@ fun SettingsScreen(
     isCreatingAuthCode: Boolean,
     setDisplayAuthCodeDialog: (Boolean) -> Unit,
     provideIndicatorColor: Color,
+    provideIndicatorRingColor: Color? = null,
     stripePortalUrl: String?,
     totalReferrals: Long = 0L,
     authMethods: List<String>,
@@ -856,7 +858,8 @@ fun SettingsScreen(
             ProvideControlModePicker(
                 provideControlMode,
                 setProvideControlMode,
-                provideIndicatorColor
+                provideIndicatorColor,
+                provideIndicatorRingColor
             )
 
             Spacer(modifier = Modifier.height(18.dp))

@@ -5,6 +5,8 @@ import com.bringyour.network.R
 enum class ProvideControlMode {
     AUTO,
     ALWAYS,
+    // the private provider: always on, but provides only to same-network peers
+    NETWORK,
     NEVER;
 
     companion object {
@@ -12,6 +14,7 @@ enum class ProvideControlMode {
             return when (value.lowercase()) {
                 "auto" -> AUTO
                 "always" -> ALWAYS
+                "network" -> NETWORK
                 "never" -> NEVER
                 else -> null
             }
@@ -21,6 +24,7 @@ enum class ProvideControlMode {
             return when (value) {
                 AUTO -> "auto"
                 ALWAYS -> "always"
+                NETWORK -> "network"
                 NEVER -> "never"
             }
         }
@@ -29,6 +33,7 @@ enum class ProvideControlMode {
             return when (value) {
                 AUTO -> R.string.auto
                 ALWAYS -> R.string.always
+                NETWORK -> R.string.network
                 NEVER -> R.string.never
             }
         }
