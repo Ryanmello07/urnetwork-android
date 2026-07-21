@@ -63,6 +63,8 @@
     <string name="cancel">Zrušit</string>
     <string name="chains_supported">V současné době jsou podporovány peněženky Solana a Polygon.</string>
     <string name="change">Změnit</string>
+    <string name="change_network_api">Změnit síťové API</string>
+    <string name="change_network_api_title">Změnit síťové API</string>
     <string name="change_password">Změnit heslo</string>
     <string name="check_internet">Zkontrolujte své internetové připojení</string>
     <string name="check_ip">Zkontrolovat mou IP</string>
@@ -96,6 +98,7 @@
     <string name="connectivity_label">Připojení</string>
     <string name="continue_txt">Pokračovat</string>
     <string name="contract">Kontrakt</string>
+    <string name="contract_stack_max">max %1$s</string>
     <string name="contracts_appear_connected">Kontrakty se zde zobrazí po připojení.</string>
     <string name="contracts_appear_providing">Kontrakty se zde zobrazí během poskytování.</string>
     <string name="copy">Kopírovat</string>
@@ -118,7 +121,10 @@
     <string name="default_wallet">Výchozí</string>
     <string name="delete_account">Odstranit účet</string>
     <string name="device">Zařízení</string>
+    <string name="device_discoverable">Toto zařízení je viditelné pro ostatní</string>
+    <string name="device_discoverable_as">Toto zařízení je viditelné jako %1$s</string>
     <string name="device_name_label">Název</string>
+    <string name="device_not_discoverable">Zapněte režim poskytování, aby bylo toto zařízení viditelné</string>
     <string name="device_spec_label">Specifikace</string>
     <string name="devices">Zařízení</string>
     <string name="disable_ignore_battery_hint">Chcete-li to zakázat, přejděte do Nastavení systému na Využití baterie aplikace</string>
@@ -126,6 +132,8 @@
     <string name="dismiss">Odmítnout</string>
     <string name="display_network_on_leaderboard">Zobrazení sítě na žebříčku</string>
     <string name="dns_over_https">DNS přes HTTPS</string>
+    <string name="dns_pill_defaults">Výchozí bezpečná nastavení nejsou použita</string>
+    <string name="dns_pill_recommended">Pro %1$s existují nepoužitá doporučená nastavení</string>
     <string name="dns_recommendation_message">Nejpřísnější bezpečnostní pravidla v %1$s nefungují. Existuje méně bezpečné doporučené nastavení DNS, které funguje lépe.</string>
     <string name="dns_restore_secure_message">Obnovte nejbezpečnější nastavení: šifrovaný DNS přes HTTPS v tunelu.</string>
     <string name="dns_settings_unavailable">Nastavení DNS není k dispozici</string>
@@ -216,6 +224,22 @@
     <string name="need_more_data_faster">Potřebujete více dat a rychleji?</string>
     <string name="net_points_earned">získané net body</string>
     <string name="net_provided">Poskytnutá čistá hodnota</string>
+    <string name="network_api_api_url_help">Ponechte prázdné pro odvození ze síťové domény.</string>
+    <string name="network_api_api_url_label">URL API (volitelné)</string>
+    <string name="network_api_apply">Použít síťové API</string>
+    <string name="network_api_connect_url_help">Pro zabezpečené vlastní connect servery použijte wss://.</string>
+    <string name="network_api_connect_url_label">Connect URL (volitelné)</string>
+    <string name="network_api_current_api">Aktuální API: %1$s</string>
+    <string name="network_api_current_connect">Aktuální connect: %1$s</string>
+    <string name="network_api_description">Zvolte síťovou doménu, kterou aplikace používá. Ponechte URL API a connect prázdné, aby se odvodily z domény.</string>
+    <string name="network_api_domain_help">Příklad: ur.network nebo vaše vlastní doména.</string>
+    <string name="network_api_domain_label">Síťová doména</string>
+    <string name="network_api_enter_domain">Zadejte síťovou doménu</string>
+    <string name="network_api_failed">Selhalo: %1$s</string>
+    <string name="network_api_insecure_warning">Upozornění: jeden nebo více vlastních koncových bodů nepoužívá HTTPS/WSS. Provoz může být nešifrovaný.</string>
+    <string name="network_api_manager_unavailable">Správce sítě není dostupný</string>
+    <string name="network_api_switched_to">Přepnuto na %1$s</string>
+    <string name="network_api_use_default">Použít výchozí síť</string>
     <string name="network_create_bonus_message">"Někdo vás pozval, abyste se připojili 🥳 \nZískejte svůj bonus vytvořením sítě!"</string>
     <string name="network_name_check_error">Není k dispozici. Musí se lišit alespoň o 3 znaky od existující sítě. Vytvořte ji jedinečnou nebo delší.</string>
     <string name="network_name_label">Název sítě</string>
@@ -275,6 +299,7 @@
     <string name="provider_statistics">Statistiky poskytovatele</string>
     <string name="providing_disabled">Poskytování je vypnuté</string>
     <string name="ready_to_connect">Připraveno k připojení</string>
+    <string name="receive">Přijmout</string>
     <string name="receive_notifications">Přijímání oznámení o připojení</string>
     <string name="reconnect">Znovu připojit</string>
     <string name="reconnect_tunnel_status_indicator">Tunel VPN odpojen 😓</string>

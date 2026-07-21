@@ -63,6 +63,8 @@
     <string name="cancel">Annule</string>
     <string name="chains_supported">Les portefeuilles Solana et Polygon sont actuellement pris en charge</string>
     <string name="change">Change</string>
+    <string name="change_network_api">Changer l\'API réseau</string>
+    <string name="change_network_api_title">Changer l\'API réseau</string>
     <string name="change_password">Changer le mot de passe</string>
     <string name="check_internet">Vérifiez votre connexion Internet</string>
     <string name="check_ip">Vérifier mon IP</string>
@@ -96,6 +98,7 @@
     <string name="connectivity_label">Connectivité</string>
     <string name="continue_txt">Continue</string>
     <string name="contract">Contrat</string>
+    <string name="contract_stack_max">max %1$s</string>
     <string name="contracts_appear_connected">Les contrats apparaissent ici lorsque vous êtes connecté.</string>
     <string name="contracts_appear_providing">Les contrats apparaissent ici lorsque vous fournissez.</string>
     <string name="copy">Copie</string>
@@ -118,7 +121,10 @@
     <string name="default_wallet">Par défaut</string>
     <string name="delete_account">Supprimer le compte</string>
     <string name="device">Appareil</string>
+    <string name="device_discoverable">Cet appareil est détectable</string>
+    <string name="device_discoverable_as">Cet appareil est détectable sous le nom %1$s</string>
     <string name="device_name_label">Nom</string>
+    <string name="device_not_discoverable">Activez le mode de fourniture pour rendre cet appareil détectable</string>
     <string name="device_spec_label">Modèle</string>
     <string name="devices">Appareils</string>
     <string name="disable_ignore_battery_hint">Pour désactiver, veuillez aller dans Utilisation de la batterie de l’application dans les paramètres système</string>
@@ -126,6 +132,8 @@
     <string name="dismiss">Fermer</string>
     <string name="display_network_on_leaderboard">Afficher le réseau dans le classement</string>
     <string name="dns_over_https">DNS via HTTPS</string>
+    <string name="dns_pill_defaults">Les paramètres sûrs par défaut ne sont pas appliqués</string>
+    <string name="dns_pill_recommended">Des paramètres recommandés pour %1$s ne sont pas appliqués</string>
     <string name="dns_recommendation_message">%1$s — les règles de sécurité les plus strictes n\'y fonctionnent pas. Des paramètres DNS recommandés, moins sécurisés, fonctionnent mieux.</string>
     <string name="dns_restore_secure_message">Rétablir les paramètres les plus sécurisés : DNS chiffré via HTTPS à travers le tunnel.</string>
     <string name="dns_settings_unavailable">Paramètres DNS indisponibles</string>
@@ -216,6 +224,22 @@
     <string name="need_more_data_faster">Besoin de plus de données, plus rapidement ?</string>
     <string name="net_points_earned">Points nets gagnés</string>
     <string name="net_provided">Données Fournies</string>
+    <string name="network_api_api_url_help">Laissez vide pour la dériver du domaine réseau.</string>
+    <string name="network_api_api_url_label">URL de l\'API (optionnelle)</string>
+    <string name="network_api_apply">Appliquer l\'API réseau</string>
+    <string name="network_api_connect_url_help">Utilisez wss:// pour des serveurs connect personnalisés sécurisés.</string>
+    <string name="network_api_connect_url_label">URL connect (optionnelle)</string>
+    <string name="network_api_current_api">API actuelle : %1$s</string>
+    <string name="network_api_current_connect">Connect actuel : %1$s</string>
+    <string name="network_api_description">Choisissez le domaine réseau utilisé par l\'application. Laissez les URL API et connect vides pour les dériver du domaine.</string>
+    <string name="network_api_domain_help">Exemple : ur.network ou votre domaine personnalisé.</string>
+    <string name="network_api_domain_label">Domaine réseau</string>
+    <string name="network_api_enter_domain">Saisissez un domaine réseau</string>
+    <string name="network_api_failed">Échec : %1$s</string>
+    <string name="network_api_insecure_warning">Avertissement : un ou plusieurs points de terminaison personnalisés n\'utilisent pas HTTPS/WSS. Le trafic peut être non chiffré.</string>
+    <string name="network_api_manager_unavailable">Gestionnaire réseau indisponible</string>
+    <string name="network_api_switched_to">Passé à %1$s</string>
+    <string name="network_api_use_default">Utiliser le réseau par défaut</string>
     <string name="network_create_bonus_message">Quelqu\\\'un t\\\'a invité à rejoindre 🥳\\nRéclame ton bonus en créant un réseau !</string>
     <string name="network_name_check_error">Non disponible. Doit comporter au moins 3 caractères différents d\'un réseau existant. Rendez-le unique ou plus long.</string>
     <string name="network_name_label">Nom du réseau</string>
@@ -275,6 +299,7 @@
     <string name="provider_statistics">Statistiques fournisseur</string>
     <string name="providing_disabled">La fourniture est désactivée</string>
     <string name="ready_to_connect">Prêt à connecter</string>
+    <string name="receive">Reçois</string>
     <string name="receive_notifications">Recevoir des notifications de connexion</string>
     <string name="reconnect">Reconnecter</string>
     <string name="reconnect_tunnel_status_indicator">Tunnel VPN déconnecté 😓</string>

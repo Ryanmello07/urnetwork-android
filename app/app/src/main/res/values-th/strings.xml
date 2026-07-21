@@ -63,6 +63,8 @@
     <string name="cancel">ยกเลิก</string>
     <string name="chains_supported">รองรับกระเป๋าบนเครือข่าย Solana และ Polygon</string>
     <string name="change">เปลี่ยน</string>
+    <string name="change_network_api">เปลี่ยน API เครือข่าย</string>
+    <string name="change_network_api_title">เปลี่ยน API เครือข่าย</string>
     <string name="change_password">เปลี่ยนรหัสผ่าน</string>
     <string name="check_internet">เช็คการเชื่อมต่ออินเทอร์เน็ตของคุณ</string>
     <string name="check_ip">ตรวจสอบ IP ของฉัน</string>
@@ -96,6 +98,7 @@
     <string name="connectivity_label">การเชื่อมต่อ</string>
     <string name="continue_txt">ดำเนินการต่อ</string>
     <string name="contract">สัญญา</string>
+    <string name="contract_stack_max">สูงสุด %1$s</string>
     <string name="contracts_appear_connected">สัญญาจะแสดงที่นี่ขณะเชื่อมต่อ</string>
     <string name="contracts_appear_providing">สัญญาจะแสดงที่นี่ขณะให้บริการ</string>
     <string name="copy">คัดลอก</string>
@@ -118,7 +121,10 @@
     <string name="default_wallet">ค่าเริ่มต้น</string>
     <string name="delete_account">ลบบัญชี</string>
     <string name="device">อุปกรณ์</string>
+    <string name="device_discoverable">อุปกรณ์นี้สามารถถูกค้นพบได้</string>
+    <string name="device_discoverable_as">อุปกรณ์นี้สามารถถูกค้นพบในชื่อ %1$s</string>
     <string name="device_name_label">ชื่อ</string>
+    <string name="device_not_discoverable">เปิดโหมดการให้บริการเพื่อให้อุปกรณ์นี้ถูกค้นพบได้</string>
     <string name="device_spec_label">สเปก</string>
     <string name="devices">อุปกรณ์</string>
     <string name="disable_ignore_battery_hint">หากต้องการปิดใช้งาน กรุณาไปที่การใช้แบตเตอรี่ของแอปในการตั้งค่าระบบ</string>
@@ -126,6 +132,8 @@
     <string name="dismiss">ปิด</string>
     <string name="display_network_on_leaderboard">แสดงชื่อเครือข่ายบนกระดาน</string>
     <string name="dns_over_https">DNS ผ่าน HTTPS</string>
+    <string name="dns_pill_defaults">การตั้งค่าปลอดภัยเริ่มต้นยังไม่ถูกนำมาใช้</string>
+    <string name="dns_pill_recommended">มีการตั้งค่าที่แนะนำสำหรับ %1$s ที่ยังไม่ถูกนำมาใช้</string>
     <string name="dns_recommendation_message">เป็นที่ทราบกันว่ากฎความปลอดภัยที่เข้มงวดที่สุดใช้งานไม่ได้ใน %1$s มีการตั้งค่า DNS ที่แนะนำซึ่งปลอดภัยน้อยกว่าแต่ใช้งานได้ดีกว่า</string>
     <string name="dns_restore_secure_message">คืนค่าการตั้งค่าที่ปลอดภัยที่สุด: DNS ที่เข้ารหัสผ่าน HTTPS ผ่านอุโมงค์</string>
     <string name="dns_settings_unavailable">ไม่สามารถตั้งค่า DNS ได้</string>
@@ -216,6 +224,22 @@
     <string name="need_more_data_faster">ต้องการดาต้าที่เยอะขึ้น และเร็วขึ้นไหม?</string>
     <string name="net_points_earned">คะแนนที่ได้รับ</string>
     <string name="net_provided">แบนด์วิธที่ให้บริการแล้ว</string>
+    <string name="network_api_api_url_help">เว้นว่างไว้เพื่อให้ได้มาจากโดเมนเครือข่าย</string>
+    <string name="network_api_api_url_label">URL ของ API (ไม่บังคับ)</string>
+    <string name="network_api_apply">ใช้ API เครือข่าย</string>
+    <string name="network_api_connect_url_help">ใช้ wss:// สำหรับเซิร์ฟเวอร์ connect แบบกำหนดเองที่ปลอดภัย</string>
+    <string name="network_api_connect_url_label">Connect URL (ไม่บังคับ)</string>
+    <string name="network_api_current_api">API ปัจจุบัน: %1$s</string>
+    <string name="network_api_current_connect">Connect ปัจจุบัน: %1$s</string>
+    <string name="network_api_description">เลือกโดเมนเครือข่ายที่แอปใช้ เว้น URL ของ API และ connect ว่างไว้เพื่อให้ได้มาจากโดเมน</string>
+    <string name="network_api_domain_help">ตัวอย่าง: ur.network หรือโดเมนที่คุณกำหนดเอง</string>
+    <string name="network_api_domain_label">โดเมนเครือข่าย</string>
+    <string name="network_api_enter_domain">กรอกโดเมนเครือข่าย</string>
+    <string name="network_api_failed">ล้มเหลว: %1$s</string>
+    <string name="network_api_insecure_warning">คำเตือน: ปลายทางที่กำหนดเองอย่างน้อยหนึ่งรายการไม่ได้ใช้ HTTPS/WSS การรับส่งข้อมูลอาจไม่ถูกเข้ารหัส</string>
+    <string name="network_api_manager_unavailable">ตัวจัดการเครือข่ายไม่พร้อมใช้งาน</string>
+    <string name="network_api_switched_to">สลับไปที่ %1$s แล้ว</string>
+    <string name="network_api_use_default">ใช้เครือข่ายเริ่มต้น</string>
     <string name="network_create_bonus_message">"มีใครบางคนเชิญคุณอยู่ 🥳 \nรับรางวัลโบนัสของคุณโดยการสร้างระบบเครือข่ายสิ!"</string>
     <string name="network_name_check_error">ไม่สามารถใช้ได้ จะต้องมีตัวอักษรอย่างน้อย 3 ตัวที่แตกต่างจากชื่อเน็ตเวิร์กเดิม ลองตั้งใหม่ให้แตกต่างหรือยาวขึ้น</string>
     <string name="network_name_label">ชื่อเครือข่าย</string>
@@ -275,6 +299,7 @@
     <string name="provider_statistics">สถิติผู้ให้บริการ</string>
     <string name="providing_disabled">การให้บริการถูกปิดอยู่</string>
     <string name="ready_to_connect">พร้อมเชื่อมต่อ</string>
+    <string name="receive">รับ</string>
     <string name="receive_notifications">รับแจ้งเตือนการเชื่อมต่อ</string>
     <string name="reconnect">เชื่อมต่อใหม่</string>
     <string name="reconnect_tunnel_status_indicator">VPN ถูกตัดการเชื่อมต่อ</string>

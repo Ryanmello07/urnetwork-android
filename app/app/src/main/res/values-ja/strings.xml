@@ -63,6 +63,8 @@
     <string name="cancel">キャンセル</string>
     <string name="chains_supported">現在、SolanaとPolygonのウォレットがサポートされています</string>
     <string name="change">変更</string>
+    <string name="change_network_api">ネットワークAPIを変更</string>
+    <string name="change_network_api_title">ネットワークAPIを変更</string>
     <string name="change_password">パスワードを変更</string>
     <string name="check_internet">インターネット接続を確認してください</string>
     <string name="check_ip">自分のIPを確認</string>
@@ -96,6 +98,7 @@
     <string name="connectivity_label">接続性</string>
     <string name="continue_txt">続ける</string>
     <string name="contract">契約</string>
+    <string name="contract_stack_max">最大 %1$s</string>
     <string name="contracts_appear_connected">接続中に契約がここに表示されます。</string>
     <string name="contracts_appear_providing">提供中に契約がここに表示されます。</string>
     <string name="copy">コピー</string>
@@ -118,7 +121,10 @@
     <string name="default_wallet">デフォルト</string>
     <string name="delete_account">アカウントを削除</string>
     <string name="device">デバイス</string>
+    <string name="device_discoverable">このデバイスは検出可能です</string>
+    <string name="device_discoverable_as">このデバイスは %1$s として検出可能です</string>
     <string name="device_name_label">名前</string>
+    <string name="device_not_discoverable">提供モードを有効にすると、このデバイスが検出可能になります</string>
     <string name="device_spec_label">スペック</string>
     <string name="devices">デバイス</string>
     <string name="disable_ignore_battery_hint">無効にするには、システム設定のアプリのバッテリー使用状況に移動してください</string>
@@ -126,6 +132,8 @@
     <string name="dismiss">閉じる</string>
     <string name="display_network_on_leaderboard">リーダーボードにネットワークを表示</string>
     <string name="dns_over_https">DNS over HTTPS</string>
+    <string name="dns_pill_defaults">デフォルトの安全な設定が適用されていません</string>
+    <string name="dns_pill_recommended">%1$s 向けの推奨設定が適用されていません</string>
     <string name="dns_recommendation_message">最も強力なセキュリティルールは%1$sでは機能しないことが知られています。安全性は下がりますが、より確実に動作する推奨DNS設定があります。</string>
     <string name="dns_restore_secure_message">最も安全な設定に戻します：トンネル経由の暗号化されたDNS over HTTPS。</string>
     <string name="dns_settings_unavailable">DNS設定は利用できません</string>
@@ -216,6 +224,22 @@
     <string name="need_more_data_faster">より多くのデータをより速く必要ですか？</string>
     <string name="net_points_earned">純獲得ポイント</string>
     <string name="net_provided">提供済みネット</string>
+    <string name="network_api_api_url_help">空欄にするとネットワークドメインから導出されます。</string>
+    <string name="network_api_api_url_label">API URL（任意）</string>
+    <string name="network_api_apply">ネットワークAPIを適用</string>
+    <string name="network_api_connect_url_help">安全なカスタム connect サーバーには wss:// を使用してください。</string>
+    <string name="network_api_connect_url_label">Connect URL（任意）</string>
+    <string name="network_api_current_api">現在のAPI: %1$s</string>
+    <string name="network_api_current_connect">現在の Connect: %1$s</string>
+    <string name="network_api_description">アプリが使用するネットワークドメインを選択します。API と connect の URL を空欄にすると、ドメインから導出されます。</string>
+    <string name="network_api_domain_help">例: ur.network またはカスタムドメイン。</string>
+    <string name="network_api_domain_label">ネットワークドメイン</string>
+    <string name="network_api_enter_domain">ネットワークドメインを入力してください</string>
+    <string name="network_api_failed">失敗: %1$s</string>
+    <string name="network_api_insecure_warning">警告: 1つ以上のカスタムエンドポイントが HTTPS/WSS を使用していません。通信が暗号化されない可能性があります。</string>
+    <string name="network_api_manager_unavailable">ネットワークマネージャーを利用できません</string>
+    <string name="network_api_switched_to">%1$s に切り替えました</string>
+    <string name="network_api_use_default">デフォルトのネットワークを使用</string>
     <string name="network_create_bonus_message">誰かがあなたを招待しています 🥳\\nネットワークを作成してボーナスを獲得しましょう！</string>
     <string name="network_name_check_error">利用できません。既存のネットワークとは少なくとも3文字異なる必要があります。ユニークにするか、長くしてください。</string>
     <string name="network_name_label">ネットワーク名</string>
@@ -275,6 +299,7 @@
     <string name="provider_statistics">プロバイダー統計</string>
     <string name="providing_disabled">提供は無効です</string>
     <string name="ready_to_connect">接続準備完了</string>
+    <string name="receive">受信</string>
     <string name="receive_notifications">接続通知を受け取る</string>
     <string name="reconnect">再接続する</string>
     <string name="reconnect_tunnel_status_indicator">VPNトンネルが切断されました 😓</string>
