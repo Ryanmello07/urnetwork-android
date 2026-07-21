@@ -217,6 +217,7 @@
     <string name="connections">Connections</string>
     <string name="connectivity_label">Connectivity</string>
     <string name="contract">Contract</string>
+    <string name="contract_stack_max">max %1$s</string>
     <string name="contracts_appear_connected">Contracts appear here while connected.</string>
     <string name="contracts_appear_providing">Contracts appear here while providing.</string>
     <string name="copy">Copy</string>
@@ -238,13 +239,18 @@
     <string name="default_wallet">Default</string>
     <string name="delete_account">Delete Account</string>
     <string name="device">Device</string>
+    <string name="device_discoverable">This device is discoverable</string>
+    <string name="device_discoverable_as">This device is discoverable as %1$s</string>
     <string name="device_name_label">Name</string>
+    <string name="device_not_discoverable">Enable provide mode to make this device discoverable</string>
     <string name="device_spec_label">Spec</string>
     <string name="disable_ignore_battery_hint">To disable, please go to App Battery Usage in System Settings</string>
     <string name="disconnect">Disconnect</string>
     <string name="dismiss">Dismiss</string>
     <string name="display_network_on_leaderboard">Display network on leaderboard</string>
     <string name="dns_over_https">DNS over HTTPS</string>
+    <string name="dns_pill_defaults">The default safe settings are not applied</string>
+    <string name="dns_pill_recommended">There are unapplied recommended settings for %1$s</string>
     <string name="dns_recommendation_message">The strongest security rules are known not to work in %1$s. There are less secure recommended DNS settings that work better.</string>
     <string name="dns_restore_secure_message">Restore the most secure settings: encrypted DNS over HTTPS through the tunnel.</string>
     <string name="dns_settings_unavailable">DNS settings unavailable</string>
@@ -375,6 +381,7 @@
     <string name="provider_statistics">Provider statistics</string>
     <string name="providing_disabled">Providing is disabled</string>
     <string name="ready_to_connect">Ready to connect</string>
+    <string name="receive">Receive</string>
     <string name="receive_notifications">Receive connection notifications</string>
     <string name="reconnect">Reconnect</string>
     <string name="reconnect_tunnel_status_indicator">VPN tunnel disconnected 😓</string>
