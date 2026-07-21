@@ -9,6 +9,8 @@ import com.bringyour.network.DeviceManager
 import com.bringyour.sdk.ConnectLocation
 import com.bringyour.sdk.ConnectLocationId
 import com.bringyour.sdk.PeerViewController
+import com.bringyour.sdk.ProvideSecretKeyList
+import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.Sub
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -47,21 +49,115 @@ class NetworkPeersViewModel @Inject constructor(
 
     private val subs = mutableListOf<Sub>()
     private var peerVc: PeerViewController? = null
+    private var removeDeviceChangeListener: (() -> Unit)? = null
 
     var connectedProvidePeers by mutableStateOf<List<NetworkPeerUi>>(listOf())
         private set
 
+    // ALL connected peers, whether or not they provide — the "You have {n}
+    // other devices online" count. Connecting to a peer still requires
+    // provide, which is what the filtered list above captures.
+    var connectedCount by mutableStateOf(0)
+        private set
+
+    var provideEnabled by mutableStateOf(false)
+        private set
+
+    // whether the provider currently holds a Network-mode provide key — i.e. this
+    // device is providing to same-network peers
+    var providerHasNetworkKey by mutableStateOf(false)
+        private set
+
+    // this device's editable network name (what peers see), from the network
+    // client record. Empty until loaded.
+    var deviceName by mutableStateOf("")
+        private set
+
+    // true when the device is providing to same-network peers and can accept a
+    // peer connection — drives the connect screen's "discoverable as {name}" line.
+    // Provide paused deliberately does NOT gate this: pause stops public provide
+    // but keeps the Network mode announced and verifiable, so a paused device is
+    // still connectable by its network peers.
+    val providerDiscoverable: Boolean
+        get() = provideEnabled && providerHasNetworkKey
+
     init {
-        deviceManager.device?.let { device ->
-            // the SDK peer view controller already filters to connected + provide-enabled peers
-            val vc = device.openPeerViewController()
-            peerVc = vc
-            subs.add(vc.addPeersListener {
-                viewModelScope.launch {
-                    update()
+        // the device is (re)created asynchronously (login, network change) and
+        // this view model can be created first — wire per device, every time,
+        // never once at init (the init-once `device?.let` left the peers
+        // pipeline dead for the whole session on cold start)
+        removeDeviceChangeListener = deviceManager.addDeviceChangeListener { device ->
+            viewModelScope.launch {
+                setupDevice(device)
+            }
+        }
+    }
+
+    private fun setupDevice(device: com.bringyour.sdk.DeviceLocal?) {
+        subs.forEach { it.close() }
+        subs.clear()
+        peerVc?.close()
+        peerVc = null
+        connectedProvidePeers = listOf()
+        connectedCount = 0
+        provideEnabled = false
+        providerHasNetworkKey = false
+        deviceName = ""
+
+        if (device == null) {
+            return
+        }
+
+        // the SDK peer view controller carries both the connected count and
+        // the connectable (provide-enabled) peers
+        val vc = device.openPeerViewController()
+        peerVc = vc
+        subs.add(vc.addPeersListener {
+            viewModelScope.launch {
+                update()
+            }
+        })
+        vc.start()
+
+        // discoverability signals for the line under the peers count
+        provideEnabled = device.provideEnabled
+        providerHasNetworkKey = keysContainNetwork(device.provideSecretKeys)
+        subs.add(device.addProvideChangeListener { enabled ->
+            viewModelScope.launch { provideEnabled = enabled }
+        })
+        subs.add(device.addProvideSecretKeysListener { keys ->
+            val hasNetworkKey = keysContainNetwork(keys)
+            viewModelScope.launch { providerHasNetworkKey = hasNetworkKey }
+        })
+        fetchDeviceName()
+    }
+
+    private fun keysContainNetwork(keys: ProvideSecretKeyList?): Boolean {
+        keys ?: return false
+        for (i in 0 until keys.len()) {
+            val key = keys.get(i) ?: continue
+            if (key.provideMode == Sdk.ProvideModeNetwork) {
+                return true
+            }
+        }
+        return false
+    }
+
+    // this device's editable network name, from its network client record
+    private fun fetchDeviceName() {
+        val device = deviceManager.device ?: return
+        val clientId = device.clientId?.idStr ?: return
+        device.api?.getNetworkClients { result, _ ->
+            val clients = result?.clients ?: return@getNetworkClients
+            for (i in 0 until clients.len()) {
+                val info = clients.get(i) ?: continue
+                if (info.clientId?.idStr == clientId) {
+                    viewModelScope.launch {
+                        deviceName = info.deviceName.ifEmpty { info.deviceDescription }
+                    }
+                    break
                 }
-            })
-            vc.start()
+            }
         }
     }
 
@@ -85,6 +181,7 @@ class NetworkPeersViewModel @Inject constructor(
             }
         }
         connectedProvidePeers = peers
+        connectedCount = vc.connectedCount.toInt()
     }
 
     /**
@@ -104,6 +201,9 @@ class NetworkPeersViewModel @Inject constructor(
                 locationId.clientId = clientId
                 location.connectLocationId = locationId
                 location.name = peer.displayName
+                // one of the user's own devices from the peer list — a trusted
+                // same-network peer, so it egresses under Network provide mode
+                location.networkPeer = true
                 return location
             }
         }
@@ -112,6 +212,8 @@ class NetworkPeersViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        removeDeviceChangeListener?.invoke()
+        removeDeviceChangeListener = null
         subs.forEach { it.close() }
         subs.clear()
         peerVc?.close()

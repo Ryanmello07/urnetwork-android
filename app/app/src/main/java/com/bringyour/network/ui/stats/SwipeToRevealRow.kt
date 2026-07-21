@@ -7,10 +7,10 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
@@ -19,7 +19,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
@@ -34,6 +36,13 @@ import kotlin.math.roundToInt
  * A row that reveals a delete button when swiped left, mimicking iOS list
  * behavior: the swipe only reveals the button, and the user must tap it to
  * delete. Swiping back (or the button tap) closes the row.
+ *
+ * Like iOS, the delete button is a normal-sized, vertically centered button
+ * (not the full row height). It grows and fades in as the row slides out and
+ * shrinks/fades away as it slides back — the scale and alpha track the open
+ * fraction so the resize is smooth and proportional to the slide distance. The
+ * button also stays centered within the revealed gap the whole way, so it reads
+ * as growing out of the trailing edge.
  */
 @Composable
 fun SwipeToRevealRow(
@@ -41,7 +50,9 @@ fun SwipeToRevealRow(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    // how far the row slides to fully reveal the button, and the button size
     val revealWidth = 72.dp
+    val buttonSize = 44.dp
     val revealPx = with(LocalDensity.current) { revealWidth.toPx() }
 
     val offsetX = remember { Animatable(0f) }
@@ -55,16 +66,30 @@ fun SwipeToRevealRow(
         modifier = modifier.fillMaxWidth()
     ) {
 
-        // delete button behind the content, revealed on swipe
+        // delete button behind the content: a normal-sized, vertically centered
+        // button that grows/fades proportional to the slide and stays centered
+        // in the revealed gap. The graphicsLayer reads offsetX in the draw phase
+        // (no recomposition), so the resize follows the drag frame-for-frame.
         Box(
-            modifier = Modifier
-                .matchParentSize(),
+            modifier = Modifier.matchParentSize(),
             contentAlignment = Alignment.CenterEnd
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .width(revealWidth)
+                    .size(buttonSize)
+                    .graphicsLayer {
+                        val openFraction = (-offsetX.value / revealPx).coerceIn(0f, 1f)
+                        // scale + alpha track the slide: 0 when closed (hidden),
+                        // full size when open. Grows from its center (default origin).
+                        scaleX = openFraction
+                        scaleY = openFraction
+                        alpha = openFraction
+                        // keep the button centered in the gap the content opens:
+                        // gap center = rightEdge + offsetX/2, and a CenterEnd button
+                        // sits half its width in from the edge, so shift by both.
+                        translationX = offsetX.value / 2f + size.width / 2f
+                    }
+                    .clip(CircleShape)
                     .background(Red)
                     .clickable {
                         onDelete()

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -18,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.R
@@ -105,9 +106,11 @@ private fun NetworkPeerRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // providing indicator
+        // providing indicator. The radio-signal antenna matches the ios peer
+        // rows (`antenna.radiowaves.left.and.right`) — "calling the other
+        // device" reads better than the globe used for public locations
         Icon(
-            painter = painterResource(id = R.drawable.main_nav_globe),
+            imageVector = Icons.Filled.SettingsInputAntenna,
             contentDescription = null,
             tint = Green,
             modifier = Modifier.size(16.dp)

@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.BottomSheetScaffoldState
@@ -160,7 +163,9 @@ fun ConnectScreen(
             ConnectActions(
                 navController = navController,
                 selectedLocation = connectViewModel.selectedLocation,
-                peerCount = networkPeersViewModel.connectedProvidePeers.size,
+                peerCount = networkPeersViewModel.connectedCount,
+                providerDiscoverable = networkPeersViewModel.providerDiscoverable,
+                deviceName = networkPeersViewModel.deviceName,
                 selectedPeerName = selectedPeerName,
                 presentSelectProvider = {
                     navController.navigate(Route.BrowseLocations)
@@ -251,10 +256,17 @@ fun ConnectActionsSheetScaffold(
     scaffoldState: BottomSheetScaffoldState,
     sheetContent: @Composable (peekHeight: Dp) -> Unit,
     mainContent: @Composable () -> Unit,
-    sheetPeekHeight: Dp = dimensionResource(id = R.dimen.connect_actions_sheet_peek_height),
+    baseSheetPeekHeight: Dp = dimensionResource(id = R.dimen.connect_actions_sheet_peek_height),
 ) {
 
     val scrollState = rememberScrollState()
+
+    // the scaffold draws edge-to-edge behind the navigation bar, so the peek
+    // and the sheet's bottom padding must both add the nav-bar inset — without
+    // it the connect button's bottom padding sits BEHIND the nav bar instead of
+    // aligning to the edge above it (iOS respects the safe area the same way)
+    val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val sheetPeekHeight = baseSheetPeekHeight + navBarPadding
 
     // when the sheet settles back to the peek, reset the content to the top so
     // the peek always shows the top of the actions (matches the iOS drawer)
@@ -281,9 +293,12 @@ fun ConnectActionsSheetScaffold(
                     .fillMaxWidth()
                     .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
+                    // 16dp visible gap + the nav-bar inset, so the collapsed
+                    // content's bottom padding lands at the edge above the nav
+                    // bar (matches the iOS collapsed drawer)
+                    .padding(bottom = 16.dp + navBarPadding)
             ) {
-                sheetContent(sheetPeekHeight)
+                sheetContent(baseSheetPeekHeight)
             }
         },
     ) { innerPadding ->

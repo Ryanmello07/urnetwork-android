@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bringyour.network.DeviceManager
+import com.bringyour.network.utils.isIpAddressValue
 import com.bringyour.network.utils.listToSdkStringList
 import com.bringyour.network.utils.sdkStringListToList
 import com.bringyour.sdk.BlockActionOverride
@@ -32,8 +33,15 @@ private const val BLOCK_ACTIONS_COALESCE_MILLIS = 100L
 data class BlockActionUi(
     val id: String,
     val timeMillis: Long,
+    // cluster hosts/ips that did NOT match an override (disjoint from the matched sets)
     val hosts: List<String>,
     val ips: List<String>,
+    // the exact hosts/ips that matched an override rule, shown as green chips at the
+    // front (disjoint from hosts/ips)
+    val matchedHosts: List<String>,
+    val matchedIps: List<String>,
+    // the unmatched hosts collapsed to base names (Sdk.collapseHostNames), white chips
+    val hostBaseNames: List<String>,
     val block: Boolean,
     val local: Boolean,
     val hasBlockOverride: Boolean,
@@ -42,11 +50,21 @@ data class BlockActionUi(
     val overrideId: String?,
     val byteCount: Long,
 ) {
+    /** every host name (matched + unmatched) and every ip (matched + unmatched) */
+    val allHostNames: List<String>
+        get() = matchedHosts + hosts
+    val allIps: List<String>
+        get() = matchedIps + ips
+
     /**
      * all host values that can be added to a split rule, host names first
      */
     val hostValues: List<String>
-        get() = hosts + ips
+        get() = allHostNames + allIps
+
+    /** count of unmatched ips, rendered as a single "X IPs" pill */
+    val ipCount: Int
+        get() = ips.size
 }
 
 /**
@@ -55,7 +73,12 @@ data class BlockActionUi(
 @Immutable
 data class SplitRuleUi(
     val id: String,
+    // the raw host values (host names and ips mixed), for the editor
     val hosts: List<String>,
+    // the rule's host names collapsed to base names, and its exact ip values — both
+    // rendered as green chips in the row
+    val hostBaseNames: List<String>,
+    val ipValues: List<String>,
 )
 
 /**
@@ -157,12 +180,16 @@ class BlockActionsViewModel @Inject constructor(
             val n = list.len()
             for (i in 0 until n) {
                 val action = list.get(i) ?: continue
+                val unmatchedHosts = sdkStringListToList(action.hosts)
                 items.add(
                     BlockActionUi(
                         id = action.blockActionId?.idStr ?: "$i-${action.time}",
                         timeMillis = action.time,
-                        hosts = sdkStringListToList(action.hosts),
+                        hosts = unmatchedHosts,
                         ips = sdkStringListToList(action.ips),
+                        matchedHosts = sdkStringListToList(action.matchedHosts),
+                        matchedIps = sdkStringListToList(action.matchedIps),
+                        hostBaseNames = collapseHosts(unmatchedHosts),
                         block = action.block,
                         local = action.local,
                         hasBlockOverride = action.blockOverride != null,
@@ -209,10 +236,15 @@ class BlockActionsViewModel @Inject constructor(
                         )
                     }
                 } else {
+                    val ruleHosts = sdkStringListToList(override.hosts)
+                    val ruleHostNames = ruleHosts.filter { !isIpAddressValue(it) }
+                    val ruleIps = ruleHosts.filter { isIpAddressValue(it) }
                     hostRules.add(
                         SplitRuleUi(
                             id = overrideId,
-                            hosts = sdkStringListToList(override.hosts),
+                            hosts = ruleHosts,
+                            hostBaseNames = collapseHosts(ruleHostNames),
+                            ipValues = ruleIps,
                         )
                     )
                 }
@@ -221,6 +253,17 @@ class BlockActionsViewModel @Inject constructor(
         splitRules = hostRules
         appRules = appSplitRules
     }
+
+    /**
+     * collapse host names to base names through the shared SDK logic
+     * (Sdk.collapseHostNamesList), so every platform collapses identically
+     */
+    private fun collapseHosts(hosts: List<String>): List<String> =
+        if (hosts.isEmpty()) {
+            emptyList()
+        } else {
+            sdkStringListToList(Sdk.collapseHostNamesList(listToSdkStringList(hosts)))
+        }
 
     /**
      * the split rule matching a block action's applied override, if it still exists
