@@ -58,7 +58,6 @@ fun SwitchAccountScreen(
             setCreateGuestNetworkInProgress(true)
             val args = NetworkCreateArgs()
             args.terms = true
-            args.guestMode = true
 
             application.api?.networkCreate(args) { result, err ->
                 scope.launch {

@@ -37,10 +37,39 @@ import kotlin.math.min
 class MainApplication : Application() {
     val deviceDescription = "New device"
 
-    val deviceSpec get() = if (32 <= Build.VERSION.SDK_INT) {
-        "${Build.VERSION.RELEASE_OR_CODENAME} ${Build.FINGERPRINT}"
-    } else {
-        "${Build.VERSION.RELEASE} ${Build.FINGERPRINT}"
+    // concise, human-readable spec shown in the peers list: "<os> <make model>",
+    // e.g. "16.1 Google Pixel 8 Pro", "14 Samsung Galaxy S24 Ultra". The
+    // retail name comes from the bundled catalog (`DeviceNames`); the full
+    // Build.FINGERPRINT was unreadably long in the ui
+    val deviceSpec: String get() {
+        val model = DeviceNames.marketingName(this)
+        // some names already lead with the brand (google's "Pixel 8 Pro" is
+        // the exception the manufacturer prefix covers)
+        return if (model.startsWith(Build.MANUFACTURER, ignoreCase = true)) {
+            "$osVersion $model"
+        } else {
+            val manufacturer = Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+            "$osVersion $manufacturer $model"
+        }
+    }
+
+    // the exact os version. RELEASE is major-only on modern android ("16");
+    // older builds carried the point ("8.1.0"). From android 16 (api 36) the
+    // minor os revision is exposed through the full sdk version — append it
+    // so the spec reads "16.1" like the ios side's point versions
+    private val osVersion: String get() {
+        val release = if (32 <= Build.VERSION.SDK_INT) {
+            Build.VERSION.RELEASE_OR_CODENAME
+        } else {
+            Build.VERSION.RELEASE
+        }
+        if (36 <= Build.VERSION.SDK_INT && !release.contains('.')) {
+            val minor = Build.getMinorSdkVersion(Build.VERSION.SDK_INT_FULL)
+            if (0 < minor) {
+                return "$release.$minor"
+            }
+        }
+        return release
     }
 
     var networkSpaceSub: Sub? = null
@@ -604,6 +633,9 @@ class MainApplication : Application() {
     fun updateVpnService() {
         val device = device ?: return
 
+        // the vpn service is the packet router: it must run whenever the device
+        // is connected, providing (any mode — including Network, which relays
+        // for same-network peers), or routing remotely
         val provideEnabled = device.provideEnabled
         val providePaused = device.providePaused
         val connectEnabled = device.connectEnabled

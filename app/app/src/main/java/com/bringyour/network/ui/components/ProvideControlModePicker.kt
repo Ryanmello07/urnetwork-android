@@ -1,6 +1,7 @@
 package com.bringyour.network.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,8 @@ fun ProvideControlModePicker(
     provideControlMode: ProvideControlMode,
     setProvideControlMode: (ProvideControlMode) -> Unit,
     provideIndicatorColor: Color,
+    // outer ring = public provide tier (apple parity); null = no ring
+    provideIndicatorRingColor: Color? = null,
 ) {
     Column(
         modifier = Modifier
@@ -36,11 +39,24 @@ fun ProvideControlModePicker(
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // fixed slot so the label doesn't shift when the ring appears
             Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(color = provideIndicatorColor, shape = CircleShape)
-            )
+                modifier = Modifier.size(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (provideIndicatorRingColor != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .border(width = 1.5.dp, color = provideIndicatorRingColor, shape = CircleShape)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(color = provideIndicatorColor, shape = CircleShape)
+                )
+            }
 
             Spacer(modifier = Modifier.width(8.dp))
 

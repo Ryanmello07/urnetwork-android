@@ -359,7 +359,7 @@ fun AccountScreenContent(
                                                 .offset(y = (-8).dp)
                                                 .clickable {
                                                     if (loginMode == LoginMode.Guest) {
-                                                        launchOverlay(OverlayMode.GuestMode)
+                                                        context.startActivity(Intent(context, LoginActivity::class.java))
                                                     } else {
                                                         navController.navigate(Route.Wallets)
                                                     }
@@ -401,7 +401,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Profile)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    context.startActivity(Intent(context, LoginActivity::class.java))
                 }
             }
         )
@@ -413,7 +413,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Settings)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    context.startActivity(Intent(context, LoginActivity::class.java))
                 }
             }
         )
@@ -425,7 +425,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Wallets)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    context.startActivity(Intent(context, LoginActivity::class.java))
                 }
             }
         )
@@ -437,7 +437,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     launchOverlay(OverlayMode.Refer)
                 } else {
-                    launchOverlay(OverlayMode.GuestMode)
+                    context.startActivity(Intent(context, LoginActivity::class.java))
                 }
             }
         )

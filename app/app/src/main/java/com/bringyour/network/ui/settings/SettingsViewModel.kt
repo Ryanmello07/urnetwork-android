@@ -22,8 +22,10 @@ import com.bringyour.network.ui.shared.models.ProvideNetworkMode
 import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.theme.Red
 import com.bringyour.network.ui.theme.Yellow
+import com.bringyour.sdk.AddAuthArgs
 import com.bringyour.sdk.AuthCodeCreateArgs
 import com.bringyour.sdk.ReferralNetwork
+import com.bringyour.sdk.RemoveAuthArgs
 import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.StripeCreateCustomerPortalArgs
 import com.bringyour.sdk.Sub
@@ -50,8 +52,10 @@ class SettingsViewModel @Inject constructor(
     private val _requestPermission = MutableStateFlow(false)
     val requestPermission: StateFlow<Boolean> = _requestPermission
 
-    private val _provideEnabled = MutableStateFlow(false)
-    val provideEnabled: StateFlow<Boolean> = _provideEnabled
+    // the LIVE effective provide mode — drives the provide indicator.
+    // ProvideMode is a bit set: compare per-case, never with ranges.
+    private val _provideMode = MutableStateFlow(Sdk.ProvideModeNone)
+    val provideMode: StateFlow<Long> = _provideMode
 
     private val _providePaused = MutableStateFlow(false)
     val providePaused: StateFlow<Boolean> = _providePaused
@@ -289,6 +293,67 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    private val _isAddingAuth = MutableStateFlow(false)
+    val isAddingAuth: StateFlow<Boolean> = _isAddingAuth
+
+    val addAuth: (
+        args: AddAuthArgs,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) -> Unit = { args, onSuccess, onError ->
+
+        _isAddingAuth.value = true
+
+        deviceManager.device?.api?.addAuth(args) { result, err ->
+            viewModelScope.launch {
+                _isAddingAuth.value = false
+
+                if (err != null) {
+                    onError(err.message ?: "Failed to add sign-in method")
+                } else if (result?.error != null) {
+                    onError(result.error.message ?: "Failed to add sign-in method")
+                } else {
+                    onSuccess()
+                }
+            }
+        } ?: run {
+            _isAddingAuth.value = false
+            onError("Unable to connect. Please try again.")
+        }
+    }
+
+    private val _isRemovingAuth = MutableStateFlow(false)
+    val isRemovingAuth: StateFlow<Boolean> = _isRemovingAuth
+
+    val removeAuth: (
+        authType: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) -> Unit = { authType, onSuccess, onError ->
+
+        _isRemovingAuth.value = true
+
+        val args = RemoveAuthArgs()
+        args.authType = authType
+
+        deviceManager.device?.api?.removeAuth(args) { result, err ->
+            viewModelScope.launch {
+                _isRemovingAuth.value = false
+
+                if (err != null) {
+                    onError(err.message ?: "Failed to remove sign-in method")
+                } else if (result?.error != null) {
+                    onError(result.error.message ?: "Failed to remove sign-in method")
+                } else {
+                    onSuccess()
+                }
+            }
+        } ?: run {
+            _isRemovingAuth.value = false
+            onError("Unable to connect. Please try again.")
+        }
+    }
+
     val toggleRouteLocal: () -> Unit = {
         val currentRouteLocal = routeLocal.value
         deviceManager.device?.routeLocal = !currentRouteLocal
@@ -392,9 +457,13 @@ class SettingsViewModel @Inject constructor(
 
     val addProvideEnabledListener: () -> Unit = {
         deviceManager.device?.let { device ->
-            val sub = device.addProvideChangeListener {
+            // track the LIVE effective provide mode: Network provide (same-network
+            // peers) is always active, so the provider merely existing
+            // (provideEnabled) no longer means the device provides publicly.
+            // ProvideMode is a bit set: compare per-case, never with ranges.
+            val sub = device.addProvideModeChangeListener { provideMode ->
                 viewModelScope.launch {
-                    _provideEnabled.value = device.provideEnabled
+                    _provideMode.value = provideMode
                 }
             }
             sub?.let { subs.add(it) }
@@ -412,9 +481,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // the indicator encodes the LIVE effective provide tier (apple parity):
+    // Network provide (incl. Auto while idle) = solid green dot; Public
+    // provide = green dot + outer green ring (yellow while paused, which
+    // stops public only); not providing = red dot, no ring
     val provideIndicatorColor: Color
+        get() = when (provideMode.value) {
+            Sdk.ProvideModePublic -> if (providePaused.value) Yellow else Green
+            Sdk.ProvideModeNetwork, Sdk.ProvideModeFriendsAndFamily -> Green
+            else -> Red
+        }
+
+    val provideIndicatorRingColor: Color?
         get() = when {
-            !provideEnabled.value -> Red
+            provideMode.value != Sdk.ProvideModePublic -> null
             providePaused.value -> Yellow
             else -> Green
         }
@@ -448,7 +528,7 @@ class SettingsViewModel @Inject constructor(
 
         deviceManager.device?.let { device ->
             _providePaused.value = device.providePaused
-            _provideEnabled.value = device.provideEnabled
+            _provideMode.value = device.provideMode
         }
 
     }

@@ -17,8 +17,12 @@ env:
 
 jobs:
   build-android:
-    name: Build Android app
+    name: Build Android app (${{ matrix.flavor }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [github, play, ethos_dapp, solana_dapp]
     steps:
       - name: Check out Android repo
         uses: actions/checkout@v4
@@ -85,29 +89,35 @@ jobs:
           warp.version_code=${{ github.run_number }}
           EOF
 
-      - name: Build githubDebug APK
+      - name: Build ${{ matrix.flavor }}Debug APK
         working-directory: app
         env:
           BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
-        run: ./gradlew :app:assembleGithubDebug
+        run: |
+          flavor="${{ matrix.flavor }}"
+          # Gradle's generated task name only capitalizes the flavor's first
+          # letter -- it does not camelCase underscore segments, so
+          # ethos_dapp -> assembleEthos_dappDebug, not assembleEthosDappDebug.
+          capitalizedFlavor=$(echo "$flavor" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')
+          ./gradlew ":app:assemble${capitalizedFlavor}Debug"
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: urnetwork-android-apk
-          path: app/app/build/outputs/apk/github/debug/*.apk
+          name: urnetwork-android-${{ matrix.flavor }}-apk
+          path: app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk
           if-no-files-found: error
 
       - name: Create prerelease
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: beta-custom-server-${{ github.run_number }}-${{ github.run_attempt }}
+          TAG: beta-custom-server-${{ matrix.flavor }}-${{ github.run_number }}-${{ github.run_attempt }}
         run: |
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes || true
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --prerelease \
-            --title "URnetwork Android beta custom server ${{ github.run_number }}" \
+            --title "URnetwork Android beta custom server (${{ matrix.flavor }}) ${{ github.run_number }}" \
             --generate-notes \
-            app/app/build/outputs/apk/github/debug/*.apk
+            app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk

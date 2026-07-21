@@ -3,10 +3,13 @@ package com.bringyour.network.ui.stats
 import android.icu.text.RelativeDateTimeFormatter
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -34,19 +38,20 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -64,8 +69,6 @@ import com.bringyour.network.ui.theme.MainTintedBackgroundBase
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.bringyour.network.utils.formatByteCountCompact
-import com.bringyour.network.utils.formatHostClusterText
-import com.bringyour.network.utils.isIpAddressValue
 import kotlinx.coroutines.launch
 
 private data class RuleEditorTarget(
@@ -99,22 +102,36 @@ fun SplitRulesScreen(
     val actions = blockActionsViewModel.blockActions
     val rules = blockActionsViewModel.splitRules
 
-    val isAtTop by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+    // "at the top" tracks the user's intent, not the raw first-visible index: a
+    // prepend bumps firstVisibleItemIndex to 1 (Compose anchors to the old first
+    // item's key), so a raw index==0 check would read false exactly when we need to
+    // stay pinned. Update it only from a user-driven scroll (isScrollInProgress); a
+    // prepend never flips it off the top. General principle for the app's lists.
+    var atTop by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                listState.isScrollInProgress
+            )
+        }.collect { (index, offset, scrolling) ->
+            if (scrolling) {
+                atTop = index == 0 && offset == 0
+            }
         }
     }
 
     // the newest action id seen while at the top. items ahead of it are "new"
     var topSeenActionId by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(isAtTop, actions.firstOrNull()?.id) {
-        if (isAtTop) {
+    // while at the top, keep the list pinned to the very top as new rows prepend and
+    // advance the "seen" marker so nothing counts as pending. scrollToItem is an
+    // instant jump (no isScrollInProgress), so it can't feed back into `atTop`.
+    LaunchedEffect(atTop, actions.firstOrNull()?.id) {
+        if (atTop) {
             topSeenActionId = actions.firstOrNull()?.id
-            // hold the very top when new items arrive
-            if (0 < listState.firstVisibleItemIndex || 0 < listState.firstVisibleItemScrollOffset) {
-                listState.scrollToItem(0)
-            }
+            listState.scrollToItem(0)
         }
     }
 
@@ -139,10 +156,12 @@ fun SplitRulesScreen(
                 ruleId = rule.id,
             )
         } else {
-            // create a rule from the action's host values, host names pre-selected
+            // create a rule from the action's host values, all initially UNSELECTED:
+            // the common case is picking one or a few server names, so pre-selecting
+            // everything just makes the user uncheck the rest
             RuleEditorTarget(
                 candidates = action.hostValues,
-                selected = (action.hosts.ifEmpty { action.ips }).toSet(),
+                selected = emptySet(),
                 ruleId = null,
             )
         }
@@ -272,7 +291,7 @@ fun SplitRulesScreen(
             /**
              * new items chip
              */
-            if (!isAtTop && 0 < pendingCount) {
+            if (!atTop && 0 < pendingCount) {
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -363,44 +382,34 @@ private fun SplitRulesInfoCard() {
     }
 }
 
+// A split rule (override) row: all of the rule's host base names and exact ips as
+// green chips, with the Local state chip trailing.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SplitRuleRow(
     rule: SplitRuleUi,
     onClick: () -> Unit,
 ) {
 
-    val context = LocalContext.current
-    val displayText = remember(rule.hosts) {
-        val hostNames = rule.hosts.filter { !isIpAddressValue(it) }
-        val ips = rule.hosts.filter { isIpAddressValue(it) }
-        formatHostClusterText(context, hostNames, ips)
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
 
-        Column(
-            modifier = Modifier.weight(1f)
+        FlowRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                displayText,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.White
-            )
-            Text(
-                pluralStringResource(
-                    id = R.plurals.host_count,
-                    count = rule.hosts.size,
-                    rule.hosts.size,
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextFaint
-            )
+            for (name in rule.hostBaseNames) {
+                RuleChip(text = name, matched = true)
+            }
+            for (ip in rule.ipValues) {
+                RuleChip(text = ip, matched = true)
+            }
         }
 
         Spacer(modifier = Modifier.width(8.dp))
@@ -414,34 +423,50 @@ private fun SplitRuleRow(
     }
 }
 
+// A block-action row. Chips, in order: the exact hosts/ips an override matched
+// (green), then the remaining hosts collapsed to base names (white outline), then a
+// single "X IPs" pill for the remaining ips. The block/route state chips trail.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BlockActionRow(
     action: BlockActionUi,
     onClick: () -> Unit,
 ) {
 
-    val context = LocalContext.current
-    val displayText = remember(action.hosts, action.ips) {
-        formatHostClusterText(context, action.hosts, action.ips)
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
 
         Column(
             modifier = Modifier.weight(1f)
         ) {
 
-            Text(
-                displayText,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.White
-            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // green: the exact hosts and ips that matched an override
+                for (name in action.matchedHosts) {
+                    RuleChip(text = name, matched = true)
+                }
+                for (ip in action.matchedIps) {
+                    RuleChip(text = ip, matched = true)
+                }
+                // white: the rest of the hosts as collapsed base names
+                for (name in action.hostBaseNames) {
+                    RuleChip(text = name, matched = false)
+                }
+                // white: a single count pill for the rest of the ips
+                if (0 < action.ipCount) {
+                    IpsPill(count = action.ipCount)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
 
             Row {
                 Text(
@@ -463,21 +488,60 @@ private fun BlockActionRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        StateChip(
-            text = stringResource(id = if (action.block) R.string.blocked else R.string.allowed),
-            color = if (action.block) Red else TextMuted,
-            highlighted = action.hasBlockOverride
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            StateChip(
+                text = stringResource(id = if (action.block) R.string.blocked else R.string.allowed),
+                color = if (action.block) Red else TextMuted,
+                highlighted = action.hasBlockOverride
+            )
 
-        Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-        StateChip(
-            text = stringResource(id = if (action.local) R.string.local else R.string.remote),
-            color = if (action.local) Green else TextMuted,
-            highlighted = action.hasRouteOverride
-        )
+            StateChip(
+                text = stringResource(id = if (action.local) R.string.local else R.string.remote),
+                color = if (action.local) Green else TextMuted,
+                highlighted = action.hasRouteOverride
+            )
+        }
 
     }
+}
+
+// A host/ip chip: a rounded outline box. matched reads green (an override hit it);
+// otherwise a subtle white outline box.
+@Composable
+private fun RuleChip(text: String, matched: Boolean) {
+    Text(
+        text,
+        style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+        color = if (matched) Green else Color.White,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .border(
+                width = 1.dp,
+                color = if (matched) Green else Color.White.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(6.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    )
+}
+
+// The single "X IPs" pill for the unmatched ips: a count, never the ips.
+@Composable
+private fun IpsPill(count: Int) {
+    Text(
+        pluralStringResource(id = R.plurals.ip_count, count = count, count),
+        style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+        color = TextMuted,
+        modifier = Modifier
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.3f),
+                shape = CircleShape
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    )
 }
 
 @Composable
