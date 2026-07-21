@@ -63,8 +63,6 @@
     <string name="cancel">Annuleren</string>
     <string name="chains_supported">Solana en Polygon-wallets worden momenteel ondersteund</string>
     <string name="change">Veranderen</string>
-    <string name="change_network_api">Netwerk-API wijzigen</string>
-    <string name="change_network_api_title">Netwerk-API wijzigen</string>
     <string name="change_password">Verander Wachtwoord</string>
     <string name="check_internet">Controleer je internetverbinding</string>
     <string name="check_ip">Controleer mijn IP</string>
@@ -98,7 +96,6 @@
     <string name="connectivity_label">Verbondenheid</string>
     <string name="continue_txt">Doorgaan</string>
     <string name="contract">Contract</string>
-    <string name="contract_stack_max">max %1$s</string>
     <string name="contracts_appear_connected">Contracten verschijnen hier terwijl je verbonden bent.</string>
     <string name="contracts_appear_providing">Contracten verschijnen hier tijdens het leveren.</string>
     <string name="copy">Kopiëren</string>
@@ -121,10 +118,7 @@
     <string name="default_wallet">Standaard</string>
     <string name="delete_account">Verwijder Account</string>
     <string name="device">Apparaat</string>
-    <string name="device_discoverable">Dit apparaat is vindbaar</string>
-    <string name="device_discoverable_as">Dit apparaat is vindbaar als %1$s</string>
     <string name="device_name_label">Naam</string>
-    <string name="device_not_discoverable">Schakel de leveringsmodus in om dit apparaat vindbaar te maken</string>
     <string name="device_spec_label">Specificatie</string>
     <string name="devices">Apparaten</string>
     <string name="disable_ignore_battery_hint">Om uit te schakelen, ga naar App-batterijgebruik in de systeeminstellingen</string>
@@ -132,8 +126,6 @@
     <string name="dismiss">Sluiten</string>
     <string name="display_network_on_leaderboard">Toon netwerk op het scorebord</string>
     <string name="dns_over_https">DNS over HTTPS</string>
-    <string name="dns_pill_defaults">De veilige standaardinstellingen zijn niet toegepast</string>
-    <string name="dns_pill_recommended">Er zijn niet-toegepaste aanbevolen instellingen voor %1$s</string>
     <string name="dns_recommendation_message">Het is bekend dat de strengste beveiligingsregels niet werken in %1$s. Er zijn minder veilige aanbevolen DNS-instellingen die beter werken.</string>
     <string name="dns_restore_secure_message">Herstel de veiligste instellingen: versleutelde DNS over HTTPS via de tunnel.</string>
     <string name="dns_settings_unavailable">DNS-instellingen niet beschikbaar</string>
@@ -224,22 +216,6 @@
     <string name="need_more_data_faster">Meer data, sneller nodig?</string>
     <string name="net_points_earned">Totale punten verdiend</string>
     <string name="net_provided">Geleverd netwerk</string>
-    <string name="network_api_api_url_help">Laat leeg om af te leiden van het netwerkdomein.</string>
-    <string name="network_api_api_url_label">API-URL (optioneel)</string>
-    <string name="network_api_apply">Netwerk-API toepassen</string>
-    <string name="network_api_connect_url_help">Gebruik wss:// voor beveiligde aangepaste connect-servers.</string>
-    <string name="network_api_connect_url_label">Connect-URL (optioneel)</string>
-    <string name="network_api_current_api">Huidige API: %1$s</string>
-    <string name="network_api_current_connect">Huidige connect: %1$s</string>
-    <string name="network_api_description">Kies het netwerkdomein dat de app gebruikt. Laat de API- en connect-URL\'s leeg om ze af te leiden van het domein.</string>
-    <string name="network_api_domain_help">Voorbeeld: ur.network of je eigen domein.</string>
-    <string name="network_api_domain_label">Netwerkdomein</string>
-    <string name="network_api_enter_domain">Voer een netwerkdomein in</string>
-    <string name="network_api_failed">Mislukt: %1$s</string>
-    <string name="network_api_insecure_warning">Waarschuwing: een of meer aangepaste endpoints gebruiken geen HTTPS/WSS. Verkeer is mogelijk niet versleuteld.</string>
-    <string name="network_api_manager_unavailable">Netwerkbeheerder niet beschikbaar</string>
-    <string name="network_api_switched_to">Overgeschakeld naar %1$s</string>
-    <string name="network_api_use_default">Standaardnetwerk gebruiken</string>
     <string name="network_create_bonus_message">Iemand heeft je uitgenodigd! 🥳\nOntvang je bonus door een netwerk aan te maken.</string>
     <string name="network_name_check_error">Niet beschikbaar. Moet minstens 3 tekens verschillen van een bestaand netwerk. Maak het uniek of langer.</string>
     <string name="network_name_label">Netwerk naam</string>
@@ -299,7 +275,6 @@
     <string name="provider_statistics">Providerstatistieken</string>
     <string name="providing_disabled">Leveren is uitgeschakeld</string>
     <string name="ready_to_connect">Klaar om te verbinden</string>
-    <string name="receive">Ontvang</string>
     <string name="receive_notifications">Ontvang verbindingsmeldingen</string>
     <string name="reconnect">Opnieuw verbinden</string>
     <string name="reconnect_tunnel_status_indicator">VPN-tunnel verbroken 😓</string>

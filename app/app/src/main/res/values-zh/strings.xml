@@ -63,8 +63,6 @@
     <string name="cancel">取消</string>
     <string name="chains_supported">当前支持 Solana 和 Polygon 钱包</string>
     <string name="change">更改</string>
-    <string name="change_network_api">更改网络 API</string>
-    <string name="change_network_api_title">更改网络 API</string>
     <string name="change_password">更改密码</string>
     <string name="check_internet">检查您的互联网连接</string>
     <string name="check_ip">检查我的 IP</string>
@@ -98,7 +96,6 @@
     <string name="connectivity_label">连接</string>
     <string name="continue_txt">继续</string>
     <string name="contract">合约</string>
-    <string name="contract_stack_max">最大 %1$s</string>
     <string name="contracts_appear_connected">连接后，合约会显示在这里。</string>
     <string name="contracts_appear_providing">提供数据时，合约会显示在这里。</string>
     <string name="copy">复制</string>
@@ -121,10 +118,7 @@
     <string name="default_wallet">默认</string>
     <string name="delete_account">删除帐户</string>
     <string name="device">设备</string>
-    <string name="device_discoverable">此设备可被发现</string>
-    <string name="device_discoverable_as">此设备可被发现，名称为 %1$s</string>
     <string name="device_name_label">名称</string>
-    <string name="device_not_discoverable">启用提供模式以使此设备可被发现</string>
     <string name="device_spec_label">规格</string>
     <string name="devices">设备</string>
     <string name="disable_ignore_battery_hint">若要禁用，请前往系统设置中的应用电池使用情况</string>
@@ -132,8 +126,6 @@
     <string name="dismiss">关闭</string>
     <string name="display_network_on_leaderboard">在排行榜上显示网络</string>
     <string name="dns_over_https">DNS over HTTPS</string>
-    <string name="dns_pill_defaults">默认安全设置未应用</string>
-    <string name="dns_pill_recommended">有针对 %1$s 的未应用推荐设置</string>
     <string name="dns_recommendation_message">已知最严格的安全规则在%1$s无法正常工作。可改用推荐的 DNS 设置，安全性稍低但更好用。</string>
     <string name="dns_restore_secure_message">恢复最安全的设置：通过隧道使用加密的 DNS over HTTPS。</string>
     <string name="dns_settings_unavailable">DNS 设置不可用</string>
@@ -224,22 +216,6 @@
     <string name="need_more_data_faster">需要更多数据，更快吗？</string>
     <string name="net_points_earned">净赚积分</string>
     <string name="net_provided">已提供网络量</string>
-    <string name="network_api_api_url_help">留空则从网络域名派生。</string>
-    <string name="network_api_api_url_label">API URL（可选）</string>
-    <string name="network_api_apply">应用网络 API</string>
-    <string name="network_api_connect_url_help">自定义 connect 服务器请使用 wss:// 以确保安全。</string>
-    <string name="network_api_connect_url_label">Connect URL（可选）</string>
-    <string name="network_api_current_api">当前 API：%1$s</string>
-    <string name="network_api_current_connect">当前 connect：%1$s</string>
-    <string name="network_api_description">选择应用使用的网络域名。将 API 和 connect URL 留空则从域名派生。</string>
-    <string name="network_api_domain_help">例如：ur.network 或您的自定义域名。</string>
-    <string name="network_api_domain_label">网络域名</string>
-    <string name="network_api_enter_domain">请输入网络域名</string>
-    <string name="network_api_failed">失败：%1$s</string>
-    <string name="network_api_insecure_warning">警告：一个或多个自定义端点未使用 HTTPS/WSS。流量可能未加密。</string>
-    <string name="network_api_manager_unavailable">网络管理器不可用</string>
-    <string name="network_api_switched_to">已切换到 %1$s</string>
-    <string name="network_api_use_default">使用默认网络</string>
     <string name="network_create_bonus_message">"有人邀请你加入 🥳 \n创建网络即可领取你的奖励！"</string>
     <string name="network_name_check_error">不可用。必须与现有网络至少有 3 个字符不同。使其独特或更长。</string>
     <string name="network_name_label">网络名称</string>
@@ -299,7 +275,6 @@
     <string name="provider_statistics">提供商统计</string>
     <string name="providing_disabled">提供功能已关闭</string>
     <string name="ready_to_connect">准备连接</string>
-    <string name="receive">接收</string>
     <string name="receive_notifications">接收连接通知</string>
     <string name="reconnect">重新连接</string>
     <string name="reconnect_tunnel_status_indicator">VPN 隧道已断开连接 😓</string>

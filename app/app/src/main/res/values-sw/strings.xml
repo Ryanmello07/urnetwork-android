@@ -63,8 +63,6 @@
     <string name="cancel">Ghairi</string>
     <string name="chains_supported">Pochi za Solana na Polygon kwa sasa zinatumika</string>
     <string name="change">Badili</string>
-    <string name="change_network_api">Badilisha API ya mtandao</string>
-    <string name="change_network_api_title">Badilisha API ya mtandao</string>
     <string name="change_password">Badilisha Nenosiri</string>
     <string name="check_internet">Angalia muunganisho wako wa intaneti</string>
     <string name="check_ip">Kagua IP yangu</string>
@@ -98,7 +96,6 @@
     <string name="connectivity_label">Muunganisho</string>
     <string name="continue_txt">Endelea</string>
     <string name="contract">Mkataba</string>
-    <string name="contract_stack_max">kiwango cha juu %1$s</string>
     <string name="contracts_appear_connected">Mikataba huonekana hapa ukiwa umeunganishwa.</string>
     <string name="contracts_appear_providing">Mikataba huonekana hapa unapotoa huduma.</string>
     <string name="copy">Nakala</string>
@@ -121,10 +118,7 @@
     <string name="default_wallet">Chaguo msingi</string>
     <string name="delete_account">Futa akaunti</string>
     <string name="device">Kifaa</string>
-    <string name="device_discoverable">Kifaa hiki kinaweza kupatikana</string>
-    <string name="device_discoverable_as">Kifaa hiki kinaweza kupatikana kama %1$s</string>
     <string name="device_name_label">Jina</string>
-    <string name="device_not_discoverable">Washa hali ya utoaji ili kifaa hiki kiweze kupatikana</string>
     <string name="device_spec_label">Muundo</string>
     <string name="devices">Vifaa</string>
     <string name="disable_ignore_battery_hint">Ili kuzima, tafadhali nenda kwenye Matumizi ya Betri ya Programu katika Mipangilio ya Mfumo</string>
@@ -132,8 +126,6 @@
     <string name="dismiss">Futa</string>
     <string name="display_network_on_leaderboard">Onyesha mtandao kwenye ubao wa wanaoongoza</string>
     <string name="dns_over_https">DNS kupitia HTTPS</string>
-    <string name="dns_pill_defaults">Mipangilio salama ya chaguomsingi haijatumika</string>
-    <string name="dns_pill_recommended">Kuna mipangilio inayopendekezwa ambayo haijatumika kwa %1$s</string>
     <string name="dns_recommendation_message">Inajulikana kuwa sheria kali zaidi za usalama hazifanyi kazi katika %1$s. Kuna mipangilio ya DNS inayopendekezwa, yenye usalama kidogo, inayofanya kazi vizuri zaidi.</string>
     <string name="dns_restore_secure_message">Rejesha mipangilio salama zaidi: DNS iliyosimbwa kupitia HTTPS ndani ya tuneli.</string>
     <string name="dns_settings_unavailable">Mipangilio ya DNS haipatikani</string>
@@ -224,22 +216,6 @@
     <string name="need_more_data_faster">Unahitaji data zaidi, haraka zaidi?</string>
     <string name="net_points_earned">Jumla ya pointi zilizopatikana</string>
     <string name="net_provided">Data Zilizotolewa</string>
-    <string name="network_api_api_url_help">Acha wazi ili itokane na kikoa cha mtandao.</string>
-    <string name="network_api_api_url_label">URL ya API (hiari)</string>
-    <string name="network_api_apply">Tumia API ya mtandao</string>
-    <string name="network_api_connect_url_help">Tumia wss:// kwa seva maalum salama za connect.</string>
-    <string name="network_api_connect_url_label">URL ya connect (hiari)</string>
-    <string name="network_api_current_api">API ya sasa: %1$s</string>
-    <string name="network_api_current_connect">Connect ya sasa: %1$s</string>
-    <string name="network_api_description">Chagua kikoa cha mtandao kinachotumiwa na programu. Acha URL za API na connect wazi ili zitokane na kikoa.</string>
-    <string name="network_api_domain_help">Mfano: ur.network au kikoa chako maalum.</string>
-    <string name="network_api_domain_label">Kikoa cha mtandao</string>
-    <string name="network_api_enter_domain">Weka kikoa cha mtandao</string>
-    <string name="network_api_failed">Imeshindikana: %1$s</string>
-    <string name="network_api_insecure_warning">Onyo: kituo kimoja au zaidi maalum hakitumii HTTPS/WSS. Trafiki inaweza kuwa haijasimbwa.</string>
-    <string name="network_api_manager_unavailable">Msimamizi wa mtandao hapatikani</string>
-    <string name="network_api_switched_to">Imebadilishwa hadi %1$s</string>
-    <string name="network_api_use_default">Tumia mtandao wa chaguomsingi</string>
     <string name="network_create_bonus_message">Mtu fulani amekualika kujiunga 🥳\\nDai bonasi yako kwa kuunda mtandao!</string>
     <string name="network_name_check_error">Haipatikani. Lazima iwe na angalau herufi 3 tofauti na mtandao uliopo. Ifanye iwe ya kipekee au ndefu zaidi.</string>
     <string name="network_name_label">Jina la mtandao</string>
@@ -299,7 +275,6 @@
     <string name="provider_statistics">Takwimu za mtoa huduma</string>
     <string name="providing_disabled">Utoaji umezimwa</string>
     <string name="ready_to_connect">Tayari kuunganisha</string>
-    <string name="receive">Pokea</string>
     <string name="receive_notifications">Pokea arifa za muunganisho</string>
     <string name="reconnect">Unganisha tena</string>
     <string name="reconnect_tunnel_status_indicator">Tuneli ya VPN imetenganishwa 😓</string>

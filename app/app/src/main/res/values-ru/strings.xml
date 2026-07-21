@@ -63,8 +63,6 @@
     <string name="cancel">Отмена</string>
     <string name="chains_supported">В настоящее время поддерживаются кошельки Solana и Polygon</string>
     <string name="change">Изменить</string>
-    <string name="change_network_api">Изменить API сети</string>
-    <string name="change_network_api_title">Изменить API сети</string>
     <string name="change_password">Изменить пароль</string>
     <string name="check_internet">Проверьте ваше интернет-соединение</string>
     <string name="check_ip">Проверить мой IP</string>
@@ -98,7 +96,6 @@
     <string name="connectivity_label">Подключение</string>
     <string name="continue_txt">Продолжить</string>
     <string name="contract">Контракт</string>
-    <string name="contract_stack_max">макс %1$s</string>
     <string name="contracts_appear_connected">Контракты появятся здесь при подключении.</string>
     <string name="contracts_appear_providing">Контракты появятся здесь во время предоставления.</string>
     <string name="copy">Копировать</string>
@@ -121,10 +118,7 @@
     <string name="default_wallet">По умолчанию</string>
     <string name="delete_account">Удалить аккаунт</string>
     <string name="device">Устройство</string>
-    <string name="device_discoverable">Это устройство доступно для обнаружения</string>
-    <string name="device_discoverable_as">Это устройство доступно для обнаружения как %1$s</string>
     <string name="device_name_label">Имя</string>
-    <string name="device_not_discoverable">Включите режим предоставления, чтобы это устройство было доступно для обнаружения</string>
     <string name="device_spec_label">Модель</string>
     <string name="devices">Устройства</string>
     <string name="disable_ignore_battery_hint">Чтобы отключить, перейдите в Использование батареи приложением в системных настройках</string>
@@ -132,8 +126,6 @@
     <string name="dismiss">Закрыть</string>
     <string name="display_network_on_leaderboard">Отображать сеть в таблице лидеров</string>
     <string name="dns_over_https">DNS через HTTPS</string>
-    <string name="dns_pill_defaults">Безопасные настройки по умолчанию не применены</string>
-    <string name="dns_pill_recommended">Есть непримененные рекомендуемые настройки для %1$s</string>
     <string name="dns_recommendation_message">Известно, что самые строгие правила безопасности не работают в %1$s. Есть менее безопасные рекомендованные настройки DNS, которые работают лучше.</string>
     <string name="dns_restore_secure_message">Восстановите самые безопасные настройки: шифрованный DNS через HTTPS в туннеле.</string>
     <string name="dns_settings_unavailable">Настройки DNS недоступны</string>
@@ -224,22 +216,6 @@
     <string name="need_more_data_faster">Нужно больше данных и выше скорость?</string>
     <string name="net_points_earned">заработано очков (нетто)</string>
     <string name="net_provided">Предоставлено (нетто)</string>
-    <string name="network_api_api_url_help">Оставьте пустым, чтобы вывести из домена сети.</string>
-    <string name="network_api_api_url_label">URL API (необязательно)</string>
-    <string name="network_api_apply">Применить API сети</string>
-    <string name="network_api_connect_url_help">Используйте wss:// для защищённых пользовательских connect-серверов.</string>
-    <string name="network_api_connect_url_label">Connect URL (необязательно)</string>
-    <string name="network_api_current_api">Текущий API: %1$s</string>
-    <string name="network_api_current_connect">Текущий connect: %1$s</string>
-    <string name="network_api_description">Выберите домен сети, используемый приложением. Оставьте URL API и connect пустыми, чтобы вывести их из домена.</string>
-    <string name="network_api_domain_help">Пример: ur.network или ваш собственный домен.</string>
-    <string name="network_api_domain_label">Домен сети</string>
-    <string name="network_api_enter_domain">Введите домен сети</string>
-    <string name="network_api_failed">Сбой: %1$s</string>
-    <string name="network_api_insecure_warning">Внимание: один или несколько пользовательских эндпоинтов не используют HTTPS/WSS. Трафик может быть незашифрованным.</string>
-    <string name="network_api_manager_unavailable">Менеджер сети недоступен</string>
-    <string name="network_api_switched_to">Переключено на %1$s</string>
-    <string name="network_api_use_default">Использовать сеть по умолчанию</string>
     <string name="network_create_bonus_message">"Кто-то пригласил вас присоединиться 🥳 \nПолучите свой бонус, создав сеть!"</string>
     <string name="network_name_check_error">Недоступно. Имя должно отличаться от существующего как минимум на 3 символа. Сделайте его уникальнее или длиннее.</string>
     <string name="network_name_label">Имя сети</string>
@@ -299,7 +275,6 @@
     <string name="provider_statistics">Статистика провайдера</string>
     <string name="providing_disabled">Предоставление отключено</string>
     <string name="ready_to_connect">Готово к подключению</string>
-    <string name="receive">Получить</string>
     <string name="receive_notifications">Получать уведомления о подключении</string>
     <string name="reconnect">Переподключить</string>
     <string name="reconnect_tunnel_status_indicator">VPN-туннель отключен 😓</string>

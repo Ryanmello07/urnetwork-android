@@ -63,8 +63,6 @@
     <string name="cancel">रद्द करें</string>
     <string name="chains_supported">Solana और Polygon वॉलेट वर्तमान में समर्थित हैं</string>
     <string name="change">बदलें</string>
-    <string name="change_network_api">नेटवर्क API बदलें</string>
-    <string name="change_network_api_title">नेटवर्क API बदलें</string>
     <string name="change_password">पासवर्ड बदलें</string>
     <string name="check_internet">अपना इंटरनेट कनेक्शन जांचें</string>
     <string name="check_ip">मेरा IP जांचें</string>
@@ -98,7 +96,6 @@
     <string name="connectivity_label">कनेक्टिविटी</string>
     <string name="continue_txt">जारी रखें</string>
     <string name="contract">कॉन्ट्रैक्ट</string>
-    <string name="contract_stack_max">अधिकतम %1$s</string>
     <string name="contracts_appear_connected">कनेक्ट होने पर कॉन्ट्रैक्ट यहाँ दिखाई देंगे।</string>
     <string name="contracts_appear_providing">प्रदान करते समय कॉन्ट्रैक्ट यहाँ दिखाई देंगे।</string>
     <string name="copy">कॉपी करें</string>
@@ -121,10 +118,7 @@
     <string name="default_wallet">डिफ़ॉल्ट</string>
     <string name="delete_account">अकाउंट डिलीट करें</string>
     <string name="device">डिवाइस</string>
-    <string name="device_discoverable">यह डिवाइस खोजा जा सकता है</string>
-    <string name="device_discoverable_as">यह डिवाइस %1$s के रूप में खोजा जा सकता है</string>
     <string name="device_name_label">नाम</string>
-    <string name="device_not_discoverable">इस डिवाइस को खोजने योग्य बनाने के लिए प्रदान मोड चालू करें</string>
     <string name="device_spec_label">स्पेक</string>
     <string name="devices">डिवाइस</string>
     <string name="disable_ignore_battery_hint">अक्षम करने के लिए, कृपया सिस्टम सेटिंग्स में ऐप बैटरी उपयोग पर जाएँ</string>
@@ -132,8 +126,6 @@
     <string name="dismiss">खारिज करें</string>
     <string name="display_network_on_leaderboard">लीडरबोर्ड पर नेटवर्क प्रदर्शित करें</string>
     <string name="dns_over_https">HTTPS पर DNS</string>
-    <string name="dns_pill_defaults">डिफ़ॉल्ट सुरक्षित सेटिंग्स लागू नहीं हैं</string>
-    <string name="dns_pill_recommended">%1$s के लिए अनुशंसित सेटिंग्स लागू नहीं हैं</string>
     <string name="dns_recommendation_message">%1$s में सबसे मज़बूत सुरक्षा नियम काम नहीं करते। कुछ कम सुरक्षित अनुशंसित DNS सेटिंग्स हैं जो बेहतर काम करती हैं।</string>
     <string name="dns_restore_secure_message">सबसे सुरक्षित सेटिंग्स बहाल करें: टनल के ज़रिए HTTPS पर एन्क्रिप्टेड DNS।</string>
     <string name="dns_settings_unavailable">DNS सेटिंग्स उपलब्ध नहीं</string>
@@ -224,22 +216,6 @@
     <string name="need_more_data_faster">क्या आपको अधिक डेटा, तेज़ी से चाहिए?</string>
     <string name="net_points_earned">अर्जित शुद्ध अंक</string>
     <string name="net_provided">प्रदान किया गया नेट</string>
-    <string name="network_api_api_url_help">नेटवर्क डोमेन से प्राप्त करने के लिए खाली छोड़ें।</string>
-    <string name="network_api_api_url_label">API URL (वैकल्पिक)</string>
-    <string name="network_api_apply">नेटवर्क API लागू करें</string>
-    <string name="network_api_connect_url_help">सुरक्षित कस्टम connect सर्वर के लिए wss:// का उपयोग करें।</string>
-    <string name="network_api_connect_url_label">Connect URL (वैकल्पिक)</string>
-    <string name="network_api_current_api">वर्तमान API: %1$s</string>
-    <string name="network_api_current_connect">वर्तमान connect: %1$s</string>
-    <string name="network_api_description">ऐप द्वारा उपयोग किया जाने वाला नेटवर्क डोमेन चुनें। API और connect URL को डोमेन से प्राप्त करने के लिए खाली छोड़ें।</string>
-    <string name="network_api_domain_help">उदाहरण: ur.network या आपका कस्टम डोमेन।</string>
-    <string name="network_api_domain_label">नेटवर्क डोमेन</string>
-    <string name="network_api_enter_domain">नेटवर्क डोमेन दर्ज करें</string>
-    <string name="network_api_failed">विफल: %1$s</string>
-    <string name="network_api_insecure_warning">चेतावनी: एक या अधिक कस्टम एंडपॉइंट HTTPS/WSS का उपयोग नहीं कर रहे हैं। ट्रैफ़िक अनएन्क्रिप्टेड हो सकता है।</string>
-    <string name="network_api_manager_unavailable">नेटवर्क प्रबंधक उपलब्ध नहीं है</string>
-    <string name="network_api_switched_to">%1$s पर स्विच किया गया</string>
-    <string name="network_api_use_default">डिफ़ॉल्ट नेटवर्क का उपयोग करें</string>
     <string name="network_create_bonus_message">किसी ने आपको जुड़ने के लिए आमंत्रित किया 🥳\\nनेटवर्क बनाकर अपना बोनस प्राप्त करें!</string>
     <string name="network_name_check_error">उपलब्ध नहीं है। किसी मौजूदा नेटवर्क से कम से कम 3 वर्ण अलग होने चाहिए। इसे अद्वितीय या लंबा बनाएं।</string>
     <string name="network_name_label">नेटवर्क का नाम</string>
@@ -299,7 +275,6 @@
     <string name="provider_statistics">प्रदाता आँकड़े</string>
     <string name="providing_disabled">प्रदान करना बंद है</string>
     <string name="ready_to_connect">कनेक्ट करने के लिए तैयार</string>
-    <string name="receive">प्राप्त करें</string>
     <string name="receive_notifications">कनेक्शन सूचनाएं प्राप्त करें</string>
     <string name="reconnect">पुनः कनेक्ट करें</string>
     <string name="reconnect_tunnel_status_indicator">VPN टनल डिस्कनेक्ट हो गया 😓</string>

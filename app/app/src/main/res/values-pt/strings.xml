@@ -63,8 +63,6 @@
     <string name="cancel">Cancele</string>
     <string name="chains_supported">Carteiras Solana e Polygon são compatíveis no momento</string>
     <string name="change">Altere</string>
-    <string name="change_network_api">Alterar API de rede</string>
-    <string name="change_network_api_title">Alterar API de rede</string>
     <string name="change_password">Alterar senha</string>
     <string name="check_internet">Verifique sua conexão de internet</string>
     <string name="check_ip">Verificar o meu IP</string>
@@ -98,7 +96,6 @@
     <string name="connectivity_label">Conectividade</string>
     <string name="continue_txt">Continua</string>
     <string name="contract">Contrato</string>
-    <string name="contract_stack_max">máx %1$s</string>
     <string name="contracts_appear_connected">Os contratos aparecem aqui enquanto estiver ligado.</string>
     <string name="contracts_appear_providing">Os contratos aparecem aqui enquanto estiver a fornecer.</string>
     <string name="copy">Copie</string>
@@ -121,10 +118,7 @@
     <string name="default_wallet">Padrão</string>
     <string name="delete_account">Eliminar conta</string>
     <string name="device">Dispositivo</string>
-    <string name="device_discoverable">Este dispositivo é detetável</string>
-    <string name="device_discoverable_as">Este dispositivo é detetável como %1$s</string>
     <string name="device_name_label">Nome</string>
-    <string name="device_not_discoverable">Ative o modo de fornecimento para tornar este dispositivo detetável</string>
     <string name="device_spec_label">Especificação</string>
     <string name="devices">Dispositivos</string>
     <string name="disable_ignore_battery_hint">Para desativar, vá a Utilização de Bateria da App nas Definições do Sistema</string>
@@ -132,8 +126,6 @@
     <string name="dismiss">Dispensar</string>
     <string name="display_network_on_leaderboard">Exibir rede no quadro de líderes</string>
     <string name="dns_over_https">DNS sobre HTTPS</string>
-    <string name="dns_pill_defaults">As definições seguras predefinidas não estão aplicadas</string>
-    <string name="dns_pill_recommended">Há definições recomendadas por aplicar para %1$s</string>
     <string name="dns_recommendation_message">Sabe-se que as regras de segurança mais fortes não funcionam em %1$s. Existem definições de DNS recomendadas, menos seguras, que funcionam melhor.</string>
     <string name="dns_restore_secure_message">Repor as definições mais seguras: DNS sobre HTTPS encriptado através do túnel.</string>
     <string name="dns_settings_unavailable">Definições de DNS indisponíveis</string>
@@ -224,22 +216,6 @@
     <string name="need_more_data_faster">Precisa de mais dados, mais rápido?</string>
     <string name="net_points_earned">Pontos líquidos ganhos</string>
     <string name="net_provided">Rede Fornecida</string>
-    <string name="network_api_api_url_help">Deixe em branco para derivar do domínio de rede.</string>
-    <string name="network_api_api_url_label">URL da API (opcional)</string>
-    <string name="network_api_apply">Aplicar API de rede</string>
-    <string name="network_api_connect_url_help">Use wss:// para servidores connect personalizados seguros.</string>
-    <string name="network_api_connect_url_label">URL de connect (opcional)</string>
-    <string name="network_api_current_api">API atual: %1$s</string>
-    <string name="network_api_current_connect">Connect atual: %1$s</string>
-    <string name="network_api_description">Escolha o domínio de rede usado pela app. Deixe os URL de API e connect em branco para os derivar do domínio.</string>
-    <string name="network_api_domain_help">Exemplo: ur.network ou o seu domínio personalizado.</string>
-    <string name="network_api_domain_label">Domínio de rede</string>
-    <string name="network_api_enter_domain">Introduza um domínio de rede</string>
-    <string name="network_api_failed">Falhou: %1$s</string>
-    <string name="network_api_insecure_warning">Aviso: um ou mais endpoints personalizados não usam HTTPS/WSS. O tráfego pode não estar encriptado.</string>
-    <string name="network_api_manager_unavailable">Gestor de rede indisponível</string>
-    <string name="network_api_switched_to">Mudou para %1$s</string>
-    <string name="network_api_use_default">Usar rede predefinida</string>
     <string name="network_create_bonus_message">Alguém convidou-te para te juntares 🥳\\nReivindica o teu bónus criando uma rede!</string>
     <string name="network_name_check_error">Não disponível. Deve ter pelo menos 3 caracteres diferentes de uma rede existente. Torne-o exclusivo ou mais longo.</string>
     <string name="network_name_label">Nome da rede</string>
@@ -299,7 +275,6 @@
     <string name="provider_statistics">Estatísticas do fornecedor</string>
     <string name="providing_disabled">O fornecimento está desativado</string>
     <string name="ready_to_connect">Pronto para conectar</string>
-    <string name="receive">Receba</string>
     <string name="receive_notifications">Receber notificações de conexão</string>
     <string name="reconnect">Reconectar</string>
     <string name="reconnect_tunnel_status_indicator">Túnel VPN desconectado 😓</string>

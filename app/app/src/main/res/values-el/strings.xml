@@ -63,8 +63,6 @@
     <string name="cancel">Ακύρωση</string>
     <string name="chains_supported">Τα πορτοφόλια Solana και Polygon υποστηρίζονται αυτήν τη στιγμή</string>
     <string name="change">Αλλαγή</string>
-    <string name="change_network_api">Αλλαγή API δικτύου</string>
-    <string name="change_network_api_title">Αλλαγή API δικτύου</string>
     <string name="change_password">Αλλαγή κωδικού πρόσβασης</string>
     <string name="check_internet">Ελέγξτε τη σύνδεση στο διαδίκτυο</string>
     <string name="check_ip">Έλεγχος της διεύθυνσης IP μου</string>
@@ -98,7 +96,6 @@
     <string name="connectivity_label">Συνδεσιμότητα</string>
     <string name="continue_txt">Συνέχεια</string>
     <string name="contract">Συμβόλαιο</string>
-    <string name="contract_stack_max">μέγ. %1$s</string>
     <string name="contracts_appear_connected">Τα συμβόλαια εμφανίζονται εδώ όταν είστε συνδεδεμένοι.</string>
     <string name="contracts_appear_providing">Τα συμβόλαια εμφανίζονται εδώ όταν παρέχετε.</string>
     <string name="copy">Αντιγραφή</string>
@@ -121,10 +118,7 @@
     <string name="default_wallet">Προεπιλογή</string>
     <string name="delete_account">Διαγραφή λογαριασμού</string>
     <string name="device">Συσκευή</string>
-    <string name="device_discoverable">Αυτή η συσκευή είναι ανιχνεύσιμη</string>
-    <string name="device_discoverable_as">Αυτή η συσκευή είναι ανιχνεύσιμη ως %1$s</string>
     <string name="device_name_label">Όνομα</string>
-    <string name="device_not_discoverable">Ενεργοποιήστε τη λειτουργία παροχής για να γίνει αυτή η συσκευή ανιχνεύσιμη</string>
     <string name="device_spec_label">Προδιαγραφές</string>
     <string name="devices">Συσκευές</string>
     <string name="disable_ignore_battery_hint">Για να το απενεργοποιήσετε, μεταβείτε στη Χρήση μπαταρίας εφαρμογής στις Ρυθμίσεις συστήματος</string>
@@ -132,8 +126,6 @@
     <string name="dismiss">Ακύρωση</string>
     <string name="display_network_on_leaderboard">Εμφάνιση δικτύου στον πίνακα κατάταξης</string>
     <string name="dns_over_https">DNS μέσω HTTPS</string>
-    <string name="dns_pill_defaults">Οι προεπιλεγμένες ασφαλείς ρυθμίσεις δεν έχουν εφαρμοστεί</string>
-    <string name="dns_pill_recommended">Υπάρχουν μη εφαρμοσμένες προτεινόμενες ρυθμίσεις για %1$s</string>
     <string name="dns_recommendation_message">%1$s: οι πιο ισχυροί κανόνες ασφαλείας είναι γνωστό ότι δεν λειτουργούν εδώ. Υπάρχουν λιγότερο ασφαλείς προτεινόμενες ρυθμίσεις DNS που λειτουργούν καλύτερα.</string>
     <string name="dns_restore_secure_message">Επαναφέρετε τις πιο ασφαλείς ρυθμίσεις: κρυπτογραφημένο DNS μέσω HTTPS μέσα από το τούνελ.</string>
     <string name="dns_settings_unavailable">Οι ρυθμίσεις DNS δεν είναι διαθέσιμες</string>
@@ -224,22 +216,6 @@
     <string name="need_more_data_faster">Χρειάζεστε περισσότερα δεδομένα, πιο γρήγορα;</string>
     <string name="net_points_earned">Καθαροί πόντοι που κερδήθηκαν</string>
     <string name="net_provided">Παρεχόμενο Δίκτυο</string>
-    <string name="network_api_api_url_help">Αφήστε το κενό για να προκύψει από τον τομέα δικτύου.</string>
-    <string name="network_api_api_url_label">URL του API (προαιρετικό)</string>
-    <string name="network_api_apply">Εφαρμογή API δικτύου</string>
-    <string name="network_api_connect_url_help">Χρησιμοποιήστε wss:// για ασφαλείς προσαρμοσμένους διακομιστές connect.</string>
-    <string name="network_api_connect_url_label">Connect URL (προαιρετικό)</string>
-    <string name="network_api_current_api">Τρέχον API: %1$s</string>
-    <string name="network_api_current_connect">Τρέχον connect: %1$s</string>
-    <string name="network_api_description">Επιλέξτε τον τομέα δικτύου που χρησιμοποιεί η εφαρμογή. Αφήστε τα URL του API και του connect κενά για να προκύψουν από τον τομέα.</string>
-    <string name="network_api_domain_help">Παράδειγμα: ur.network ή ο δικός σας τομέας.</string>
-    <string name="network_api_domain_label">Τομέας δικτύου</string>
-    <string name="network_api_enter_domain">Εισαγάγετε έναν τομέα δικτύου</string>
-    <string name="network_api_failed">Απέτυχε: %1$s</string>
-    <string name="network_api_insecure_warning">Προειδοποίηση: ένα ή περισσότερα προσαρμοσμένα σημεία δεν χρησιμοποιούν HTTPS/WSS. Η κίνηση μπορεί να μην είναι κρυπτογραφημένη.</string>
-    <string name="network_api_manager_unavailable">Ο διαχειριστής δικτύου δεν είναι διαθέσιμος</string>
-    <string name="network_api_switched_to">Έγινε εναλλαγή σε %1$s</string>
-    <string name="network_api_use_default">Χρήση προεπιλεγμένου δικτύου</string>
     <string name="network_create_bonus_message">Κάποιος σε προσκάλεσε να συμμετάσχεις 🥳\\nΔιεκδίκησε το μπόνους σου δημιουργώντας ένα δίκτυο!</string>
     <string name="network_name_check_error">Μη διαθέσιμο. Πρέπει να είναι τουλάχιστον 3 χαρακτήρες διαφορετικοί από ένα υπάρχον δίκτυο. Κάντε το μοναδικό ή μεγαλύτερο.</string>
     <string name="network_name_label">Όνομα δικτύου</string>
@@ -299,7 +275,6 @@
     <string name="provider_statistics">Στατιστικά παρόχου</string>
     <string name="providing_disabled">Η παροχή είναι απενεργοποιημένη</string>
     <string name="ready_to_connect">Έτοιμο για σύνδεση</string>
-    <string name="receive">Λήψη</string>
     <string name="receive_notifications">Λήψη ειδοποιήσεων σύνδεσης</string>
     <string name="reconnect">Επανασύνδεση</string>
     <string name="reconnect_tunnel_status_indicator">Το τούνελ VPN αποσυνδέθηκε 😓</string>
