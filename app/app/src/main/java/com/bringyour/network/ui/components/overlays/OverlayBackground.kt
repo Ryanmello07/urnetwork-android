@@ -132,7 +132,7 @@ private fun FullScreenOverlayPreview() {
     URNetworkTheme {
         OverlayBackground(
             onDismiss = {},
-            bgImageResourceId = R.drawable.overlay_refer_bg
+            bgImageResourceId = R.drawable.overlay_guest_mode_bg
         ) {
             Text("Hello world")
         }

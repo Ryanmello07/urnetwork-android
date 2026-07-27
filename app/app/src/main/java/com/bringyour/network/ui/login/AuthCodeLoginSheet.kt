@@ -182,7 +182,7 @@ fun AuthCodeLoginSheet(
 
 @Preview
 @Composable
-private fun AuthCodeLoginSheetPreview() {
+private fun OnboardingGuestModeSheetPreview() {
     URNetworkTheme {
 
         Scaffold { innerPadding ->

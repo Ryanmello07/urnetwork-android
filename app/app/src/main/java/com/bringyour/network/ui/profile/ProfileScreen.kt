@@ -3,7 +3,6 @@ package com.bringyour.network.ui.profile
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,11 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,9 +20,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -51,8 +48,6 @@ import com.bringyour.network.R
 import com.bringyour.network.ui.account.AccountViewModel
 import com.bringyour.network.ui.components.AccountSwitcher
 import com.bringyour.network.ui.components.LoginMode
-import com.bringyour.network.ui.components.URButton
-import com.bringyour.network.ui.components.URInlineErrorText
 import com.bringyour.network.ui.components.URTextInput
 import com.bringyour.network.ui.components.overlays.OverlayMode
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
@@ -78,9 +73,17 @@ fun ProfileScreen(
 ) {
 
     val networkUser by accountViewModel.networkUser.collectAsState()
-    val isSavingNetworkName by profileViewModel.isSavingNetworkName.collectAsState()
-    val networkNameError by profileViewModel.networkNameError.collectAsState()
-    val needsNameClaim by profileViewModel.needsNameClaim.collectAsState()
+
+    DisposableEffect(Unit) {
+        val updateSuccessSub = profileViewModel.updateSuccessSub {
+            accountViewModel.refreshNetworkUser()
+            profileViewModel.setIsEditingProfile(false)
+        }
+
+        onDispose {
+            updateSuccessSub?.close()
+        }
+    }
 
     LaunchedEffect(networkUser) {
         profileViewModel.setNetworkUser(networkUser)
@@ -98,18 +101,13 @@ fun ProfileScreen(
         isEditingProfile = profileViewModel.isEditingProfile,
         setIsEditingProfile = profileViewModel.setIsEditingProfile,
         cancelEdits = profileViewModel.cancelEdits,
-        needsNameClaim = needsNameClaim,
-        saveNetworkName = profileViewModel.saveNetworkName,
-        claimNetworkName = profileViewModel.claimNetworkName,
-        isSavingNetworkName = isSavingNetworkName,
-        networkNameError = networkNameError,
+        updateProfile = profileViewModel.updateProfile,
+        isUpdating = profileViewModel.isUpdatingProfile,
         networkNameIsValid = profileViewModel.networkNameIsValid,
         networkNameIsValidating = profileViewModel.isValidatingNetworkName,
         validateNetworkName = profileViewModel.validateNetworkName,
-        onSaved = {
-            accountViewModel.refreshNetworkUser()
-            profileViewModel.setIsEditingProfile(false)
-        },
+        errorUpdatingProfile = profileViewModel.errorUpdatingProfile,
+        setErrorUpdatingProfile = profileViewModel.setErrorUpdatingProfile,
         launchOverlay = overlayViewModel.launch
     )
 
@@ -129,15 +127,13 @@ fun ProfileScreen(
     isEditingProfile: Boolean,
     setIsEditingProfile: (Boolean) -> Unit,
     cancelEdits: () -> Unit,
-    needsNameClaim: Boolean,
-    saveNetworkName: (onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
-    claimNetworkName: (onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
-    onSaved: () -> Unit,
-    isSavingNetworkName: Boolean,
-    networkNameError: String?,
+    updateProfile: () -> Unit,
+    isUpdating: Boolean,
     validateNetworkName: (String) -> Unit,
     networkNameIsValid: Boolean,
     networkNameIsValidating: Boolean,
+    errorUpdatingProfile: Boolean,
+    setErrorUpdatingProfile: (Boolean) -> Unit,
     launchOverlay: (OverlayMode) -> Unit
 ) {
 
@@ -213,92 +209,69 @@ fun ProfileScreen(
             }
             Spacer(modifier = Modifier.height(64.dp))
 
-            if (isEditingProfile) {
-                URTextInput(
-                    value = networkNameTextFieldValue,
-                    onValueChange = {
-                        setNetworkName(it)
+            URTextInput(
+                value = networkNameTextFieldValue,
+                onValueChange = {
+                    setNetworkName(it)
 
-                        debounceJob?.cancel()
-                        debounceJob = coroutineScope.launch {
-                            delay(500L)
-                            validateNetworkName(it.text)
-                        }
-
-                    },
-                    enabled = !isSavingNetworkName,
-                    label = stringResource(id = R.string.network_name_label),
-                    isValidating = networkNameIsValidating,
-                    isValid = networkNameIsValid,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Done
-                    ),
-                )
-
-                if (networkNameError != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    URInlineErrorText(networkNameError)
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        URButton(
-                            onClick = {
-                                if (needsNameClaim) {
-                                    claimNetworkName(onSaved) { }
-                                } else {
-                                    saveNetworkName(onSaved) { }
-                                }
-                            },
-                            enabled = !isSavingNetworkName && networkNameTextFieldValue.text.isNotBlank(),
-                            isProcessing = isSavingNetworkName
-                        ) { buttonTextStyle ->
-                            Text(stringResource(id = R.string.save), style = buttonTextStyle)
-                        }
+                    debounceJob?.cancel()
+                    debounceJob = coroutineScope.launch {
+                        delay(500L)
+                        validateNetworkName(it.text)
                     }
-                    TextButton(onClick = cancelEdits) {
-                        Text(stringResource(id = R.string.cancel))
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { setIsEditingProfile(true) },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        networkName,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = androidx.compose.ui.graphics.Color.White
-                    )
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = stringResource(id = R.string.edit_network_name),
-                        tint = TextMuted,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    if (needsNameClaim) {
-                        stringResource(id = R.string.claim_network_name_hint)
-                    } else {
-                        stringResource(id = R.string.change_network_name_hint)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
-                )
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                },
+                enabled = isEditingProfile && !isUpdating,
+                label = stringResource(id = R.string.network_name_label),
+                isValidating = networkNameIsValidating,
+                isValid = networkNameIsValid,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done
+                ),
+            )
+
+            // todo - temporarily remove edits until new API changes are made
+            //
+//            if (isEditingProfile) {
+//
+//                Row {
+//                    Text(
+//                        stringResource(id = R.string.cancel),
+//                        modifier = Modifier.clickable {
+//                            cancelEdits()
+//                        },
+//                        style = TextStyle(
+//                            color = BlueMedium
+//                        )
+//                    )
+//
+//                    Spacer(modifier = Modifier.width(24.dp))
+//
+//                    Text(
+//                        stringResource(id = R.string.save),
+//                        modifier = Modifier.clickable {
+//                            updateProfile()
+//                        },
+//                        style = TextStyle(
+//                            color = BlueMedium
+//                        )
+//                    )
+//                }
+//
+//            } else {
+//                Text(
+//                    stringResource(id = R.string.edit_profile),
+//                    modifier = Modifier.clickable {
+//                        setIsEditingProfile(true)
+//                    },
+//                    style = TextStyle(
+//                        color = BlueMedium
+//                    )
+//                )
+//            }
+
+            // Spacer(modifier = Modifier.height(32.dp))
 
             URTextInput(
                 value = TextFieldValue(""),
@@ -342,6 +315,21 @@ fun ProfileScreen(
             }
         }
     }
+//    URSnackBar(
+//        type = SnackBarType.ERROR,
+//        isVisible = errorUpdatingProfile,
+//        onDismiss = {
+//            if (errorUpdatingProfile) {
+//                setErrorUpdatingProfile(false)
+//            }
+//        }
+//    ) {
+//
+//        Column() {
+//            Text(stringResource(id = R.string.something_went_wrong))
+//            Text(stringResource(id = R.string.please_wait))
+//        }
+//    }
 }
 
 @Preview
@@ -361,15 +349,13 @@ fun ProfileScreenPreview() {
             isEditingProfile = false,
             setIsEditingProfile = {},
             cancelEdits = {},
-            needsNameClaim = false,
-            saveNetworkName = { _, _ -> },
-            claimNetworkName = { _, _ -> },
-            onSaved = {},
-            isSavingNetworkName = false,
-            networkNameError = null,
+            updateProfile = {},
+            isUpdating = false,
             networkNameIsValid = true,
             networkNameIsValidating = false,
             validateNetworkName = {},
+            errorUpdatingProfile = false,
+            setErrorUpdatingProfile = {},
             launchOverlay = {}
         )
     }
@@ -392,15 +378,13 @@ fun ProfileScreenEditingPreview() {
             isEditingProfile = true,
             setIsEditingProfile = {},
             cancelEdits = {},
-            needsNameClaim = false,
-            saveNetworkName = { _, _ -> },
-            claimNetworkName = { _, _ -> },
-            onSaved = {},
-            isSavingNetworkName = false,
-            networkNameError = null,
+            updateProfile = {},
+            isUpdating = false,
             networkNameIsValid = false,
             networkNameIsValidating = false,
             validateNetworkName = {},
+            errorUpdatingProfile = false,
+            setErrorUpdatingProfile = {},
             launchOverlay = {}
         )
     }
@@ -408,38 +392,7 @@ fun ProfileScreenEditingPreview() {
 
 @Preview
 @Composable
-fun ProfileScreenClaimingPreview() {
-    val navController = rememberNavController()
-    URNetworkTheme {
-        ProfileScreen(
-            navController,
-            loginMode = LoginMode.Authenticated,
-            isSendingResetPassLink = false,
-            sendResetLink = {_, _, _ ->},
-            userAuth = null,
-            networkName = "auto_generated_name_123",
-            networkNameTextFieldValue = TextFieldValue("auto_generated_name_123"),
-            setNetworkName = {},
-            isEditingProfile = false,
-            setIsEditingProfile = {},
-            cancelEdits = {},
-            needsNameClaim = true,
-            saveNetworkName = { _, _ -> },
-            claimNetworkName = { _, _ -> },
-            onSaved = {},
-            isSavingNetworkName = false,
-            networkNameError = null,
-            networkNameIsValid = true,
-            networkNameIsValidating = false,
-            validateNetworkName = {},
-            launchOverlay = {}
-        )
-    }
-}
-
-@Preview
-@Composable
-fun ProfileScreenErrorPreview() {
+fun ProfileScreenErrorUpdatingPreview() {
     val navController = rememberNavController()
     URNetworkTheme {
         ProfileScreen(
@@ -451,18 +404,16 @@ fun ProfileScreenErrorPreview() {
             networkName = "my_network",
             networkNameTextFieldValue = TextFieldValue("my_network"),
             setNetworkName = {},
-            isEditingProfile = true,
+            isEditingProfile = false,
             setIsEditingProfile = {},
             cancelEdits = {},
-            needsNameClaim = false,
-            saveNetworkName = { _, _ -> },
-            claimNetworkName = { _, _ -> },
-            onSaved = {},
-            isSavingNetworkName = false,
-            networkNameError = "That name is already taken",
+            updateProfile = {},
+            isUpdating = false,
             networkNameIsValid = true,
             networkNameIsValidating = false,
             validateNetworkName = {},
+            errorUpdatingProfile = true,
+            setErrorUpdatingProfile = {},
             launchOverlay = {}
         )
     }

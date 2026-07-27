@@ -70,6 +70,11 @@ jobs:
       - name: Check out glog dependency
         run: git clone --depth 1 https://github.com/urnetwork/glog.git glog
 
+      # the sdk's go.mod resolves this with `replace ... => ../goidenticons`,
+      # so it has to sit next to urnetwork-sdk like connect and glog do
+      - name: Check out goidenticons dependency
+        run: git clone --depth 1 https://github.com/urnetwork/goidenticons.git goidenticons
+
       - name: Build SDK for Android
         working-directory: urnetwork-sdk/build
         env:

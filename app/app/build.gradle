@@ -33,10 +33,8 @@ ext.abiVersionCodeVariants = [
 def warpHomeDir = System.getenv('WARP_HOME') ?:
         file("${rootDir.absolutePath}/../..").absolutePath
 
-// Points to the local checkout of the forked SDK:
-// https://github.com/Ryanmello07/urnetwork-sdk
 def bringyourHomeDir = System.getenv('BRINGYOUR_HOME') ?:
-        file("${rootDir.absolutePath}/../../urnetwork-sdk").absolutePath
+        file("${rootDir.absolutePath}/../..").absolutePath
 
 ext.signingSecret = { key ->
     def signingPropertiesFile = file("${warpHomeDir}/release/android/signing/app.properties")
@@ -433,7 +431,7 @@ android {
     }
 
     tasks.register('buildSdk', Exec) {
-        workingDir "${bringyourHomeDir}/build"
+        workingDir "${bringyourHomeDir}/sdk/build"
         commandLine 'make', 'init', 'build_android'
         environment 'WARP_VERSION', "${appVersion()}+${appVersionCode()}"
         environment 'ANDROID_NDK_HOME', android.ndkDirectory
@@ -466,8 +464,8 @@ android {
 
 // local URnetwork SDK
 dependencies {
-    compileOnly fileTree(dir: "${bringyourHomeDir}/build/android", include: ['*-sources.jar'])
-    implementation fileTree(dir: "${bringyourHomeDir}/build/android", include: ['*.aar', '*.jar'])
+    compileOnly fileTree(dir: "${bringyourHomeDir}/sdk/build/android", include: ['*-sources.jar'])
+    implementation fileTree(dir: "${bringyourHomeDir}/sdk/build/android", include: ['*.aar', '*.jar'])
 }
 
 dependencies {
