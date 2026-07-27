@@ -70,6 +70,11 @@ jobs:
       - name: Check out glog dependency
         run: git clone --depth 1 https://github.com/urnetwork/glog.git glog
 
+      # the sdk's go.mod resolves this with `replace ... => ../goidenticons`,
+      # so it has to sit next to urnetwork-sdk like connect and glog do
+      - name: Check out goidenticons dependency
+        run: git clone --depth 1 https://github.com/urnetwork/goidenticons.git goidenticons
+
       - name: Build SDK for Android
         working-directory: urnetwork-sdk/build
         env:
@@ -80,6 +85,16 @@ jobs:
         run: |
           export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
           make init build_android
+          # the sdk's build_android recipe keeps going after a failed
+          # `gomobile bind`, so make can exit 0 having produced no aar. that
+          # only surfaces later as "Unresolved reference 'sdk'" across every
+          # kotlin file, which buries the real go compile error. fail here
+          # instead, while it is still on screen.
+          aar_dir="$BRINGYOUR_HOME/build/android"
+          if ! ls "$aar_dir"/*.aar >/dev/null 2>&1; then
+            echo "::error::gomobile bind produced no .aar in $aar_dir -- see the go compile errors above"
+            exit 1
+          fi
 
       - name: Write local.properties to bypass warpctl
         working-directory: app
