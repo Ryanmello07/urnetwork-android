@@ -1159,6 +1159,8 @@ fun SettingsScreen(
             /**
             * Version
              */
+            DeveloperSection()
+
             URTextInputLabel(stringResource(id = R.string.version_info))
 
             Row(
