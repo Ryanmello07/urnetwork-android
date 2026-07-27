@@ -14,26 +14,33 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.bringyour.network.ui.components.overlays.FullScreenOverlay
 import com.bringyour.network.ui.login.AuthCodeLoadingScreen
+import com.bringyour.network.ui.login.CreateNetworkInstant
 import com.bringyour.network.ui.login.LoginCreateNetwork
 import com.bringyour.network.ui.login.LoginCreateNetworkParams
 import com.bringyour.network.ui.login.LoginInitial
 import com.bringyour.network.ui.login.LoginPassword
 import com.bringyour.network.ui.login.LoginPasswordReset
 import com.bringyour.network.ui.login.LoginPasswordResetAfterSend
+import com.bringyour.network.ui.login.LoginSeedphrase
 import com.bringyour.network.ui.login.LoginVerify
 import com.bringyour.network.ui.login.LoginViewModel
+import com.bringyour.network.ui.login.SeedphraseDisplayScreen
 import com.bringyour.network.ui.login.SwitchAccountScreen
+import com.bringyour.network.ui.login.handleLoginFlow
 import com.bringyour.network.ui.login.toWalletCreateBundle
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginNavHost(
@@ -226,6 +233,74 @@ fun LoginNavHost(
                             userAuth,
                             navController
                         )
+                    }
+
+                    composable("login_seedphrase") {
+                        val context = LocalContext.current
+                        val application = context.applicationContext as? com.bringyour.network.MainApplication
+                        val loginActivity = context as? com.bringyour.network.LoginActivity
+                        val coroutineScope = rememberCoroutineScope()
+
+                        LoginSeedphrase(
+                            onLoginSuccess = { jwt ->
+                                coroutineScope.launch {
+                                    handleLoginFlow(
+                                        networkJwt = jwt,
+                                        scope = coroutineScope,
+                                        appLogin = { application?.login(jwt) },
+                                        onContentVisibilityChange = {},
+                                        onErr = {
+                                            android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
+                                        },
+                                        onWelcomeOverlayVisibilityChange = {},
+                                        authClientAndFinish = { cb ->
+                                            loginActivity?.authClientAndFinish(cb)
+                                        }
+                                    )
+                                }
+                            },
+                            onBack = {
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+
+                    composable("create-network-instant") {
+                        val context = LocalContext.current
+                        val application = context.applicationContext as? com.bringyour.network.MainApplication
+                        val loginActivity = context as? com.bringyour.network.LoginActivity
+                        val coroutineScope = rememberCoroutineScope()
+
+                        var seedphraseResult by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+                        CreateNetworkInstant(
+                            onSeedphraseCreated = { seedphrase, jwt ->
+                                seedphraseResult = Pair(seedphrase, jwt)
+                            },
+                            onBack = {
+                                navController.popBackStack()
+                            }
+                        )
+
+                        seedphraseResult?.let { (sp, jwt) ->
+                            SeedphraseDisplayScreen(
+                                seedphrase = sp,
+                                onConfirmed = {
+                                    seedphraseResult = null
+                                    application?.login(jwt)
+                                    coroutineScope.launch {
+                                        loginActivity?.authClientAndFinish { error ->
+                                            if (error != null) {
+                                                android.util.Log.e("LoginNavHost", "auth client finish err: $error")
+                                            }
+                                        }
+                                    }
+                                },
+                                onBack = {
+                                    seedphraseResult = null
+                                }
+                            )
+                        }
                     }
                 }
 

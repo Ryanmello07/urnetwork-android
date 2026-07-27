@@ -68,6 +68,7 @@
     <string name="change">Change</string>
     <string name="change_network_api">Change Network API</string>
     <string name="change_network_api_title">Change Network API</string>
+    <string name="change_network_name_hint">Tap the edit icon to change your network name</string>
     <string name="change_password">Change Password</string>
     <string name="check_internet">Check your internet connection</string>
     <string name="check_ip">Check my IP</string>
@@ -80,6 +81,7 @@
     <string name="cities">Cities</string>
     <string name="claim">Claim</string>
     <string name="claim_multiplier">Claim Multiplier</string>
+    <string name="claim_network_name_hint">Claim a custom network name to replace your auto-generated one</string>
     <string name="client_contracts">Client contracts</string>
     <string name="client_id_copied">Client ID copied</string>
     <string name="client_statistics">Client statistics</string>
@@ -152,6 +154,7 @@
     <string name="earnings">Earnings</string>
     <string name="earnings_doubled">You\'re earning x2 points</string>
     <string name="edit_device_name">Edit device name</string>
+    <string name="edit_network_name">Edit network name</string>
     <string name="edit_profile">Edit Profile</string>
     <string name="edit_referral_code">Edit referral code</string>
     <string name="edit_split_rule">Edit split rule</string>
