@@ -24,7 +24,9 @@ import com.bringyour.network.ui.theme.Red
 import com.bringyour.network.ui.theme.Yellow
 import com.bringyour.sdk.AddAuthArgs
 import com.bringyour.sdk.AuthCodeCreateArgs
+import com.bringyour.sdk.GenerateSeedphraseArgs
 import com.bringyour.sdk.ReferralNetwork
+import com.bringyour.sdk.RegenerateSeedphraseArgs
 import com.bringyour.sdk.RemoveAuthArgs
 import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.StripeCreateCustomerPortalArgs
@@ -352,6 +354,63 @@ class SettingsViewModel @Inject constructor(
             _isRemovingAuth.value = false
             onError("Unable to connect. Please try again.")
         }
+    }
+
+    private val _generatedSeedphrase = MutableStateFlow<String?>(null)
+    val generatedSeedphrase: StateFlow<String?> = _generatedSeedphrase
+
+    private val _isGeneratingSeedphrase = MutableStateFlow(false)
+    val isGeneratingSeedphrase: StateFlow<Boolean> = _isGeneratingSeedphrase
+
+    private val _isRegeneratingSeedphrase = MutableStateFlow(false)
+    val isRegeneratingSeedphrase: StateFlow<Boolean> = _isRegeneratingSeedphrase
+
+    val generateSeedphrase: (onError: (String) -> Unit) -> Unit = { onError ->
+
+        _isGeneratingSeedphrase.value = true
+
+        deviceManager.device?.api?.generateSeedphrase(GenerateSeedphraseArgs()) { result, err ->
+            viewModelScope.launch {
+                _isGeneratingSeedphrase.value = false
+
+                if (err != null) {
+                    onError(err.message ?: "Failed to generate seedphrase")
+                } else if (result?.error != null) {
+                    onError(result.error.message ?: "Failed to generate seedphrase")
+                } else if (result != null) {
+                    _generatedSeedphrase.value = result.seedphrase
+                }
+            }
+        } ?: run {
+            _isGeneratingSeedphrase.value = false
+            onError("Unable to connect. Please try again.")
+        }
+    }
+
+    val regenerateSeedphrase: (onError: (String) -> Unit) -> Unit = { onError ->
+
+        _isRegeneratingSeedphrase.value = true
+
+        deviceManager.device?.api?.regenerateSeedphrase(RegenerateSeedphraseArgs()) { result, err ->
+            viewModelScope.launch {
+                _isRegeneratingSeedphrase.value = false
+
+                if (err != null) {
+                    onError(err.message ?: "Failed to regenerate seedphrase")
+                } else if (result?.error != null) {
+                    onError(result.error.message ?: "Failed to regenerate seedphrase")
+                } else if (result != null) {
+                    _generatedSeedphrase.value = result.seedphrase
+                }
+            }
+        } ?: run {
+            _isRegeneratingSeedphrase.value = false
+            onError("Unable to connect. Please try again.")
+        }
+    }
+
+    val dismissSeedphraseDisplay: () -> Unit = {
+        _generatedSeedphrase.value = null
     }
 
     val toggleRouteLocal: () -> Unit = {

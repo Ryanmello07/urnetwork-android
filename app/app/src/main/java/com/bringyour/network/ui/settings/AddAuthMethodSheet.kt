@@ -40,7 +40,7 @@ import com.bringyour.sdk.WalletAuthArgs
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import kotlinx.coroutines.launch
 
-private enum class AddAuthMethod { GOOGLE, WALLET, EMAIL, SEEDPHRASE }
+private enum class AddAuthMethod { GOOGLE, WALLET, EMAIL }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,9 +63,9 @@ fun AddAuthMethodSheet(
 
     val methods = remember(showGoogleOption) {
         if (showGoogleOption) {
-            listOf(AddAuthMethod.GOOGLE, AddAuthMethod.WALLET, AddAuthMethod.EMAIL, AddAuthMethod.SEEDPHRASE)
+            listOf(AddAuthMethod.GOOGLE, AddAuthMethod.WALLET, AddAuthMethod.EMAIL)
         } else {
-            listOf(AddAuthMethod.WALLET, AddAuthMethod.EMAIL, AddAuthMethod.SEEDPHRASE)
+            listOf(AddAuthMethod.WALLET, AddAuthMethod.EMAIL)
         }
     }
     var selectedMethod by remember(methods) { mutableStateOf(methods.first()) }
@@ -95,18 +95,6 @@ fun AddAuthMethodSheet(
                 val args = AddAuthArgs()
                 args.userAuth = email.text
                 args.password = password.text
-                addAuth(
-                    args,
-                    {
-                        Toast.makeText(context, "Sign-in method added successfully", Toast.LENGTH_SHORT).show()
-                        onAdded()
-                    },
-                    { msg -> addError = msg }
-                )
-            }
-            AddAuthMethod.SEEDPHRASE -> {
-                // Server generates and links a new seedphrase when no auth fields are set
-                val args = AddAuthArgs()
                 addAuth(
                     args,
                     {
@@ -165,7 +153,6 @@ fun AddAuthMethodSheet(
                                     AddAuthMethod.GOOGLE -> "Google"
                                     AddAuthMethod.WALLET -> "Wallet"
                                     AddAuthMethod.EMAIL -> "Email"
-                                    AddAuthMethod.SEEDPHRASE -> "Seedphrase"
                                 },
                                 style = buttonTextStyle
                             )
@@ -182,7 +169,7 @@ fun AddAuthMethodSheet(
                     // is not on github's classpath) -- every flavor's source set
                     // provides its own GoogleAddAuthButton with this exact
                     // signature (real impl on google/solana_dapp/ethos_dapp,
-                    // no-op stub on ungoogle/github). See Task 3 note above.
+                    // no-op stub on ungoogle/github).
                     GoogleAddAuthButton(
                         addAuth = addAuth,
                         isAddingAuth = isAddingAuth,
@@ -266,13 +253,6 @@ fun AddAuthMethodSheet(
                         color = TextMuted
                     )
                 }
-                AddAuthMethod.SEEDPHRASE -> {
-                    Text(
-                        "A new seedphrase will be generated and linked to your account.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted
-                    )
-                }
             }
 
             if (addError != null) {
@@ -280,7 +260,7 @@ fun AddAuthMethodSheet(
                 URInlineErrorText(addError)
             }
 
-            if (selectedMethod == AddAuthMethod.EMAIL || selectedMethod == AddAuthMethod.SEEDPHRASE) {
+            if (selectedMethod == AddAuthMethod.EMAIL) {
                 Spacer(modifier = Modifier.height(16.dp))
                 URButton(
                     onClick = onAddClick,
