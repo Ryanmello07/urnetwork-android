@@ -88,6 +88,7 @@ class DeveloperViewModel @Inject constructor(
     }
 
     val setUdpTeardownSignal: (Boolean) -> Unit = { update { s -> s.udpTeardownSignal = it } }
+    val setDialFailureRerace: (Boolean) -> Unit = { update { s -> s.dialFailureRerace = it } }
     val setClusterAffinityFallback: (Boolean) -> Unit = { update { s -> s.clusterAffinityFallback = it } }
     val setServerNameAffinityBridge: (Boolean) -> Unit = { update { s -> s.serverNameAffinityBridge = it } }
 

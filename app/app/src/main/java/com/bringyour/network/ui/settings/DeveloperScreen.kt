@@ -152,6 +152,20 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         value = (metrics?.flowsOpened ?: 0L).toString(),
     )
 
+    // dial failures are independent of exit-loss events -- a re-raced flow is
+    // one that did *not* cost an exit removal -- so these stay always-shown
+    // beside flows opened rather than behind the exit-loss guard below
+    DeveloperMetric(
+        label = stringResource(id = R.string.dev_dial_failures),
+        detail = stringResource(id = R.string.dev_dial_failures_detail),
+        value = (metrics?.dialFailuresIntercepted ?: 0L).toString(),
+    )
+    DeveloperMetric(
+        label = stringResource(id = R.string.dev_flows_reraced),
+        detail = stringResource(id = R.string.dev_flows_reraced_detail),
+        value = (metrics?.flowsReraced ?: 0L).toString(),
+    )
+
     // the loss numbers are meaningless until something has actually failed,
     // and showing zeros reads as "nothing is wrong" rather than "nothing has
     // been measured yet"
@@ -267,6 +281,12 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         detail = stringResource(id = R.string.dev_udp_teardown_detail),
         checked = reliability?.udpTeardownSignal == true,
         toggle = developerViewModel.setUdpTeardownSignal,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_dial_failure_rerace),
+        detail = stringResource(id = R.string.dev_dial_failure_rerace_detail),
+        checked = reliability?.dialFailureRerace == true,
+        toggle = developerViewModel.setDialFailureRerace,
     )
     DeveloperToggle(
         label = stringResource(id = R.string.dev_cluster_affinity),
@@ -544,6 +564,17 @@ private fun DeveloperExitRow(
             if (exit.p2pOnly) append(" · p2p")
         }
         Text(state, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+
+        // shown only when the exit has reported upstream dials it could not
+        // open in the recent window -- the out-of-capacity signal the re-race
+        // acts on
+        if (exit.dialFailureCount > 0) {
+            Text(
+                stringResource(id = R.string.dev_exit_dial_failures, exit.dialFailureCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             DeveloperAction(label = stringResource(id = R.string.dev_drop_exit), onClick = onDrop)

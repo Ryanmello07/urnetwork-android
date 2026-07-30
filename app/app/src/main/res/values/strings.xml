@@ -130,7 +130,12 @@
     <string name="delete_account">Delete Account</string>
     <string name="dev_cluster_affinity">Group IPs by site</string>
     <string name="dev_cluster_affinity_detail">Keeps a site on one exit when its hostname is not visible</string>
+    <string name="dev_dial_failure_rerace">Retry refused connects elsewhere</string>
+    <string name="dev_dial_failure_rerace_detail">When a provider can\'t reach a site, move the connection to another exit instead of letting it hang</string>
+    <string name="dev_dial_failures">Provider connect failures</string>
+    <string name="dev_dial_failures_detail">Times a provider reported it could not open the upstream connection</string>
     <string name="dev_drop_exit">Drop</string>
+    <string name="dev_exit_dial_failures">%1$d failed dials</string>
     <string name="dev_exit_flows">%1$d flows</string>
     <string name="dev_exits">Exits</string>
     <string name="dev_max_flows_per_exit">Max connections per exit</string>
@@ -154,6 +159,8 @@
     <string name="dev_recovery_missed_value">%1$d of %2$d</string>
     <string name="dev_flows_opened">Flows opened</string>
     <string name="dev_flows_opened_detail">Total since reset, so runs of different lengths compare</string>
+    <string name="dev_flows_reraced">Moved to another exit</string>
+    <string name="dev_flows_reraced_detail">How many of those failures were quietly moved instead of hanging</string>
     <string name="dev_reset_measurements">Reset measurements</string>
     <string name="dev_no_exits">No exits. Connect first.</string>
     <string name="dev_refresh">Refresh</string>
