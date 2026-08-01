@@ -559,6 +559,11 @@ private fun DeveloperExitRow(
 
         val state = buildString {
             append(exit.windowType.ifEmpty { "auto" })
+            // the platform's rank for this provider. only the best rank present
+            // is raced until it is at the flow cap, so a tier above the minimum
+            // with 0 flows is a spare, not a failure
+            append(" · tier ")
+            append(exit.tier)
             if (exit.warning) append(" · draining")
             if (exit.done) append(" · done")
             if (exit.p2pOnly) append(" · p2p")
