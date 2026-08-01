@@ -1,4 +1,4 @@
-name: Beta Build — Android
+﻿name: Beta Build - Android
 
 on:
   push:
@@ -11,9 +11,8 @@ on:
 
 permissions:
   contents: write
-
-env:
-  WARP_VERSION: beta-${{ github.run_number }}
+  # the version derive step reads this run's created_at via the actions api
+  actions: read
 
 jobs:
   build-android:
@@ -26,6 +25,33 @@ jobs:
     steps:
       - name: Check out Android repo
         uses: actions/checkout@v4
+
+      # The beta rides the official version numbering from urnetwork/build so
+      # sideloaders can compare and update across the two lines. Official
+      # releases are tagged v<YYYY.M.D>-<version_code>: the base is just the
+      # build date, and the code is a monotonic counter. The beta stamps its
+      # own build date as the base, and sets its code to the latest official
+      # code + run number, which keeps it above the installed official build
+      # (installable as an update) and below the next official release (whose
+      # counter jumps by tens of thousands per day, so switching back to
+      # official also works). The -beta suffix marks the line without breaking
+      # version parsing.
+      - name: Derive version (official date format, official code counter)
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # the run's creation time, not "now": both jobs of one run must agree
+          # on the date even when the build straddles midnight utc
+          created=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID --jq .created_at)
+          base=$(date -u -d "$created" '+%Y.%-m.%-d')
+          tag=$(gh release view --repo urnetwork/build --json tagName --jq .tagName)
+          code=${tag##*-}
+          beta_code=$((code + ${{ github.run_number }}))
+          version="${base}-${beta_code}-beta"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${beta_code}" >> "$GITHUB_OUTPUT"
+          echo "build date ${base}, official code ${code} -> beta ${version} (${beta_code})"
 
       - name: Check out forked SDK
         uses: actions/checkout@v4
@@ -81,6 +107,7 @@ jobs:
           BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
           WARP_HOME: ${{ github.workspace }}/urnetwork-sdk
           WARP_VERSION_HOME: ${{ github.workspace }}/urnetwork-sdk/version
+          WARP_VERSION: ${{ steps.version.outputs.version }}
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
         run: |
           export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
@@ -96,12 +123,14 @@ jobs:
             exit 1
           fi
 
+      # the same file the official build writes (build/all/run.sh), so gradle
+      # takes the exact path an official release takes
       - name: Write local.properties to bypass warpctl
         working-directory: app
         run: |
           cat > local.properties <<EOF
-          warp.version=${{ env.WARP_VERSION }}
-          warp.version_code=${{ github.run_number }}
+          warp.version=${{ steps.version.outputs.version }}
+          warp.version_code=${{ steps.version.outputs.version_code }}
           EOF
 
       - name: Build ${{ matrix.flavor }}Debug APK
@@ -123,16 +152,45 @@ jobs:
           path: app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk
           if-no-files-found: error
 
-      - name: Create prerelease
-        if: github.event_name == 'push'
+  # one release per build carrying every flavor, tagged in the official
+  # v<version> shape -- the tag a sideloader parses and compares against the
+  # installed versionName, which gradle set to the same string
+  release:
+    name: Publish beta release
+    needs: build-android
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Derive version (official date format, official code counter)
+        id: version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: beta-custom-server-${{ matrix.flavor }}-${{ github.run_number }}-${{ github.run_attempt }}
         run: |
+          # the run's creation time, not "now": both jobs of one run must agree
+          # on the date even when the build straddles midnight utc
+          created=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID --jq .created_at)
+          base=$(date -u -d "$created" '+%Y.%-m.%-d')
+          tag=$(gh release view --repo urnetwork/build --json tagName --jq .tagName)
+          code=${tag##*-}
+          beta_code=$((code + ${{ github.run_number }}))
+          echo "version=${base}-${beta_code}-beta" >> "$GITHUB_OUTPUT"
+
+      - name: Download all APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: apks
+          merge-multiple: true
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.version.outputs.version }}
+        run: |
+          # a re-run of the same run number rebuilds the same version; replace
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes || true
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --prerelease \
-            --title "URnetwork Android beta custom server (${{ matrix.flavor }}) ${{ github.run_number }}" \
-            --generate-notes \
-            app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk
+            --title "URnetwork Android ${{ steps.version.outputs.version }}" \
+            --notes "Beta build (custom server fork) riding the official version numbering: installs as an update over the official release it is based on, and the next official release updates over it. All flavors attached; sideload the github arm64-v8a apk unless you know you need another." \
+            apks/*.apk
