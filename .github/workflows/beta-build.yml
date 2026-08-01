@@ -26,32 +26,34 @@ jobs:
       - name: Check out Android repo
         uses: actions/checkout@v4
 
-      # The beta rides the official version numbering from urnetwork/build so
+      # The beta uses the official version scheme from urnetwork/build so
       # sideloaders can compare and update across the two lines. Official
       # releases are tagged v<YYYY.M.D>-<version_code>: the base is just the
-      # build date, and the code is a monotonic counter. The beta stamps its
-      # own build date as the base, and sets its code to the latest official
-      # code + run number, which keeps it above the installed official build
-      # (installable as an update) and below the next official release (whose
-      # counter jumps by tens of thousands per day, so switching back to
-      # official also works). The -beta suffix marks the line without breaking
-      # version parsing.
-      - name: Derive version (official date format, official code counter)
+      # build date, and the code is warpctl's counter -- seconds since the
+      # company founding (2023-05-23) times 10, the trailing zero reserved
+      # for flavor/abi variant digits (warp warpctl/docker.go newVersionCode).
+      # Computing the same formula at our build time keeps the ordering
+      # automatic in both directions: the beta outranks the older official
+      # build it is based on (installable as an update), and any later
+      # official release outranks the beta. The -beta suffix marks the line
+      # without breaking version parsing.
+      - name: Derive version (official date format, official code formula)
         id: version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # the run's creation time, not "now": both jobs of one run must agree
-          # on the date even when the build straddles midnight utc
+          # the run's creation time, not "now": every job of one run must
+          # agree on the version even across midnight utc, and a matrix of
+          # jobs computing from their own clocks would each mint a different
+          # code
           created=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID --jq .created_at)
           base=$(date -u -d "$created" '+%Y.%-m.%-d')
-          tag=$(gh release view --repo urnetwork/build --json tagName --jq .tagName)
-          code=${tag##*-}
-          beta_code=$((code + ${{ github.run_number }}))
+          founded=$(date -u -d "2023-05-23" +%s)
+          beta_code=$(( ($(date -u -d "$created" +%s) - founded) * 10 ))
           version="${base}-${beta_code}-beta"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "version_code=${beta_code}" >> "$GITHUB_OUTPUT"
-          echo "build date ${base}, official code ${code} -> beta ${version} (${beta_code})"
+          echo "build date ${base} -> beta ${version} (${beta_code})"
 
       - name: Check out forked SDK
         uses: actions/checkout@v4
@@ -161,18 +163,17 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - name: Derive version (official date format, official code counter)
+      - name: Derive version (official date format, official code formula)
         id: version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # the run's creation time, not "now": both jobs of one run must agree
-          # on the date even when the build straddles midnight utc
+          # same derivation as the build job, from the same run creation
+          # time, so the tag always matches the versionName inside the apks
           created=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID --jq .created_at)
           base=$(date -u -d "$created" '+%Y.%-m.%-d')
-          tag=$(gh release view --repo urnetwork/build --json tagName --jq .tagName)
-          code=${tag##*-}
-          beta_code=$((code + ${{ github.run_number }}))
+          founded=$(date -u -d "2023-05-23" +%s)
+          beta_code=$(( ($(date -u -d "$created" +%s) - founded) * 10 ))
           echo "version=${base}-${beta_code}-beta" >> "$GITHUB_OUTPUT"
 
       - name: Download all APK artifacts
