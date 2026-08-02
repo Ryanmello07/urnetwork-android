@@ -1,0 +1,200 @@
+﻿name: Beta Build - Android
+
+on:
+  push:
+    branches:
+      - beta/custom-server
+  pull_request:
+    branches:
+      - beta/custom-server
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  # the version derive step reads this run's created_at via the actions api
+  actions: read
+
+jobs:
+  build-android:
+    name: Build Android app (${{ matrix.flavor }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [github, play, ethos_dapp, solana_dapp]
+    steps:
+      - name: Check out Android repo
+        uses: actions/checkout@v4
+
+      # The beta uses the official version scheme from urnetwork/build so
+      # sideloaders can compare and update across the two lines. Official
+      # releases are tagged v<YYYY.M.D>-<version_code>: the base is just the
+      # build date, and the code is warpctl's counter -- seconds since the
+      # company founding (2023-05-23) times 10, the trailing zero reserved
+      # for flavor/abi variant digits (warp warpctl/docker.go newVersionCode).
+      # Computing the same formula at our build time keeps the ordering
+      # automatic in both directions: the beta outranks the older official
+      # build it is based on (installable as an update), and any later
+      # official release outranks the beta. The -beta suffix marks the line
+      # without breaking version parsing.
+      - name: Derive version (official date format, official code formula)
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # the run's creation time, not "now": every job of one run must
+          # agree on the version even across midnight utc, and a matrix of
+          # jobs computing from their own clocks would each mint a different
+          # code
+          created=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID --jq .created_at)
+          base=$(date -u -d "$created" '+%Y.%-m.%-d')
+          founded=$(date -u -d "2023-05-23" +%s)
+          beta_code=$(( ($(date -u -d "$created" +%s) - founded) * 10 ))
+          version="${base}-${beta_code}-beta"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${beta_code}" >> "$GITHUB_OUTPUT"
+          echo "build date ${base} -> beta ${version} (${beta_code})"
+
+      # upstream-main comparison build: every dependency comes from upstream
+      # main, not the fork's beta branches, so the apk is a faithful build of
+      # what upstream ships -- the other arm of the reliability A/B
+      - name: Check out upstream SDK
+        uses: actions/checkout@v4
+        with:
+          repository: urnetwork/sdk
+          ref: main
+          path: urnetwork-sdk
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Generate debug keystore
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: true
+          link-to-sdk: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Check out connect dependency
+        run: git clone --depth 1 --branch main https://github.com/urnetwork/connect.git connect
+
+      - name: Check out glog dependency
+        run: git clone --depth 1 https://github.com/urnetwork/glog.git glog
+
+      # the sdk's go.mod resolves this with `replace ... => ../goidenticons`,
+      # so it has to sit next to urnetwork-sdk like connect and glog do
+      - name: Check out goidenticons dependency
+        run: git clone --depth 1 https://github.com/urnetwork/goidenticons.git goidenticons
+
+      - name: Build SDK for Android
+        working-directory: urnetwork-sdk/build
+        env:
+          BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
+          WARP_HOME: ${{ github.workspace }}/urnetwork-sdk
+          WARP_VERSION_HOME: ${{ github.workspace }}/urnetwork-sdk/version
+          WARP_VERSION: ${{ steps.version.outputs.version }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
+          make init build_android
+          # the sdk's build_android recipe keeps going after a failed
+          # `gomobile bind`, so make can exit 0 having produced no aar. that
+          # only surfaces later as "Unresolved reference 'sdk'" across every
+          # kotlin file, which buries the real go compile error. fail here
+          # instead, while it is still on screen.
+          aar_dir="$BRINGYOUR_HOME/build/android"
+          if ! ls "$aar_dir"/*.aar >/dev/null 2>&1; then
+            echo "::error::gomobile bind produced no .aar in $aar_dir -- see the go compile errors above"
+            exit 1
+          fi
+
+      # the same file the official build writes (build/all/run.sh), so gradle
+      # takes the exact path an official release takes
+      - name: Write local.properties to bypass warpctl
+        working-directory: app
+        run: |
+          cat > local.properties <<EOF
+          warp.version=${{ steps.version.outputs.version }}
+          warp.version_code=${{ steps.version.outputs.version_code }}
+          EOF
+
+      - name: Build ${{ matrix.flavor }}Debug APK
+        working-directory: app
+        env:
+          BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
+        run: |
+          flavor="${{ matrix.flavor }}"
+          # Gradle's generated task name only capitalizes the flavor's first
+          # letter -- it does not camelCase underscore segments, so
+          # ethos_dapp -> assembleEthos_dappDebug, not assembleEthosDappDebug.
+          capitalizedFlavor=$(echo "$flavor" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')
+          ./gradlew ":app:assemble${capitalizedFlavor}Debug"
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: urnetwork-android-${{ matrix.flavor }}-apk
+          path: app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk
+          if-no-files-found: error
+
+  # one release per build carrying every flavor, tagged in the official
+  # v<version> shape -- the tag a sideloader parses and compares against the
+  # installed versionName, which gradle set to the same string
+  release:
+    name: Publish beta release
+    needs: build-android
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Derive version (official date format, official code formula)
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # same derivation as the build job, from the same run creation
+          # time, so the tag always matches the versionName inside the apks
+          created=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID --jq .created_at)
+          base=$(date -u -d "$created" '+%Y.%-m.%-d')
+          founded=$(date -u -d "2023-05-23" +%s)
+          beta_code=$(( ($(date -u -d "$created" +%s) - founded) * 10 ))
+          echo "version=${base}-${beta_code}-beta" >> "$GITHUB_OUTPUT"
+
+      - name: Download all APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: apks
+          merge-multiple: true
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.version.outputs.version }}
+        run: |
+          # a re-run of the same run number rebuilds the same version; replace
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes || true
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --title "URnetwork Android ${{ steps.version.outputs.version }} (upstream main)" \
+            --notes "Upstream-main comparison build: android, sdk, and connect all from urnetwork upstream main -- the other arm of the reliability A/B against the fork's beta line. Same version numbering as the beta builds." \
+            apks/*.apk
