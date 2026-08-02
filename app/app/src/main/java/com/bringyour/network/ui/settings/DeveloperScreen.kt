@@ -178,6 +178,19 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
             metrics?.probesAnswered ?: 0L,
         ),
     )
+    // proof-of-life for the busy-flow liveness probe: acquitted counts the
+    // stalled exits that answered the probe and were kept, the removals it
+    // prevented. Always shown -- a zero is itself the measurement when
+    // comparing busy probe on vs off
+    DeveloperMetric(
+        label = stringResource(id = R.string.dev_busy_probes),
+        detail = stringResource(id = R.string.dev_busy_probes_detail),
+        value = stringResource(
+            id = R.string.dev_busy_probes_value,
+            metrics?.busyProbesSent ?: 0L,
+            metrics?.busyProbesAcquitted ?: 0L,
+        ),
+    )
     // proof-of-life for the uplink gates: nonzero here during a network
     // change means a false conviction was prevented. Always shown -- a zero
     // is itself the measurement when comparing gate on vs off
@@ -195,6 +208,15 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
             label = stringResource(id = R.string.dev_removals_deferred),
             detail = stringResource(id = R.string.dev_removals_deferred_detail),
             value = (metrics?.removalsDeferred ?: 0L).toString(),
+        )
+    }
+    // host suspends the pause detector caught -- rare and device-specific, so
+    // shown only once it has fired, like removals deferred above
+    if ((metrics?.schedulerPausesDetected ?: 0L) > 0L) {
+        DeveloperMetric(
+            label = stringResource(id = R.string.dev_scheduler_pauses),
+            detail = stringResource(id = R.string.dev_scheduler_pauses_detail),
+            value = (metrics?.schedulerPausesDetected ?: 0L).toString(),
         )
     }
     // the field answer to whether servers accept a quic path change: rebinds
@@ -269,11 +291,15 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     Spacer(modifier = Modifier.height(16.dp))
 
     /**
-     * Timing. Each fix's "off" value reproduces the behaviour that shipped
-     * before it, so a freeze can still be A/B'd -- but the middle values are
-     * where a per-connection sweet spot is found.
+     * The reliability knobs, grouped by what they act on so the growing list
+     * stays scannable. Each timing/count control's first preset reproduces the
+     * behaviour that shipped before the fix it controls, so a freeze can still
+     * be A/B'd; the middle values are where a per-connection sweet spot is
+     * found.
+     *
+     * Detection: how an exit is judged to be failing, and how fast.
      */
-    URTextInputLabel(text = stringResource(id = R.string.dev_timing))
+    URTextInputLabel(text = stringResource(id = R.string.dev_detection))
 
     DeveloperDurationSetting(
         label = stringResource(id = R.string.dev_send_stall),
@@ -281,6 +307,140 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         millis = reliability?.sendStallTimeoutMillis ?: 0L,
         presets = DeveloperViewModel.SEND_STALL_PRESETS,
         onSelect = developerViewModel.setSendStallTimeoutMillis,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_busy_probe),
+        detail = stringResource(id = R.string.dev_busy_probe_detail),
+        checked = reliability?.busyProbe == true,
+        toggle = developerViewModel.setBusyProbe,
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_busy_probe_budget),
+        detail = stringResource(id = R.string.dev_busy_probe_budget_detail),
+        millis = reliability?.busyProbeBudgetMillis ?: 0L,
+        presets = DeveloperViewModel.BUSY_PROBE_BUDGET_PRESETS,
+        onSelect = developerViewModel.setBusyProbeBudgetMillis,
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_scheduler_pause_tolerance),
+        detail = stringResource(id = R.string.dev_scheduler_pause_tolerance_detail),
+        millis = reliability?.schedulerPauseToleranceMillis ?: 0L,
+        presets = DeveloperViewModel.SCHEDULER_PAUSE_TOLERANCE_PRESETS,
+        onSelect = developerViewModel.setSchedulerPauseToleranceMillis,
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_scheduler_pause_recovery),
+        detail = stringResource(id = R.string.dev_scheduler_pause_recovery_detail),
+        millis = reliability?.schedulerPauseRecoveryTimeoutMillis ?: 0L,
+        presets = DeveloperViewModel.SCHEDULER_PAUSE_RECOVERY_PRESETS,
+        onSelect = developerViewModel.setSchedulerPauseRecoveryTimeoutMillis,
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_comparative_connect),
+        detail = stringResource(id = R.string.dev_comparative_connect_detail),
+        millis = reliability?.blackholeConnectComparativeTimeoutMillis ?: 0L,
+        presets = DeveloperViewModel.COMPARATIVE_CONNECT_PRESETS,
+        onSelect = developerViewModel.setBlackholeConnectComparativeTimeoutMillis,
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_blackhole_receive),
+        detail = stringResource(id = R.string.dev_blackhole_receive_detail),
+        millis = reliability?.blackholeReceiveTimeoutMillis ?: 0L,
+        presets = DeveloperViewModel.BLACKHOLE_RECEIVE_PRESETS,
+        onSelect = developerViewModel.setBlackholeReceiveTimeoutMillis,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_soft_verdict),
+        detail = stringResource(id = R.string.dev_soft_verdict_detail),
+        checked = reliability?.softVerdictDemote == true,
+        toggle = developerViewModel.setSoftVerdictDemote,
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    /** Placement: which exit a flow lands on, and how the pool is shaped. */
+    URTextInputLabel(text = stringResource(id = R.string.dev_placement))
+
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_effective_tier),
+        detail = stringResource(id = R.string.dev_effective_tier_detail),
+        checked = reliability?.effectiveTierSelection == true,
+        toggle = developerViewModel.setEffectiveTierSelection,
+    )
+    DeveloperCountSetting(
+        label = stringResource(id = R.string.dev_max_flows_per_exit),
+        detail = stringResource(id = R.string.dev_max_flows_per_exit_detail),
+        count = reliability?.maxFlowsPerExit ?: 0,
+        presets = DeveloperViewModel.MAX_FLOWS_PER_EXIT_PRESETS,
+        onSelect = developerViewModel.setMaxFlowsPerExit,
+    )
+    DeveloperCountSetting(
+        label = stringResource(id = R.string.dev_removal_budget_count),
+        detail = stringResource(id = R.string.dev_removal_budget_count_detail),
+        count = reliability?.removalBudgetCount ?: 0,
+        presets = DeveloperViewModel.REMOVAL_BUDGET_COUNT_PRESETS,
+        onSelect = developerViewModel.setRemovalBudgetCount,
+        zeroLabel = "Off",
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_removal_budget_window),
+        detail = stringResource(id = R.string.dev_removal_budget_window_detail),
+        millis = reliability?.removalBudgetWindowMillis ?: 0L,
+        presets = DeveloperViewModel.REMOVAL_BUDGET_WINDOW_PRESETS,
+        onSelect = developerViewModel.setRemovalBudgetWindowMillis,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_standing_reserve),
+        detail = stringResource(id = R.string.dev_standing_reserve_detail),
+        checked = reliability?.standingReserve == true,
+        toggle = developerViewModel.setStandingReserve,
+    )
+    DeveloperCountSetting(
+        label = stringResource(id = R.string.dev_min_blackhole_destinations),
+        detail = stringResource(id = R.string.dev_min_blackhole_destinations_detail),
+        count = reliability?.minBlackholeDestinations ?: 0,
+        presets = DeveloperViewModel.MIN_BLACKHOLE_DESTINATIONS_PRESETS,
+        onSelect = developerViewModel.setMinBlackholeDestinations,
+        zeroLabel = "Off",
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_cluster_affinity),
+        detail = stringResource(id = R.string.dev_cluster_affinity_detail),
+        checked = reliability?.clusterAffinityFallback == true,
+        toggle = developerViewModel.setClusterAffinityFallback,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_server_name_bridge),
+        detail = stringResource(id = R.string.dev_server_name_bridge_detail),
+        checked = reliability?.serverNameAffinityBridge == true,
+        toggle = developerViewModel.setServerNameAffinityBridge,
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    /**
+     * Recovery: getting a flow moving again after its exit fails or the phone's
+     * own network changes underneath it.
+     */
+    URTextInputLabel(text = stringResource(id = R.string.dev_recovery))
+
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_quic_rebind),
+        detail = stringResource(id = R.string.dev_quic_rebind_detail),
+        checked = reliability?.quicRebindOnExitLoss == true,
+        toggle = developerViewModel.setQuicRebindOnExitLoss,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_dial_failure_rerace),
+        detail = stringResource(id = R.string.dev_dial_failure_rerace_detail),
+        checked = reliability?.dialFailureRerace == true,
+        toggle = developerViewModel.setDialFailureRerace,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_udp_teardown),
+        detail = stringResource(id = R.string.dev_udp_teardown_detail),
+        checked = reliability?.udpTeardownSignal == true,
+        toggle = developerViewModel.setUdpTeardownSignal,
     )
     DeveloperDurationSetting(
         label = stringResource(id = R.string.dev_tcp_collapse_hold),
@@ -304,78 +464,61 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         onSelect = developerViewModel.setSequenceIdleTimeoutMillis,
     )
     DeveloperDurationSetting(
-        label = stringResource(id = R.string.dev_blackhole_receive),
-        detail = stringResource(id = R.string.dev_blackhole_receive_detail),
-        millis = reliability?.blackholeReceiveTimeoutMillis ?: 0L,
-        presets = DeveloperViewModel.BLACKHOLE_RECEIVE_PRESETS,
-        onSelect = developerViewModel.setBlackholeReceiveTimeoutMillis,
-    )
-    DeveloperCountSetting(
-        label = stringResource(id = R.string.dev_max_flows_per_exit),
-        detail = stringResource(id = R.string.dev_max_flows_per_exit_detail),
-        count = reliability?.maxFlowsPerExit ?: 0,
-        presets = DeveloperViewModel.MAX_FLOWS_PER_EXIT_PRESETS,
-        onSelect = developerViewModel.setMaxFlowsPerExit,
-    )
-    DeveloperDurationSetting(
         label = stringResource(id = R.string.dev_uplink_gate),
         detail = stringResource(id = R.string.dev_uplink_gate_detail),
         millis = reliability?.uplinkStalenessGateMillis ?: 0L,
         presets = DeveloperViewModel.UPLINK_GATE_PRESETS,
         onSelect = developerViewModel.setUplinkGateMillis,
     )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_formation_poll),
+        detail = stringResource(id = R.string.dev_formation_poll_detail),
+        millis = reliability?.formationPollTimeoutMillis ?: 0L,
+        presets = DeveloperViewModel.FORMATION_POLL_PRESETS,
+        onSelect = developerViewModel.setFormationPollTimeoutMillis,
+    )
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    URTextInputLabel(text = stringResource(id = R.string.dev_behaviour))
+    /** Probing: proving an exit can actually reach real destinations. */
+    URTextInputLabel(text = stringResource(id = R.string.dev_probing))
 
-    DeveloperToggle(
-        label = stringResource(id = R.string.dev_udp_teardown),
-        detail = stringResource(id = R.string.dev_udp_teardown_detail),
-        checked = reliability?.udpTeardownSignal == true,
-        toggle = developerViewModel.setUdpTeardownSignal,
-    )
-    DeveloperToggle(
-        label = stringResource(id = R.string.dev_dial_failure_rerace),
-        detail = stringResource(id = R.string.dev_dial_failure_rerace_detail),
-        checked = reliability?.dialFailureRerace == true,
-        toggle = developerViewModel.setDialFailureRerace,
-    )
-    DeveloperToggle(
-        label = stringResource(id = R.string.dev_cluster_affinity),
-        detail = stringResource(id = R.string.dev_cluster_affinity_detail),
-        checked = reliability?.clusterAffinityFallback == true,
-        toggle = developerViewModel.setClusterAffinityFallback,
-    )
-    DeveloperToggle(
-        label = stringResource(id = R.string.dev_server_name_bridge),
-        detail = stringResource(id = R.string.dev_server_name_bridge_detail),
-        checked = reliability?.serverNameAffinityBridge == true,
-        toggle = developerViewModel.setServerNameAffinityBridge,
-    )
-    DeveloperToggle(
-        label = stringResource(id = R.string.dev_soft_verdict),
-        detail = stringResource(id = R.string.dev_soft_verdict_detail),
-        checked = reliability?.softVerdictDemote == true,
-        toggle = developerViewModel.setSoftVerdictDemote,
-    )
-    DeveloperToggle(
-        label = stringResource(id = R.string.dev_quic_rebind),
-        detail = stringResource(id = R.string.dev_quic_rebind_detail),
-        checked = reliability?.quicRebindOnExitLoss == true,
-        toggle = developerViewModel.setQuicRebindOnExitLoss,
-    )
-    DeveloperToggle(
-        label = stringResource(id = R.string.dev_effective_tier),
-        detail = stringResource(id = R.string.dev_effective_tier_detail),
-        checked = reliability?.effectiveTierSelection == true,
-        toggle = developerViewModel.setEffectiveTierSelection,
-    )
     DeveloperToggle(
         label = stringResource(id = R.string.dev_probe_providers),
         detail = stringResource(id = R.string.dev_probe_providers_detail),
         checked = reliability?.providerProbe == true,
         toggle = developerViewModel.setProviderProbe,
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_probe_timeout),
+        detail = stringResource(id = R.string.dev_probe_timeout_detail),
+        millis = reliability?.probeTimeoutMillis ?: 0L,
+        presets = DeveloperViewModel.PROBE_TIMEOUT_PRESETS,
+        onSelect = developerViewModel.setProbeTimeoutMillis,
+    )
+    DeveloperCountSetting(
+        label = stringResource(id = R.string.dev_evaluation_pool),
+        detail = stringResource(id = R.string.dev_evaluation_pool_detail),
+        count = reliability?.evaluationPoolMultiple ?: 0,
+        presets = DeveloperViewModel.EVALUATION_POOL_PRESETS,
+        onSelect = developerViewModel.setEvaluationPoolMultiple,
+    )
+    DeveloperAction(
+        label = stringResource(id = R.string.dev_probe_all),
+        onClick = developerViewModel.probeAllExits,
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    /** Observability: what the session writes to the log for later forensics. */
+    URTextInputLabel(text = stringResource(id = R.string.dev_observability))
+
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_heartbeat),
+        detail = stringResource(id = R.string.dev_heartbeat_detail),
+        millis = reliability?.heartbeatIntervalMillis ?: 0L,
+        presets = DeveloperViewModel.HEARTBEAT_PRESETS,
+        onSelect = developerViewModel.setHeartbeatIntervalMillis,
     )
 
     DeveloperAction(
@@ -420,6 +563,14 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
             onClick = developerViewModel.shuffleExits,
         )
     }
+
+    // fires the same process-wide network-change path a real wifi-to-cellular
+    // migration triggers, so the uplink-gate storm drill is one tap instead of
+    // physically moving between networks
+    DeveloperAction(
+        label = stringResource(id = R.string.dev_simulate_network_change),
+        onClick = developerViewModel.simulateNetworkChange,
+    )
 
     // The probe suite is deliberately not surfaced here. Its dns probe resolves
     // through Go's pure-go resolver, which has no server list on android and
@@ -480,9 +631,10 @@ private fun DeveloperDurationSetting(
 
 /**
  * A count that cycles through presets on tap, mirroring
- * [DeveloperDurationSetting]. 0 reads as "Unlimited" rather than "Off",
- * because an unbounded cap is not the feature being switched off -- it is the
- * behaviour that shipped.
+ * [DeveloperDurationSetting]. The label shown for 0 is caller-supplied because
+ * what 0 means differs per knob: an unbounded flow cap reads "Unlimited" (0 is
+ * the behaviour that shipped, not a feature switched off), while a storm-breaker
+ * count or a corroboration minimum reads "Off" (0 disables the check).
  */
 @Composable
 private fun DeveloperCountSetting(
@@ -491,6 +643,7 @@ private fun DeveloperCountSetting(
     count: Int,
     presets: List<Int>,
     onSelect: (Int) -> Unit,
+    zeroLabel: String = "Unlimited",
 ) {
     Row(
         modifier = Modifier
@@ -508,7 +661,7 @@ private fun DeveloperCountSetting(
             Text(detail, style = MaterialTheme.typography.bodySmall, color = TextMuted)
         }
         Text(
-            if (count <= 0) "Unlimited" else count.toString(),
+            if (count <= 0) zeroLabel else count.toString(),
             style = MaterialTheme.typography.bodyLarge,
             color = BlueMedium,
         )

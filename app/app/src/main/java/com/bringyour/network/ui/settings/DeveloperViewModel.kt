@@ -189,6 +189,122 @@ class DeveloperViewModel @Inject constructor(
      */
     val setProviderProbe: (Boolean) -> Unit = { update { s -> s.providerProbe = it } }
 
+    /**
+     * Ask before convicting a stalled exit: when the send-stall bar trips, fire
+     * one control ping through the exit and let an ack acquit it. A congested
+     * but alive exit answers and keeps its flows; a dead one is still removed.
+     * Off convicts immediately on the bar, the pre-port behaviour, for A/B.
+     */
+    val setBusyProbe: (Boolean) -> Unit = { update { s -> s.busyProbe = it } }
+
+    /**
+     * Size each window one spare exit beyond its target so a failed exit's
+     * replacement is already connected. Off restores exact-target sizing, where
+     * backfill only starts after a loss -- measured at about 45s.
+     */
+    val setStandingReserve: (Boolean) -> Unit = { update { s -> s.standingReserve = it } }
+
+    /**
+     * How long a busy probe waits for its ack before the stalled exit is
+     * convicted. 0 derives max(1s, send-stall/2). Only matters while the busy
+     * probe is on.
+     */
+    val setBusyProbeBudgetMillis: (Long) -> Unit = { millis ->
+        update { s -> s.busyProbeBudgetMillis = millis }
+    }
+
+    /**
+     * How much later than armed a timer may fire before the gap is read as a
+     * host suspend rather than a stall, holding verdicts collected across it so
+     * a just-resumed phone does not convict every exit at once. 0 disables the
+     * suspend detector.
+     */
+    val setSchedulerPauseToleranceMillis: (Long) -> Unit = { millis ->
+        update { s -> s.schedulerPauseToleranceMillis = millis }
+    }
+
+    /**
+     * How long after a detected suspend the hold stays in effect, giving the
+     * transports time to re-register before convictions resume. 0 falls back to
+     * the built-in 5s.
+     */
+    val setSchedulerPauseRecoveryTimeoutMillis: (Long) -> Unit = { millis ->
+        update { s -> s.schedulerPauseRecoveryTimeoutMillis = millis }
+    }
+
+    /**
+     * The shorter connect bar the no-receive-syn branch fires at while two
+     * sibling exits are demonstrably receiving -- an exit that has established
+     * nothing while the pool works is cut ~20s sooner. 0 restores the single
+     * 30s bar for A/B.
+     */
+    val setBlackholeConnectComparativeTimeoutMillis: (Long) -> Unit = { millis ->
+        update { s -> s.blackholeConnectComparativeTimeoutMillis = millis }
+    }
+
+    /**
+     * How often a flow with no candidate exits re-checks its forming window, so
+     * the first DNS+SYN leaves moments after the first exit lands instead of
+     * waiting out the 2s send-retry pace. 0 falls back to that pace.
+     */
+    val setFormationPollTimeoutMillis: (Long) -> Unit = { millis ->
+        update { s -> s.formationPollTimeoutMillis = millis }
+    }
+
+    /**
+     * How often the one-line state heartbeat is logged for logcat forensics. 0
+     * silences it; a shorter interval spots a transition, a longer one keeps
+     * more buffer for a capture. Takes effect without a reconnect.
+     */
+    val setHeartbeatIntervalMillis: (Long) -> Unit = { millis ->
+        update { s -> s.heartbeatIntervalMillis = millis }
+    }
+
+    /**
+     * How long one provider-qualification probe pass waits for positive
+     * evidence. 0 falls back to the built-in 4s. It only ever bounds how long
+     * an answer is waited for; it never produces a verdict.
+     */
+    val setProbeTimeoutMillis: (Long) -> Unit = { millis ->
+        update { s -> s.probeTimeoutMillis = millis }
+    }
+
+    /**
+     * The window the removal-budget storm breaker counts removals over. 0 (or a
+     * count of 0) turns the breaker off.
+     */
+    val setRemovalBudgetWindowMillis: (Long) -> Unit = { millis ->
+        update { s -> s.removalBudgetWindowMillis = millis }
+    }
+
+    /**
+     * How many verdict-driven removals are allowed per window before the rest
+     * are deferred -- a removal storm is more likely one local cause than that
+     * many independent provider failures. 0 turns the breaker off.
+     */
+    val setRemovalBudgetCount: (Int) -> Unit = { count ->
+        update { s -> s.removalBudgetCount = count }
+    }
+
+    /**
+     * How many candidates a window expansion evaluates per slot it needs,
+     * keeping the best and cancelling the flowless surplus. 1 restores
+     * exact-count evaluation, the A/B point; 2 is the shipped default.
+     */
+    val setEvaluationPoolMultiple: (Int) -> Unit = { count ->
+        update { s -> s.evaluationPoolMultiple = count }
+    }
+
+    /**
+     * How many distinct destinations must be silent before the no-receive-ack
+     * blackhole verdict can fire, so one dead website cannot convict an exit
+     * that is demonstrably alive. 0 or 1 restores the single-destination
+     * behaviour for A/B.
+     */
+    val setMinBlackholeDestinations: (Int) -> Unit = { count ->
+        update { s -> s.minBlackholeDestinations = count }
+    }
+
     /** Restores everything the app shipped with. */
     val resetReliability: () -> Unit = {
         deviceManager.device?.resetReliabilitySettings()
@@ -203,6 +319,29 @@ class DeveloperViewModel @Inject constructor(
     val shuffleExits: () -> Unit = {
         deviceManager.device?.shuffleExits()
         lastAction = "Shuffled all exits"
+        refresh()
+    }
+
+    /**
+     * Fires a qualification probe pass at every exit right now instead of
+     * waiting for the background sweep. Non-blocking; the "Probes" counter above
+     * moves as the passes complete. No-op when provider probing is off.
+     */
+    val probeAllExits: () -> Unit = {
+        val scheduled = deviceManager.device?.probeAllExits() ?: 0
+        lastAction = if (scheduled > 0) "Probing $scheduled exits" else "No exits to probe"
+        refresh()
+    }
+
+    /**
+     * Fires the platform network-change path on demand -- the uplink epoch reset
+     * and the transport kick a real wifi-to-cellular migration triggers -- so
+     * the storm drill the uplink gate exists for is one tap instead of
+     * physically moving between networks.
+     */
+    val simulateNetworkChange: () -> Unit = {
+        deviceManager.device?.simulateNetworkChange()
+        lastAction = "Simulated network change"
         refresh()
     }
 
@@ -293,5 +432,79 @@ class DeveloperViewModel @Inject constructor(
          * gate could never engage before the verdict it exists to hold.
          */
         val UPLINK_GATE_PRESETS = listOf(0L, 3_000L, 5_000L, 10_000L)
+
+        /**
+         * connect default 200ms. 0 falls back to the 2s send-retry pace, the
+         * pre-change behaviour -- note 0 here is "slow poll", not "off": the
+         * window still forms, just at the old cadence.
+         */
+        val FORMATION_POLL_PRESETS = listOf(0L, 100L, 200L, 500L)
+
+        /**
+         * connect default 0, which derives max(1s, send-stall/2) = 1.5s at the
+         * shipped 3s bar. The others set an explicit ack budget for the busy
+         * probe. Only used while the busy probe is on.
+         */
+        val BUSY_PROBE_BUDGET_PRESETS = listOf(0L, 1_000L, 1_500L, 2_000L, 3_000L)
+
+        /**
+         * connect default 2s. How much timer overshoot reads as a host suspend.
+         * 0 disables the suspend detector, the pre-port comparison point.
+         */
+        val SCHEDULER_PAUSE_TOLERANCE_PRESETS = listOf(0L, 1_000L, 2_000L, 5_000L)
+
+        /**
+         * connect default 5s. The grace window after a detected suspend during
+         * which verdicts stay held. 0 falls back to the built-in 5s.
+         */
+        val SCHEDULER_PAUSE_RECOVERY_PRESETS = listOf(0L, 3_000L, 5_000L, 10_000L)
+
+        /**
+         * connect default 10s. The shorter connect bar used while two siblings
+         * are receiving. 0 restores the single 30s bar, the A/B point. Values
+         * at or above 30s are a no-op for the same reason.
+         */
+        val COMPARATIVE_CONNECT_PRESETS = listOf(0L, 5_000L, 10_000L, 15_000L)
+
+        /**
+         * connect default 60s. One state line per interval for logcat
+         * forensics. 0 silences the heartbeat; a shorter interval spots a
+         * transition, a longer one keeps more buffer.
+         */
+        val HEARTBEAT_PRESETS = listOf(0L, 15_000L, 30_000L, 60_000L, 120_000L)
+
+        /**
+         * connect default 4s. Bounds one provider-qualification probe pass. 0
+         * falls back to the built-in 4s. It only bounds how long positive
+         * evidence is waited for, never a timer that convicts.
+         */
+        val PROBE_TIMEOUT_PRESETS = listOf(0L, 2_000L, 4_000L, 8_000L)
+
+        /**
+         * connect default 2 per window. The storm breaker admits this many
+         * verdict-driven removals per window and defers the rest. 0 turns the
+         * breaker off, the pre-fix comparison point.
+         */
+        val REMOVAL_BUDGET_COUNT_PRESETS = listOf(0, 2, 4, 8)
+
+        /**
+         * connect default 30s. The window the removal budget is counted over. 0
+         * (like a count of 0) turns the breaker off.
+         */
+        val REMOVAL_BUDGET_WINDOW_PRESETS = listOf(0L, 15_000L, 30_000L, 60_000L)
+
+        /**
+         * connect default 2. Candidates evaluated per window slot. 1 restores
+         * exact-count evaluation, the A/B point; there is no 0 -- evaluating
+         * zero candidates is not a behaviour.
+         */
+        val EVALUATION_POOL_PRESETS = listOf(1, 2, 3)
+
+        /**
+         * connect default 2. Distinct silent destinations required before the
+         * no-receive-ack verdict can fire. 0 or 1 restores the
+         * single-destination behaviour, the A/B point.
+         */
+        val MIN_BLACKHOLE_DESTINATIONS_PRESETS = listOf(0, 1, 2, 3)
     }
 }
