@@ -142,6 +142,16 @@ class DeveloperViewModel @Inject constructor(
      * The cost is that a site's flows can end up split across exits, so it
      * sees more than one egress IP. Unlimited restores the previous behaviour.
      */
+    /**
+     * Keeps a site's new flows on the exit its earlier flows already use, even
+     * past the flow cap -- the cap then only gates which exits collect NEW
+     * sites. This is what holds a busy site (video especially) to one egress
+     * ip. Off restores the cap veto, the A/B point.
+     */
+    val setAffinityStickyPastCap: (Boolean) -> Unit = { sticky ->
+        update { s -> s.affinityStickyPastCap = sticky }
+    }
+
     val setMaxFlowsPerExit: (Int) -> Unit = { maxFlows ->
         update { s -> s.maxFlowsPerExit = maxFlows }
     }
@@ -267,6 +277,15 @@ class DeveloperViewModel @Inject constructor(
      */
     val setProbeTimeoutMillis: (Long) -> Unit = { millis ->
         update { s -> s.probeTimeoutMillis = millis }
+    }
+
+    /**
+     * How many health hosts one qualification pass asks about. 0 means the
+     * entire embedded table (the shipped default); a positive value narrows
+     * the pass to a rotating block of that many hosts.
+     */
+    val setProbeSampleHostCount: (Int) -> Unit = { count ->
+        update { s -> s.probeSampleHostCount = count }
     }
 
     /**
@@ -479,6 +498,14 @@ class DeveloperViewModel @Inject constructor(
          * evidence is waited for, never a timer that convicts.
          */
         val PROBE_TIMEOUT_PRESETS = listOf(0L, 2_000L, 4_000L, 8_000L)
+
+        /**
+         * connect default 0 = the ENTIRE health-host table every pass. A
+         * positive value narrows a pass to a rotating block of that many
+         * hosts (4 was the old compact width). Width costs bytes, never wall
+         * time -- a pass's probes are all in flight together.
+         */
+        val PROBE_SAMPLE_PRESETS = listOf(0, 4, 16, 64)
 
         /**
          * connect default 2 per window. The storm breaker admits this many

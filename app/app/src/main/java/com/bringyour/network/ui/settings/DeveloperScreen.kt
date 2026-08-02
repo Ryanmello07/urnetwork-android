@@ -374,6 +374,12 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         presets = DeveloperViewModel.MAX_FLOWS_PER_EXIT_PRESETS,
         onSelect = developerViewModel.setMaxFlowsPerExit,
     )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_affinity_sticky),
+        detail = stringResource(id = R.string.dev_affinity_sticky_detail),
+        checked = reliability?.affinityStickyPastCap == true,
+        toggle = developerViewModel.setAffinityStickyPastCap,
+    )
     DeveloperCountSetting(
         label = stringResource(id = R.string.dev_removal_budget_count),
         detail = stringResource(id = R.string.dev_removal_budget_count_detail),
@@ -495,6 +501,14 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         millis = reliability?.probeTimeoutMillis ?: 0L,
         presets = DeveloperViewModel.PROBE_TIMEOUT_PRESETS,
         onSelect = developerViewModel.setProbeTimeoutMillis,
+    )
+    DeveloperCountSetting(
+        label = stringResource(id = R.string.dev_probe_sample_hosts),
+        detail = stringResource(id = R.string.dev_probe_sample_hosts_detail),
+        count = reliability?.probeSampleHostCount ?: 0,
+        presets = DeveloperViewModel.PROBE_SAMPLE_PRESETS,
+        onSelect = developerViewModel.setProbeSampleHostCount,
+        zeroLabel = "All",
     )
     DeveloperCountSetting(
         label = stringResource(id = R.string.dev_evaluation_pool),
