@@ -181,6 +181,14 @@ class DeveloperViewModel @Inject constructor(
      */
     val setEffectiveTierSelection: (Boolean) -> Unit = { update { s -> s.effectiveTierSelection = it } }
 
+    /**
+     * Qualify providers by dialing real sites through them. An answered probe
+     * proves the exit completes upstream connects (the "proven" chip on its
+     * card); an unanswered one proves nothing and never counts against it.
+     * Off removes the mechanism entirely for A/B.
+     */
+    val setProviderProbe: (Boolean) -> Unit = { update { s -> s.providerProbe = it } }
+
     /** Restores everything the app shipped with. */
     val resetReliability: () -> Unit = {
         deviceManager.device?.resetReliabilitySettings()

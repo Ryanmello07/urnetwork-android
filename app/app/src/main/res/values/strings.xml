@@ -177,6 +177,11 @@
     <string name="dev_quic_rebind_detail">Re-pin established QUIC flows to a live exit inside the removal instead of tearing them down</string>
     <string name="dev_effective_tier">Live tier demotion</string>
     <string name="dev_effective_tier_detail">Failing dials and survived verdicts push a provider down the ranking within a second; promotion back needs clean minutes and a proven connect</string>
+    <string name="dev_probe_providers">Probe providers</string>
+    <string name="dev_probe_providers_detail">Qualify exits by dialing real sites through them. An answer proves the exit; silence never counts against it</string>
+    <string name="dev_probes">Probes</string>
+    <string name="dev_probes_detail">Qualification probes this session</string>
+    <string name="dev_probes_value">%1$d sent / %2$d answered</string>
     <string name="dev_reset_measurements">Reset measurements</string>
     <string name="dev_no_exits">No exits. Connect first.</string>
     <string name="dev_refresh">Refresh</string>

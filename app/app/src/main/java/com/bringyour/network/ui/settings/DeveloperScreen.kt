@@ -165,6 +165,19 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         detail = stringResource(id = R.string.dev_flows_reraced_detail),
         value = (metrics?.flowsReraced ?: 0L).toString(),
     )
+    // provider-qualification proof-of-life: sent climbs within seconds of
+    // connecting when the sweep is working, answered follows for providers
+    // that reach real destinations. Always shown -- a zero is itself the
+    // measurement when comparing probe on vs off
+    DeveloperMetric(
+        label = stringResource(id = R.string.dev_probes),
+        detail = stringResource(id = R.string.dev_probes_detail),
+        value = stringResource(
+            id = R.string.dev_probes_value,
+            metrics?.probesSent ?: 0L,
+            metrics?.probesAnswered ?: 0L,
+        ),
+    )
     // proof-of-life for the uplink gates: nonzero here during a network
     // change means a false conviction was prevented. Always shown -- a zero
     // is itself the measurement when comparing gate on vs off
@@ -358,6 +371,12 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         checked = reliability?.effectiveTierSelection == true,
         toggle = developerViewModel.setEffectiveTierSelection,
     )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_probe_providers),
+        detail = stringResource(id = R.string.dev_probe_providers_detail),
+        checked = reliability?.providerProbe == true,
+        toggle = developerViewModel.setProviderProbe,
+    )
 
     DeveloperAction(
         label = stringResource(id = R.string.dev_reset_defaults),
@@ -409,6 +428,12 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     // of the tunnel's health. A control that always reports failure is worse
     // than no control: it invites reading a harness bug as a tunnel fault.
     // Measurements above are collected from real traffic and are unaffected.
+    //
+    // The provider-qualification prober (the "Probe providers" toggle and the
+    // "Probes" counter above) does not share that trap: it resolves hostnames
+    // by querying a public resolver THROUGH the provider channel being probed
+    // -- no OS resolver, no tun resolver settings, no [::1]:53 fallback -- so
+    // its results are about the provider, not the harness.
 
     developerViewModel.lastAction?.let { lastAction ->
         Text(lastAction, style = MaterialTheme.typography.bodySmall, color = TextMuted)
@@ -631,6 +656,11 @@ private fun DeveloperExitRow(
             if (exit.warning) append(" · draining")
             if (exit.done) append(" · done")
             if (exit.p2pOnly) append(" · p2p")
+            // a probe pass (or the exit's own traffic) proved this provider
+            // dials real destinations within the qualification window. Absence
+            // of the chip is "not yet proven", never "bad" -- the probe design
+            // records no negative state to show
+            if (exit.proven) append(" · proven")
         }
         Text(state, style = MaterialTheme.typography.bodySmall, color = TextMuted)
 
