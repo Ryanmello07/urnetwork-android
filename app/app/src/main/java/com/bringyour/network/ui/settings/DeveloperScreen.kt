@@ -299,7 +299,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
      *
      * Detection: how an exit is judged to be failing, and how fast.
      */
-    URTextInputLabel(text = stringResource(id = R.string.dev_detection))
+    URTextInputLabel(text = stringResource(id = R.string.dev_section_detection))
 
     DeveloperDurationSetting(
         label = stringResource(id = R.string.dev_send_stall),
@@ -359,7 +359,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     Spacer(modifier = Modifier.height(16.dp))
 
     /** Placement: which exit a flow lands on, and how the pool is shaped. */
-    URTextInputLabel(text = stringResource(id = R.string.dev_placement))
+    URTextInputLabel(text = stringResource(id = R.string.dev_section_placement))
 
     DeveloperToggle(
         label = stringResource(id = R.string.dev_effective_tier),
@@ -422,7 +422,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
      * Recovery: getting a flow moving again after its exit fails or the phone's
      * own network changes underneath it.
      */
-    URTextInputLabel(text = stringResource(id = R.string.dev_recovery))
+    URTextInputLabel(text = stringResource(id = R.string.dev_section_recovery))
 
     DeveloperToggle(
         label = stringResource(id = R.string.dev_quic_rebind),
@@ -481,7 +481,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     Spacer(modifier = Modifier.height(16.dp))
 
     /** Probing: proving an exit can actually reach real destinations. */
-    URTextInputLabel(text = stringResource(id = R.string.dev_probing))
+    URTextInputLabel(text = stringResource(id = R.string.dev_section_probing))
 
     DeveloperToggle(
         label = stringResource(id = R.string.dev_probe_providers),
@@ -511,7 +511,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     Spacer(modifier = Modifier.height(16.dp))
 
     /** Observability: what the session writes to the log for later forensics. */
-    URTextInputLabel(text = stringResource(id = R.string.dev_observability))
+    URTextInputLabel(text = stringResource(id = R.string.dev_section_observability))
 
     DeveloperDurationSetting(
         label = stringResource(id = R.string.dev_heartbeat),

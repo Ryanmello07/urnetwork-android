@@ -204,11 +204,11 @@
     <string name="dev_udp_teardown">Signal UDP teardown</string>
     <string name="dev_udp_teardown_detail">Tells DNS and QUIC the path is gone instead of going silent</string>
     <!-- P4: developer-menu subsection headings -->
-    <string name="dev_detection">Detection</string>
-    <string name="dev_placement">Placement</string>
-    <string name="dev_recovery">Recovery</string>
-    <string name="dev_probing">Probing</string>
-    <string name="dev_observability">Observability</string>
+    <string name="dev_section_detection">Detection</string>
+    <string name="dev_section_placement">Placement</string>
+    <string name="dev_section_recovery">Recovery</string>
+    <string name="dev_section_probing">Probing</string>
+    <string name="dev_section_observability">Observability</string>
     <!-- P4: new reliability knobs -->
     <string name="dev_busy_probe">Probe stalled exits before dropping</string>
     <string name="dev_busy_probe_detail">When an exit stalls, ping it once before convicting. A congested but alive exit answers and keeps its flows; a dead one is still dropped. Off convicts on the stall bar</string>
