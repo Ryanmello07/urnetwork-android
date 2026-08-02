@@ -84,6 +84,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Set up Android NDK
+        id: ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
@@ -113,7 +114,12 @@ jobs:
           WARP_HOME: ${{ github.workspace }}/urnetwork-sdk
           WARP_VERSION_HOME: ${{ github.workspace }}/urnetwork-sdk/version
           WARP_VERSION: ${{ steps.version.outputs.version }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          # the setup-ndk action exposes the path only as a step output --
+          # ${{ env.ANDROID_NDK_HOME }} evaluates empty, which the fork's old
+          # makefile silently tolerated (skipping the .comment strip) and
+          # upstream's hardened makefile (set -e + test -n on objcopy) turns
+          # into a hard failure
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
           make init build_android
