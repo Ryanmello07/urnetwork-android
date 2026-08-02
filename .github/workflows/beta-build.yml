@@ -107,6 +107,25 @@ jobs:
       - name: Check out goidenticons dependency
         run: git clone --depth 1 https://github.com/urnetwork/goidenticons.git goidenticons
 
+      # upstream sdk main calls goidenticons.RenderPngV2, which exists in no
+      # published goidenticons ref (their sibling-checkout workspace hides an
+      # unpushed change). The published RenderPng has the identical signature
+      # and the sdk's own comment says v2 differs only in the brand palette,
+      # so a delegating shim yields a working build whose identicons render
+      # in the v1 palette -- cosmetic, and irrelevant to the reliability A/B
+      # this build exists for. Remove once upstream pushes their goidenticons.
+      - name: Shim unpublished goidenticons.RenderPngV2
+        run: |
+          cat > goidenticons/render_v2_shim.go <<'EOF'
+          package goidenticons
+
+          // RenderPngV2 is an unpublished upstream api as of this build;
+          // delegate to the published renderer (v1 palette, same contract).
+          func RenderPngV2(data []byte, size int) ([]byte, error) {
+          	return RenderPng(data, size)
+          }
+          EOF
+
       - name: Build SDK for Android
         working-directory: urnetwork-sdk/build
         env:
