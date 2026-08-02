@@ -163,11 +163,19 @@ jobs:
           warp.version_code=${{ steps.version.outputs.version_code }}
           EOF
 
+      # upstream's build.gradle resolves the aar at
+      # "$BRINGYOUR_HOME/sdk/build/android" (their monorepo layout, where
+      # BRINGYOUR_HOME is the parent of the sdk checkout), while the fork's
+      # gradle points at the sdk checkout directly. Give gradle the parent so
+      # the sdk/ segment resolves; the sdk build step above keeps the direct
+      # path it expects.
       - name: Build ${{ matrix.flavor }}Debug APK
         working-directory: app
         env:
-          BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
+          BRINGYOUR_HOME: ${{ github.workspace }}
         run: |
+          # the checkout is named urnetwork-sdk; upstream gradle wants sdk/
+          ln -sfn "${{ github.workspace }}/urnetwork-sdk" "${{ github.workspace }}/sdk"
           flavor="${{ matrix.flavor }}"
           # Gradle's generated task name only capitalizes the flavor's first
           # letter -- it does not camelCase underscore segments, so
