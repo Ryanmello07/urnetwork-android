@@ -165,6 +165,25 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         detail = stringResource(id = R.string.dev_flows_reraced_detail),
         value = (metrics?.flowsReraced ?: 0L).toString(),
     )
+    // proof-of-life for the uplink gates: nonzero here during a network
+    // change means a false conviction was prevented. Always shown -- a zero
+    // is itself the measurement when comparing gate on vs off
+    DeveloperMetric(
+        label = stringResource(id = R.string.dev_verdicts_held),
+        detail = stringResource(id = R.string.dev_verdicts_held_detail),
+        value = stringResource(
+            id = R.string.dev_verdicts_held_value,
+            metrics?.verdictsHeldUplinkStale ?: 0L,
+            metrics?.verdictsHeldTransportDown ?: 0L,
+        ),
+    )
+    if ((metrics?.removalsDeferred ?: 0L) > 0L) {
+        DeveloperMetric(
+            label = stringResource(id = R.string.dev_removals_deferred),
+            detail = stringResource(id = R.string.dev_removals_deferred_detail),
+            value = (metrics?.removalsDeferred ?: 0L).toString(),
+        )
+    }
 
     // the loss numbers are meaningless until something has actually failed,
     // and showing zeros reads as "nothing is wrong" rather than "nothing has
@@ -271,6 +290,13 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         presets = DeveloperViewModel.MAX_FLOWS_PER_EXIT_PRESETS,
         onSelect = developerViewModel.setMaxFlowsPerExit,
     )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_uplink_gate),
+        detail = stringResource(id = R.string.dev_uplink_gate_detail),
+        millis = reliability?.uplinkStalenessGateMillis ?: 0L,
+        presets = DeveloperViewModel.UPLINK_GATE_PRESETS,
+        onSelect = developerViewModel.setUplinkGateMillis,
+    )
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -299,6 +325,12 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         detail = stringResource(id = R.string.dev_server_name_bridge_detail),
         checked = reliability?.serverNameAffinityBridge == true,
         toggle = developerViewModel.setServerNameAffinityBridge,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_soft_verdict),
+        detail = stringResource(id = R.string.dev_soft_verdict_detail),
+        checked = reliability?.softVerdictDemote == true,
+        toggle = developerViewModel.setSoftVerdictDemote,
     )
 
     DeveloperAction(

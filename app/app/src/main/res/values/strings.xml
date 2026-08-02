@@ -161,6 +161,15 @@
     <string name="dev_flows_opened_detail">Total since reset, so runs of different lengths compare</string>
     <string name="dev_flows_reraced">Moved to another exit</string>
     <string name="dev_flows_reraced_detail">How many of those failures were quietly moved instead of hanging</string>
+    <string name="dev_verdicts_held">Verdicts held</string>
+    <string name="dev_verdicts_held_detail">Convictions withheld because the phone\'s own uplink, not the provider, was silent (uplink / transport)</string>
+    <string name="dev_verdicts_held_value">%1$d / %2$d</string>
+    <string name="dev_removals_deferred">Removals deferred</string>
+    <string name="dev_removals_deferred_detail">Removals the storm breaker held back after a correlated burst</string>
+    <string name="dev_uplink_gate">Uplink silence gate</string>
+    <string name="dev_uplink_gate_detail">How long the whole tunnel may be silent before provider verdicts are held as inadmissible. 0 convicts as before</string>
+    <string name="dev_soft_verdict">Demote before removing</string>
+    <string name="dev_soft_verdict_detail">Ambiguous verdicts bench an exit instead of tearing down its flows; removal needs sustained evidence or an empty exit</string>
     <string name="dev_reset_measurements">Reset measurements</string>
     <string name="dev_no_exits">No exits. Connect first.</string>
     <string name="dev_refresh">Refresh</string>

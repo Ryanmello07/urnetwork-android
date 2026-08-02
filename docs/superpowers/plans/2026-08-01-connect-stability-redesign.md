@@ -213,6 +213,23 @@ guard metric: any stage that improves averages while it rises gets backed
 out. Five prior fixes were correct in isolation and unreached in place;
 proof-of-life is part of each mechanism, not an afterthought.
 
+## Known limitations accepted in the A+B build
+
+- **Quarantine bench-leak**: a falsely-quarantined exit whose verdict
+  evidence ages out of the stats window without any receive progress stays
+  benched (warned, no path back to selection) until rotation drains it —
+  bounded at one provider slot for at most one effective lifetime. The
+  window expands a replacement immediately, so capacity is unaffected. A
+  promotion path (canary or probation re-admission) is the Phase D/E fix.
+- **Transport-restore rebases receive clocks only**: a no-send-ack verdict
+  already mature at restore may fire on the next pass. Package 1's
+  send-abandon accounting unwinds most sends refused during an outage, so
+  the residual window is small.
+- **Storm breaker counts sendStalled/sustained removals in its budget**:
+  once the budget is spent even hard-evidence removals defer for the
+  window (30s). Deliberate: during a genuine correlated event the third+
+  removal adds churn, not rescue.
+
 ## Sequencing rationale
 
 A2 before C3 (the stall verdict must be honest before it gains authority).

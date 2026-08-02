@@ -146,6 +146,25 @@ class DeveloperViewModel @Inject constructor(
         update { s -> s.maxFlowsPerExit = maxFlows }
     }
 
+    /**
+     * How long the whole tunnel may receive nothing from any provider before
+     * the ambiguous blackhole verdicts are held as inadmissible. Tunnel-wide
+     * silence convicts the phone's own uplink, not the providers: one wifi
+     * migration executed 7 exits in 79 seconds, every verdict no-receive-ack
+     * with nothing received anywhere.
+     */
+    val setUplinkGateMillis: (Long) -> Unit = { millis ->
+        update { s -> s.uplinkStalenessGateMillis = millis }
+    }
+
+    /**
+     * The flows-are-sacred invariant: ambiguous verdicts bench an exit (no
+     * new flows, established flows keep running) instead of executing it.
+     * Removal then needs an empty exit or the evidence sustained past the
+     * 60s bound. Off restores execute-on-first-verdict for A/B.
+     */
+    val setSoftVerdictDemote: (Boolean) -> Unit = { update { s -> s.softVerdictDemote = it } }
+
     /** Restores everything the app shipped with. */
     val resetReliability: () -> Unit = {
         deviceManager.device?.resetReliabilitySettings()
@@ -242,5 +261,13 @@ class DeveloperViewModel @Inject constructor(
          * split across exits and it sees more than one egress IP.
          */
         val MAX_FLOWS_PER_EXIT_PRESETS = listOf(0, 16, 32, 64, 128)
+
+        /**
+         * connect default 5s. The gate holds ambiguous verdicts while the
+         * whole tunnel is silent; 0 disables it, the pre-fix comparison
+         * point. Values are bounded below the 20s receive verdict or the
+         * gate could never engage before the verdict it exists to hold.
+         */
+        val UPLINK_GATE_PRESETS = listOf(0L, 3_000L, 5_000L, 10_000L)
     }
 }
