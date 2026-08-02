@@ -184,6 +184,20 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
             value = (metrics?.removalsDeferred ?: 0L).toString(),
         )
     }
+    // the field answer to whether servers accept a quic path change: rebinds
+    // split into migrations the server took vs flows the app re-dialed
+    if ((metrics?.flowsRebound ?: 0L) > 0L) {
+        DeveloperMetric(
+            label = stringResource(id = R.string.dev_flows_rebound),
+            detail = stringResource(id = R.string.dev_flows_rebound_detail),
+            value = stringResource(
+                id = R.string.dev_flows_rebound_value,
+                metrics?.flowsRebound ?: 0L,
+                metrics?.rebindsAccepted ?: 0L,
+                metrics?.rebindsRedialed ?: 0L,
+            ),
+        )
+    }
 
     // the loss numbers are meaningless until something has actually failed,
     // and showing zeros reads as "nothing is wrong" rather than "nothing has
@@ -331,6 +345,18 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         detail = stringResource(id = R.string.dev_soft_verdict_detail),
         checked = reliability?.softVerdictDemote == true,
         toggle = developerViewModel.setSoftVerdictDemote,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_quic_rebind),
+        detail = stringResource(id = R.string.dev_quic_rebind_detail),
+        checked = reliability?.quicRebindOnExitLoss == true,
+        toggle = developerViewModel.setQuicRebindOnExitLoss,
+    )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_effective_tier),
+        detail = stringResource(id = R.string.dev_effective_tier_detail),
+        checked = reliability?.effectiveTierSelection == true,
+        toggle = developerViewModel.setEffectiveTierSelection,
     )
 
     DeveloperAction(
@@ -593,9 +619,15 @@ private fun DeveloperExitRow(
             append(exit.windowType.ifEmpty { "auto" })
             // the platform's rank for this provider. only the best rank present
             // is raced until it is at the flow cap, so a tier above the minimum
-            // with 0 flows is a spare, not a failure
+            // with 0 flows is a spare, not a failure. effectiveTier is the rank
+            // selection actually uses (tier plus live demerits); when it
+            // differs the exit is demoted and "tier N→M" makes that visible
             append(" · tier ")
             append(exit.tier)
+            if (exit.effectiveTier > exit.tier) {
+                append("→")
+                append(exit.effectiveTier)
+            }
             if (exit.warning) append(" · draining")
             if (exit.done) append(" · done")
             if (exit.p2pOnly) append(" · p2p")

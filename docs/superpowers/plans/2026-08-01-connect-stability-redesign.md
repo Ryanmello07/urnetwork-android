@@ -213,6 +213,20 @@ guard metric: any stage that improves averages while it rises gets backed
 out. Five prior fixes were correct in isolation and unreached in place;
 proof-of-life is part of each mechanism, not an afterthought.
 
+## Status
+
+Phases A+B shipped 2026-08-02 (connect f36c6e6) and field-validated on
+mainnet: zero teardowns in the first observed session, a 16-flow exit
+quarantined and acquitted on receive progress, three uplink-stale cycles and
+three transport-down holds absorbed, one flowless dud executed cleanly.
+Phases C+D implemented 2026-08-02 (same-day follow-up build): proactive QUIC
+rebind with the migration-acceptance metric split, affinity-group failover,
+direct stall/cping conviction, reconnect fast path + TLS session cache,
+serve-stale DNS, effective tier with survived-quarantine memory,
+per-destination evidence for verdicts and strikes, race field bound to 2,
+and the bench-leak fix (flowless quarantine with vanished evidence clears,
+returning demoted via the survived-quarantine demerit).
+
 ## Known limitations accepted in the A+B build
 
 - **Quarantine bench-leak**: a falsely-quarantined exit whose verdict

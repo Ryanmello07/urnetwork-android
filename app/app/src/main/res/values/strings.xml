@@ -170,6 +170,13 @@
     <string name="dev_uplink_gate_detail">How long the whole tunnel may be silent before provider verdicts are held as inadmissible. 0 convicts as before</string>
     <string name="dev_soft_verdict">Demote before removing</string>
     <string name="dev_soft_verdict_detail">Ambiguous verdicts bench an exit instead of tearing down its flows; removal needs sustained evidence or an empty exit</string>
+    <string name="dev_flows_rebound">QUIC flows rebound</string>
+    <string name="dev_flows_rebound_detail">Flows moved to a warm exit inside a removal; accepted means the server took the path change without a re-dial</string>
+    <string name="dev_flows_rebound_value">%1$d (%2$d accepted / %3$d re-dialed)</string>
+    <string name="dev_quic_rebind">Rebind QUIC on exit loss</string>
+    <string name="dev_quic_rebind_detail">Re-pin established QUIC flows to a live exit inside the removal instead of tearing them down</string>
+    <string name="dev_effective_tier">Live tier demotion</string>
+    <string name="dev_effective_tier_detail">Failing dials and survived verdicts push a provider down the ranking within a second; promotion back needs clean minutes and a proven connect</string>
     <string name="dev_reset_measurements">Reset measurements</string>
     <string name="dev_no_exits">No exits. Connect first.</string>
     <string name="dev_refresh">Refresh</string>

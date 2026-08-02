@@ -165,6 +165,22 @@ class DeveloperViewModel @Inject constructor(
      */
     val setSoftVerdictDemote: (Boolean) -> Unit = { update { s -> s.softVerdictDemote = it } }
 
+    /**
+     * Re-pin established QUIC flows to a warm exit inside the removal of a
+     * dying one. QUIC keys the connection on its connection id, so the server
+     * path-validates the new address and the flow survives -- recovery in one
+     * packet interval instead of a re-race. Off restores teardown for all.
+     */
+    val setQuicRebindOnExitLoss: (Boolean) -> Unit = { update { s -> s.quicRebindOnExitLoss = it } }
+
+    /**
+     * Rank providers by live evidence, not just the platform's static tier:
+     * failing dials or a survived verdict drop a provider within a second;
+     * promotion back requires clean minutes plus a proven connect. Off
+     * restores static-tier selection for A/B.
+     */
+    val setEffectiveTierSelection: (Boolean) -> Unit = { update { s -> s.effectiveTierSelection = it } }
+
     /** Restores everything the app shipped with. */
     val resetReliability: () -> Unit = {
         deviceManager.device?.resetReliabilitySettings()
