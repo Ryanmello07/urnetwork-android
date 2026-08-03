@@ -581,6 +581,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
                 exit = exit,
                 onDrop = { developerViewModel.dropExit(exit) },
                 onStall = { developerViewModel.stallExit(exit, true) },
+                onMigrate = { developerViewModel.migrateExit(exit) },
             )
         }
     }
@@ -799,6 +800,7 @@ private fun DeveloperExitRow(
     exit: Exit,
     onDrop: () -> Unit,
     onStall: () -> Unit,
+    onMigrate: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -880,6 +882,7 @@ private fun DeveloperExitRow(
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             DeveloperAction(label = stringResource(id = R.string.dev_drop_exit), onClick = onDrop)
             DeveloperAction(label = stringResource(id = R.string.dev_stall_exit), onClick = onStall)
+            DeveloperAction(label = stringResource(id = R.string.dev_migrate_exit), onClick = onMigrate)
         }
     }
 }

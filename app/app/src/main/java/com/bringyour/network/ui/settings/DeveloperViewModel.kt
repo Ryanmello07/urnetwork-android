@@ -372,6 +372,18 @@ class DeveloperViewModel @Inject constructor(
     }
 
     /**
+     * Hands one exit's movable (established QUIC) flows to live replacements
+     * now, while the exit stays alive -- the drain-time hand-off on demand.
+     * Nothing is killed: TCP and anything unplaceable keeps working where it
+     * is. The G-3 drill.
+     */
+    val migrateExit: (Exit) -> Unit = { exit ->
+        val moved = deviceManager.device?.migrateExit(exit.clientId) ?: -1
+        lastAction = if (moved >= 0) "Migrated $moved flows" else "Exit not in window"
+        refresh()
+    }
+
+    /**
      * Fires a qualification probe pass at every exit right now instead of
      * waiting for the background sweep. Non-blocking; the "Probes" counter above
      * moves as the passes complete. No-op when provider probing is off.

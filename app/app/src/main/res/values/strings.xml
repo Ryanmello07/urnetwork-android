@@ -243,6 +243,7 @@
     <string name="dev_load_corroboration">Load corroboration</string>
     <string name="dev_load_corroboration_detail">Extra silent destinations required per this many flows before a busy exit can be benched on soft evidence: a 24-flow exit at 8 needs 3 silent sites, not 2. Off keeps the flat minimum</string>
     <string name="via_exit">via %1$s</string>
+    <string name="dev_migrate_exit">Migrate</string>
     <string name="dev_evaluation_pool">Candidates evaluated per slot</string>
     <string name="dev_evaluation_pool_detail">How many providers a window expansion pings and ranks per slot it needs, keeping the best. 1 evaluates exactly what it needs</string>
     <string name="dev_heartbeat">State heartbeat</string>

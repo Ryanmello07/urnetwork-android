@@ -112,32 +112,27 @@ soft verdicts (hard evidence paths unchanged). One pure function + tests,
 A/B via the existing setting (0 keeps today's flat behavior). This reduces
 false benches at the source; G-1 reduces the cost of the ones that remain.
 
-### G-3: coordinated group migration (the big one)
+### G-3: coordinated group migration — SHIPPED (drain consumer + dev action)
 
-A deliberate mechanism to move an affinity group between exits as ONE event:
+Shipped shape (2026-08-03): `migrateClientFlows` — the proactive half of the
+removal-time rebind, run while the exit is STILL ALIVE. Established QUIC
+moves to live replacements now (same partition, candidate order, and
+affinity-group cohesion as `rebindFlowsWithLock`); TCP and anything
+unplaceable STAYS and finishes naturally; nothing is ever torn down. The
+resize drain branch runs it once per drain (per-channel latch), so
+retirement is a hand-off and the eventual close finds little to kill. New
+flows already avoid the draining exit via its warning and inherit the moved
+group members on the replacement — the "flip the donor" step falls out of
+the existing inherit scan for free. `[rel] event=migrate` +
+`MigrateExit` dev-menu action per exit row. Gated by the existing
+QuicRebindOnExitLoss switch rather than a new one — off restores the
+pre-change drain exactly.
 
-1. choose target (existing candidate order: proven, under-cap, best tier),
-2. flip the group's donor so new flows land on the target,
-3. QUIC-rebind the movable flows (existing rebind machinery, which already
-   groups by affinity),
-4. let TCP flows drain on the old exit (they cannot migrate — split-TCP),
-5. release the old exit at group-idle or a hard deadline.
-
-Consumers, in order of value:
-- **Lifetime drain**: retirement stops being a scatter. The exit past its
-  lifetime migrates groups one at a time, then closes. Bounds the
-  sticky-affinity concern that a hot site keeps an exit alive forever: the
-  drain deadline is absolute; the migration makes honoring it cheap.
-- **Quarantine escalation**: a benched exit whose evidence sustains (the
-  drain-to-conviction path) migrates groups BEFORE the removal, so the
-  removal executes empty. Tonight's `13ce7edf`-style 9-minute drains become
-  proactive moves.
-- **Dev action**: "Migrate exit" button — the falsification instrument.
-
-Touches removeClient/rebind internals; reuses `rebindFlowsWithLock`'s
-group-cohesion and headroom logic. The lock discipline is the risk (parent
-stateLock vs per-flow leaf locks — same rules as rebind). Ships behind
-`GroupMigration bool`.
+Deliberately dropped: the quarantine-escalation consumer. A bench that
+sustains to execution is receive-dead — its TCP is not "finishing
+naturally" either way, and the removal-time rebind already moves the QUIC
+at execution. Migration-before-execution would add machinery with no
+observable win.
 
 ### G-4a: exit attribution in Local statistics (visibility)
 
