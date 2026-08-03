@@ -87,16 +87,54 @@ data class SplitRuleUi(
 )
 
 /**
- * An app split rule (a block action override with app ids).
- * `includedInTunnel` means the app is forced through the vpn
- * (the sdk route override is remote); otherwise the app is
- * excluded and bypasses the vpn (the sdk route override is local)
+ * What an app split rule does with the app's traffic.
+ *
+ * EXCLUDED and INCLUDED are tunnel MEMBERSHIP (enforced by the VpnService
+ * builder's disallow/allow lists). PINNED is not membership at all: the app
+ * uses the tunnel like any other, but all of its flows are held to one exit,
+ * so its API session and its CDNs present a single egress IP -- the fix for
+ * apps whose images fail to load behind a multi-exit VPN. A pinned app must
+ * never reach the builder's allow list, or the VPN would flip to
+ * allowlist mode and route ONLY pinned apps.
+ */
+enum class AppRuleMode {
+    EXCLUDED,
+    INCLUDED,
+    PINNED;
+
+    fun toRouteOverride(): RouteOverride {
+        val route = RouteOverride()
+        when (this) {
+            EXCLUDED -> route.local = true
+            INCLUDED -> route.local = false
+            PINNED -> {
+                route.local = false
+                route.pin = true
+            }
+        }
+        return route
+    }
+
+    companion object {
+        fun of(local: Boolean, pin: Boolean): AppRuleMode = when {
+            local -> EXCLUDED
+            pin -> PINNED
+            else -> INCLUDED
+        }
+    }
+}
+
+/**
+ * An app split rule (a block action override with app ids); see [AppRuleMode]
  */
 data class AppSplitRuleUi(
     val id: String,
     val appId: String,
-    val includedInTunnel: Boolean,
-)
+    val mode: AppRuleMode,
+) {
+    val includedInTunnel: Boolean
+        get() = mode == AppRuleMode.INCLUDED
+}
 
 /**
  * Publishes the live block action window, block stats, and the block
@@ -136,13 +174,20 @@ class BlockActionsViewModel @Inject constructor(
      * precedence and the tunnel runs in allowlist mode
      */
     val tunnelIncludedAppIds: List<String>
-        get() = appRules.filter { it.includedInTunnel }.map { it.appId }
+        get() = appRules.filter { it.mode == AppRuleMode.INCLUDED }.map { it.appId }
 
     /**
-     * apps that bypass the vpn
+     * apps that bypass the vpn. PINNED apps are deliberately absent from both
+     * of these: pinning is exit placement inside the tunnel, not membership,
+     * so a pinned app must neither flip the tunnel into allowlist mode nor
+     * bypass it
      */
     val tunnelExcludedAppIds: List<String>
-        get() = appRules.filter { !it.includedInTunnel }.map { it.appId }
+        get() = appRules.filter { it.mode == AppRuleMode.EXCLUDED }.map { it.appId }
+
+    /** apps held to a single exit */
+    val pinnedAppIds: List<String>
+        get() = appRules.filter { it.mode == AppRuleMode.PINNED }.map { it.appId }
 
     init {
         deviceManager.device?.let { device ->
@@ -262,15 +307,18 @@ class BlockActionsViewModel @Inject constructor(
                 val overrideId = override.overrideId?.idStr ?: continue
                 val appIds = sdkStringListToList(override.appIds)
                 if (appIds.isNotEmpty()) {
-                    // an app rule. included in the tunnel when the route
-                    // override is remote, excluded when local
-                    val local = override.routeOverride?.local ?: false
+                    // an app rule: excluded when the route override is local,
+                    // pinned when it carries a pin, else included
+                    val mode = AppRuleMode.of(
+                        local = override.routeOverride?.local ?: false,
+                        pin = override.routeOverride?.pin ?: false,
+                    )
                     for (appId in appIds) {
                         appSplitRules.add(
                             AppSplitRuleUi(
                                 id = overrideId,
                                 appId = appId,
-                                includedInTunnel = !local,
+                                mode = mode,
                             )
                         )
                     }
@@ -353,28 +401,23 @@ class BlockActionsViewModel @Inject constructor(
     }
 
     /**
-     * creates an app split rule. `includeInTunnel` forces the app through
-     * the vpn (route remote); otherwise the app bypasses the vpn (route local)
+     * creates an app split rule in one of the three modes; see [AppRuleMode]
      */
-    fun createAppRule(appId: String, includeInTunnel: Boolean) {
+    fun createAppRule(appId: String, mode: AppRuleMode) {
         val device = deviceManager.device ?: return
         val override = BlockActionOverride()
         override.overrideId = Sdk.newId()
         val appIds = listToSdkStringList(listOf(appId))
         override.appIds = appIds
-        val route = RouteOverride()
-        route.local = !includeInTunnel
-        override.routeOverride = route
+        override.routeOverride = mode.toRouteOverride()
         device.addBlockActionOverride(override)
         updateOverrides()
     }
 
-    fun updateAppRule(id: String, includeInTunnel: Boolean) {
+    fun updateAppRule(id: String, mode: AppRuleMode) {
         replaceOverrides { override ->
             if (override.overrideId?.idStr == id) {
-                val route = RouteOverride()
-                route.local = !includeInTunnel
-                override.routeOverride = route
+                override.routeOverride = mode.toRouteOverride()
             }
             override
         }

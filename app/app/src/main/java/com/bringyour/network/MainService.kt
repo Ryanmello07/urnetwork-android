@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.IpPrefix
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -209,10 +210,14 @@ import kotlin.concurrent.thread
             }
 
             // rebuild the tunnel when the per-app split rules change so the
-            // allowed/disallowed application sets stay in sync
+            // allowed/disallowed application sets stay in sync -- and refresh
+            // the pinned-app flow lookup, which is how a new pin rule takes
+            // effect without a tunnel rebuild (pinned apps stay IN the
+            // tunnel; only their exit placement is held)
             blockActionOverridesSub?.close()
             blockActionOverridesSub = app.device?.addBlockActionOverridesChangeListener {
                 Handler(mainLooper).post {
+                    applyPinnedAppLookup()
                     val (included, excluded) = tunnelAppSplit()
                     if (included != appliedTunnelIncludedAppIds || excluded != appliedTunnelExcludedAppIds) {
                         if (canUpdatePfd(source)) {
@@ -221,6 +226,7 @@ import kotlin.concurrent.thread
                     }
                 }
             }
+            applyPinnedAppLookup()
 
             // rebuild the tunnel when the dns settings change the builder dns
             // servers (e.g. unencrypted local servers set or cleared)
@@ -448,6 +454,28 @@ import kotlin.concurrent.thread
      * included in the tunnel (allowlist), local-routed apps are excluded
      * (disallow / bypass).
      */
+    /**
+     * Installs (or clears) the flow-owner lookup that powers per-app pinning:
+     * the Go side asks it once per new flow which pinned app owns the flow,
+     * and every flow of that app then rides one exit -- one egress IP for the
+     * whole app, API session and CDNs alike. Swapped wholesale on every rules
+     * change; null when nothing is pinned so the Go side skips the machinery
+     * entirely.
+     */
+    private fun applyPinnedAppLookup() {
+        val app = application as MainApplication
+        val device = app.device ?: return
+        val pinnedPackages = sdkStringListToSet(device.pinnedAppIds)
+        if (pinnedPackages.isEmpty()) {
+            device.setFlowOwnerLookup(null)
+            return
+        }
+        val connectivityManager = getSystemService(ConnectivityManager::class.java) ?: return
+        device.setFlowOwnerLookup(
+            PinnedAppFlowLookup(connectivityManager, packageManager, pinnedPackages)
+        )
+    }
+
     private fun tunnelAppSplit(): Pair<Set<String>, Set<String>> {
         val app = application as MainApplication
         val overrideAppIds = app.device?.localOverrideAppIds ?: return Pair(emptySet(), emptySet())
