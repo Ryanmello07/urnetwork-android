@@ -468,8 +468,14 @@ import kotlin.concurrent.thread
         val device = app.device ?: return
         val pinnedPackages = sdkStringListToSet(device.pinnedAppIds)
         // getConnectionOwnerUid is api 29+; below that a pin rule simply has
-        // no per-app effect (the constellation table still groups by domain)
-        if (pinnedPackages.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        // no per-app effect (the constellation table still groups by domain).
+        // the two conditions are separate ifs so the NewApi lint sees a plain
+        // version guard rather than a disjunction it may not fold
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            device.setFlowOwnerLookup(null)
+            return
+        }
+        if (pinnedPackages.isEmpty()) {
             device.setFlowOwnerLookup(null)
             return
         }
@@ -488,10 +494,16 @@ import kotlin.concurrent.thread
      */
     private val packageChangeReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
-            applyPinnedAppLookup()
+            // getPackageUid per pinned app plus two gomobile crossings: small,
+            // but this runs on the main looper inside a broadcast, and a
+            // package replace fires it more than once
+            thread {
+                applyPinnedAppLookup()
+            }
         }
     }
 
+    @Volatile
     private var packageChangeReceiverRegistered = false
 
     private fun registerPackageChangeReceiver() {
@@ -504,7 +516,15 @@ import kotlin.concurrent.thread
             addAction(Intent.ACTION_PACKAGE_REMOVED)
             addDataScheme("package")
         }
-        registerReceiver(packageChangeReceiver, filter)
+        // these are framework protected-broadcasts, so the export flag is not
+        // required at runtime -- but UnspecifiedRegisterReceiverFlag is an
+        // error-severity lint at this targetSdk, and lintVitalRelease is fatal
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            packageChangeReceiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         packageChangeReceiverRegistered = true
     }
 
@@ -542,7 +562,17 @@ import kotlin.concurrent.thread
         var tunnelIncluded = sdkStringListToSet(overrideAppIds.excluded)
         val tunnelExcluded = sdkStringListToSet(overrideAppIds.included)
         if (tunnelIncluded.isNotEmpty()) {
-            tunnelIncluded = tunnelIncluded + sdkStringListToSet(device.pinnedAppIds)
+            // subtract what the denylist branch would have excluded anyway
+            // (this app, the default exclusions, and any explicit exclude
+            // rule), or a pinned app that is also default-excluded would be
+            // in the tunnel in allowlist mode and out of it in denylist mode
+            // -- the same rule meaning opposite things depending on whether
+            // an unrelated include rule happens to exist
+            val neverTunneled = defaultExcludedPackageNames().toSet() +
+                tunnelExcluded +
+                packageName
+            tunnelIncluded = tunnelIncluded +
+                (sdkStringListToSet(device.pinnedAppIds) - neverTunneled)
         }
         return Pair(tunnelIncluded, tunnelExcluded)
     }
