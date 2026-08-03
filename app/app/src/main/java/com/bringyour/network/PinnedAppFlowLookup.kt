@@ -4,6 +4,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Process
+import androidx.annotation.RequiresApi
 import com.bringyour.sdk.FlowOwnerLookup
 import java.net.InetSocketAddress
 
@@ -17,6 +18,7 @@ import java.net.InetSocketAddress
  * change swaps the whole lookup (see MainService.applyPinnedAppLookup) --
  * cheaper and simpler than locking inside a cross-language callback.
  */
+@RequiresApi(Build.VERSION_CODES.Q)
 class PinnedAppFlowLookup(
     private val connectivityManager: ConnectivityManager,
     packageManager: PackageManager,
@@ -41,7 +43,7 @@ class PinnedAppFlowLookup(
         destinationIp: String,
         destinationPort: Int,
     ): String {
-        if (uidToPackage.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        if (uidToPackage.isEmpty()) {
             return ""
         }
         // the sdk's IpProtocol enum (tcp=1, udp=2) -> the OS protocol number

@@ -227,6 +227,7 @@ import kotlin.concurrent.thread
                 }
             }
             applyPinnedAppLookup()
+            registerPackageChangeReceiver()
 
             // rebuild the tunnel when the dns settings change the builder dns
             // servers (e.g. unencrypted local servers set or cleared)
@@ -466,7 +467,9 @@ import kotlin.concurrent.thread
         val app = application as MainApplication
         val device = app.device ?: return
         val pinnedPackages = sdkStringListToSet(device.pinnedAppIds)
-        if (pinnedPackages.isEmpty()) {
+        // getConnectionOwnerUid is api 29+; below that a pin rule simply has
+        // no per-app effect (the constellation table still groups by domain)
+        if (pinnedPackages.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             device.setFlowOwnerLookup(null)
             return
         }
@@ -476,11 +479,71 @@ import kotlin.concurrent.thread
         )
     }
 
+    /**
+     * Rebuilds the pinned-app lookup when packages change. The lookup maps
+     * uid -> package once at construction, and uids are NOT stable across an
+     * uninstall/reinstall -- worse, Android recycles them, so a stale map can
+     * attribute a newly installed app's flows to a pinned package. Cheap to
+     * rebuild, so rebuild on any package event.
+     */
+    private val packageChangeReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            applyPinnedAppLookup()
+        }
+    }
+
+    private var packageChangeReceiverRegistered = false
+
+    private fun registerPackageChangeReceiver() {
+        if (packageChangeReceiverRegistered) {
+            return
+        }
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        registerReceiver(packageChangeReceiver, filter)
+        packageChangeReceiverRegistered = true
+    }
+
+    private fun unregisterPackageChangeReceiver() {
+        if (!packageChangeReceiverRegistered) {
+            return
+        }
+        try {
+            unregisterReceiver(packageChangeReceiver)
+        } catch (_: IllegalArgumentException) {
+        }
+        packageChangeReceiverRegistered = false
+    }
+
+    /**
+     * The (allow-list, deny-list) app sets for the tunnel builder.
+     *
+     * The sdk names these from the ROUTE's point of view and this inverts
+     * them: a local-routed app bypasses the vpn (builder disallow), a
+     * remote-routed app uses it (builder allow).
+     *
+     * Pinned apps need care. Pinning holds an app to one exit INSIDE the
+     * tunnel -- it is placement, not membership -- so the sdk deliberately
+     * omits pinned apps from both sets. But "allowlist mode" is built from
+     * the allow set ALONE ("excluded by omission" below), so simply omitting
+     * a pinned app drops it out of the vpn entirely the moment any other app
+     * is included. Union the pinned apps into the allow set exactly when
+     * allowlist mode is active; in denylist mode omission is correct, since
+     * everything not denied already uses the tunnel.
+     */
     private fun tunnelAppSplit(): Pair<Set<String>, Set<String>> {
         val app = application as MainApplication
-        val overrideAppIds = app.device?.localOverrideAppIds ?: return Pair(emptySet(), emptySet())
-        val tunnelIncluded = sdkStringListToSet(overrideAppIds.excluded)
+        val device = app.device ?: return Pair(emptySet(), emptySet())
+        val overrideAppIds = device.localOverrideAppIds ?: return Pair(emptySet(), emptySet())
+        var tunnelIncluded = sdkStringListToSet(overrideAppIds.excluded)
         val tunnelExcluded = sdkStringListToSet(overrideAppIds.included)
+        if (tunnelIncluded.isNotEmpty()) {
+            tunnelIncluded = tunnelIncluded + sdkStringListToSet(device.pinnedAppIds)
+        }
         return Pair(tunnelIncluded, tunnelExcluded)
     }
 
@@ -532,6 +595,8 @@ import kotlin.concurrent.thread
 
     fun stop() {
         val app = application as MainApplication
+
+        unregisterPackageChangeReceiver()
 
         deviceOfflineSub?.close()
         deviceOfflineSub = null
