@@ -1,7 +1,24 @@
-# Phase G: group-granular stability (plan)
+# Phase G: group-granular stability (plan, v2)
 
 2026-08-03. Follows the A–F redesign and the 2026-08-02 IP-consistency work
 (AffinityStickyPastCap, domainAffinityAliases, full-table probing).
+
+v2 (owner-directed rethink, same day): G-4 is reshaped around
+infrastructure that already exists in the app instead of new plumbing.
+The Local statistics area (the block-action window: per-destination-cluster
+decisions with observed host names, ips, and byte counts, streamed through
+BlockActionViewController) already sees every site the phone talks to, and
+the split-rules system already stores per-app and per-host rules. G-4
+becomes: (a) JOIN that feed with the multi-client's flow→exit map so every
+cluster row shows which exit carries it — visibility first; (b) only then
+grow the split-rules vocabulary from "in/out of tunnel" to "pinned to a
+provider" — control second. The uid lookup survives only as the dependency
+of the app-pinning half, not as a grouping mechanism of its own.
+
+Also fixed on the way (shipped separately, connect b8aa4ac): the developer
+screen's exit list shuffled positions every refresh because Exits() walks
+two Go maps; rows are now sorted window-type-then-client-id, so positions
+are stable while membership is stable.
 
 ## The problem, from field evidence
 
@@ -122,34 +139,70 @@ group-cohesion and headroom logic. The lock discipline is the risk (parent
 stateLock vs per-flow leaf locks — same rules as rebind). Ships behind
 `GroupMigration bool`.
 
-### G-4: per-app affinity (uid grouping)
+### G-4a: exit attribution in Local statistics (visibility)
 
-Android can map a flow to its owning app: `ConnectivityManager.
-getConnectionOwnerUid(protocol, local, remote)` (API 29+). Plumbing:
+The block-action window already aggregates traffic per destination cluster
+— observed host names (SNI/DNS), ips, bytes — and renders it in the app.
+The multi-client already knows, per live flow, which exit carries it
+(`ip4/6PathUpdates → update.client`). G-4a is the join:
 
-- sdk: `FlowOwnerLookup` interface (gomobile-safe: ints and strings),
-  implemented in Kotlin against ConnectivityManager, registered on the
-  device; connect receives it like `serverNameLookup`.
-- connect: flow-open only (never the packet path), cached per
-  (proto, sourcePort) with idle expiry. Failure/timeout → uid 0 → today's
-  behavior. Budget: one binder call ~0.1–1ms per NEW flow.
-- Grouping modes (`AppAffinityMode`): `off` (today), `fallback` (uid group
-  used only where no server name is known — replaces the coarse port-wide
-  fallback, covering raw-IP apps), `strict` (uid IS the primary key: one
-  app, one exit, the owner's "per-app split tunnel"). Default `fallback`;
-  `strict` as the dev-menu experiment — it concentrates a browser's whole
-  world onto one exit, which is traditional-VPN behavior but makes that
-  exit hot.
+- connect: a readout API `ExitsForDestinations(ips)` — one walk of the
+  flow maps under stateLock building destination-ip → {exit clientId,
+  flowCount}; ~hundreds of flows, trivial. Pull-model on purpose: the
+  answer reflects the CURRENT exit (after re-race/rebind), not the
+  flush-time one, which is what "dynamically" means.
+- sdk: BlockActionViewController stitches exit chips onto each cluster row
+  (short client id, matching the developer screen's exit rows); refreshed
+  on the same coalesced update the rows already use.
+- app: the Local statistics rows gain the exit chip(s); tapping could jump
+  to the exit's row on the developer screen (nice-to-have).
+- dev screen: each exit row gains its top observed base names (the reverse
+  join), so "which exit has YouTube" is answerable from either end.
 
-Independent of G-1/2/3/5/6; needs an sdk+android release cycle.
+This is also the falsification instrument for G-1/G-3: an acquitted bench
+with group-follow on should show the site's chip NOT changing; a scatter
+shows as one site with two exit chips.
 
-## Sequencing
+App attribution note: apps whose traffic is identified by its hosts
+(the YouTube app talks to the youtube.com constellation) get de facto
+app rows through the constellation collapse. True per-app attribution
+for anonymous/raw-ip traffic requires the uid lookup (G-4b).
+
+### G-4b: provider pinning through the split-rules system (control)
+
+The app split-rules system stores per-app rules but enforces them at the
+VpnService.Builder level (addAllowed/DisallowedApplication) — tunnel
+membership only; the Go side never learns app identity, so it cannot
+choose a provider per app today. G-4b extends the rules vocabulary:
+
+- Site rules: "pin this host/cluster to a stable exit" works with NO new
+  Android plumbing — the ServerName affinity group already is the
+  placement key; a pin is a standing preference the group's donor logic
+  consults. Ships first.
+- App rules: "pin this app to a stable exit" additionally needs flow→app:
+  sdk `FlowOwnerLookup` interface implemented in Kotlin against
+  `ConnectivityManager.getConnectionOwnerUid` (API 29+), called at
+  flow-open only, cached per (proto, sourcePort), fail-open to uid 0.
+  The uid becomes an affinity key for flows of pinned apps ONLY —
+  no global uid grouping mode; the constellation table already covers
+  the named-traffic cases.
+- UI: the existing app/site rules screens gain a third state beyond
+  include/exclude — "assign provider", initially "hold one stable exit",
+  later possibly a specific location/provider.
+
+G-4a is independent and ships with the first build; G-4b is its own
+sdk+android cycle after G-3 (pinning wants migration, so a pinned group
+survives its exit's retirement coherently).
+
+## Sequencing (v2)
 
 1. **G-2** flag split (prerequisite, pure refactor)
-2. **G-1** group-follow + **G-5** backfill + **G-6** leniency — one build,
-   directly aimed at the observed bench-churn slowness
+2. **G-1** group-follow + **G-5** backfill + **G-6** leniency + **G-4a**
+   exit attribution — one build: the stability fixes aimed at the observed
+   bench-churn slowness, plus the visibility to falsify them in the field
 3. **G-3** migration (drain consumer first, escalation second)
-4. **G-4** uid affinity (parallel track once 1–2 are stable)
+4. **G-4b** provider pinning (site rules first — no new plumbing; app rules
+   with the uid lookup after)
 
 Each package ships behind its own A/B toggle, dev-menu exposed, with
 heartbeat/[rel] counters as proof-of-life (standing lesson: a mechanism
