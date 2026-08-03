@@ -380,6 +380,19 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         checked = reliability?.affinityStickyPastCap == true,
         toggle = developerViewModel.setAffinityStickyPastCap,
     )
+    DeveloperToggle(
+        label = stringResource(id = R.string.dev_group_follow),
+        detail = stringResource(id = R.string.dev_group_follow_detail),
+        checked = reliability?.quarantineGroupFollow == true,
+        toggle = developerViewModel.setQuarantineGroupFollow,
+    )
+    DeveloperDurationSetting(
+        label = stringResource(id = R.string.dev_group_follow_freshness),
+        detail = stringResource(id = R.string.dev_group_follow_freshness_detail),
+        millis = reliability?.groupFollowReceiveFreshnessMillis ?: 0L,
+        presets = DeveloperViewModel.GROUP_FOLLOW_FRESHNESS_PRESETS,
+        onSelect = developerViewModel.setGroupFollowFreshnessMillis,
+    )
     DeveloperCountSetting(
         label = stringResource(id = R.string.dev_removal_budget_count),
         detail = stringResource(id = R.string.dev_removal_budget_count_detail),
@@ -400,6 +413,14 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         detail = stringResource(id = R.string.dev_standing_reserve_detail),
         checked = reliability?.standingReserve == true,
         toggle = developerViewModel.setStandingReserve,
+    )
+    DeveloperCountSetting(
+        label = stringResource(id = R.string.dev_load_corroboration),
+        detail = stringResource(id = R.string.dev_load_corroboration_detail),
+        count = reliability?.blackholeLoadCorroboration ?: 0,
+        presets = DeveloperViewModel.LOAD_CORROBORATION_PRESETS,
+        onSelect = developerViewModel.setBlackholeLoadCorroboration,
+        zeroLabel = "Off",
     )
     DeveloperCountSetting(
         label = stringResource(id = R.string.dev_min_blackhole_destinations),
@@ -820,7 +841,21 @@ private fun DeveloperExitRow(
                 append("→")
                 append(exit.effectiveTier)
             }
-            if (exit.warning) append(" · draining")
+            // the warning state, by name. "benched" is a quarantine (a soft
+            // verdict held against a loaded exit -- it stops taking new
+            // placements while its flows keep running, and receive progress
+            // acquits it); otherwise the resize pass's cause: draining
+            // (healthy, retiring), starved (upstream failing dials), or
+            // unhealthy (a verdict demoted or deferred). Before the cause
+            // existed every one of these displayed as "draining", which made
+            // benches read as retirements.
+            when {
+                exit.quarantined -> append(" · benched")
+                exit.warning -> {
+                    append(" · ")
+                    append(exit.warningCause.ifEmpty { "warned" })
+                }
+            }
             if (exit.done) append(" · done")
             if (exit.p2pOnly) append(" · p2p")
             // a probe pass (or the exit's own traffic) proved this provider

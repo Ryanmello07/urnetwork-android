@@ -152,6 +152,33 @@ class DeveloperViewModel @Inject constructor(
         update { s -> s.affinityStickyPastCap = sticky }
     }
 
+    /**
+     * Lets a quarantined exit keep inheriting new flows from sites already on
+     * it (while it still shows recent receive traffic), so a bench does not
+     * split the site's egress IP. Off restores the scatter, the A/B point.
+     */
+    val setQuarantineGroupFollow: (Boolean) -> Unit = { follow ->
+        update { s -> s.quarantineGroupFollow = follow }
+    }
+
+    /**
+     * How recently a benched exit must have received return traffic for its
+     * sites to keep following it. 0 disables the follow.
+     */
+    val setGroupFollowFreshnessMillis: (Long) -> Unit = { millis ->
+        update { s -> s.groupFollowReceiveFreshnessMillis = millis }
+    }
+
+    /**
+     * Widens the silent-destination corroboration the soft no-receive verdict
+     * needs as an exit's flow count grows: effective minimum =
+     * max(min destinations, flows/this). 0 keeps the flat minimum, the A/B
+     * point.
+     */
+    val setBlackholeLoadCorroboration: (Int) -> Unit = { perFlows ->
+        update { s -> s.blackholeLoadCorroboration = perFlows }
+    }
+
     val setMaxFlowsPerExit: (Int) -> Unit = { maxFlows ->
         update { s -> s.maxFlowsPerExit = maxFlows }
     }
@@ -506,6 +533,18 @@ class DeveloperViewModel @Inject constructor(
          * time -- a pass's probes are all in flight together.
          */
         val PROBE_SAMPLE_PRESETS = listOf(0, 4, 16, 64)
+
+        /**
+         * connect default 10s. How recently a benched exit must have received
+         * for its sites to keep following it; 0 turns the follow off.
+         */
+        val GROUP_FOLLOW_FRESHNESS_PRESETS = listOf(0L, 5_000L, 10_000L, 30_000L)
+
+        /**
+         * connect default 8 flows per extra required silent destination. 0
+         * keeps the flat MinBlackholeDestinations bar, the A/B point.
+         */
+        val LOAD_CORROBORATION_PRESETS = listOf(0, 4, 8, 16)
 
         /**
          * connect default 2 per window. The storm breaker admits this many

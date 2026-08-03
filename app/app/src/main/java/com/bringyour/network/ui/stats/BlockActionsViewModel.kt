@@ -49,6 +49,11 @@ data class BlockActionUi(
     // the deciding route override id, when a rule determined the decision
     val overrideId: String?,
     val byteCount: Long,
+    // short client ids of the exits CURRENTLY carrying flows to this
+    // cluster's ips (live join against the flow table). One id is the normal
+    // healthy shape; two ids on one row is a site split across egress IPs --
+    // the exact event the affinity work exists to prevent
+    val exitShortIds: List<String> = listOf(),
 ) {
     /** every host name (matched + unmatched) and every ip (matched + unmatched) */
     val allHostNames: List<String>
@@ -169,11 +174,39 @@ class BlockActionsViewModel @Inject constructor(
             updateBlockActions()
             updateBlockStats()
             updateOverrides()
+
+            // keep the exit attribution live: flows re-race and rebind
+            // between block-action events, so the join is refreshed on a slow
+            // tick as well -- a row growing a second exit chip mid-session is
+            // exactly the observation this feature exists for
+            viewModelScope.launch {
+                while (true) {
+                    delay(5_000L)
+                    if (blockActions.isNotEmpty()) {
+                        updateBlockActions()
+                    }
+                }
+            }
         }
     }
 
     private fun updateBlockActions() {
         val vc = blockActionVc ?: return
+
+        // the live destination->exit attribution, joined onto each cluster's
+        // ips below. Pull-model: this reflects the exit CURRENTLY carrying
+        // each ip, after any re-race or rebind -- so a row growing a second
+        // exit chip is a site split across egress IPs, live
+        val exitsByIp = mutableMapOf<String, MutableSet<String>>()
+        deviceManager.device?.destinationExits?.let { destinationExits ->
+            val n = destinationExits.len()
+            for (i in 0 until n) {
+                val row = destinationExits.get(i) ?: continue
+                val shortId = row.clientId?.idStr?.take(8) ?: continue
+                exitsByIp.getOrPut(row.destinationIp) { mutableSetOf() }.add(shortId)
+            }
+        }
+
         val items = mutableListOf<BlockActionUi>()
         val list = vc.blockActions
         if (list != null) {
@@ -181,14 +214,16 @@ class BlockActionsViewModel @Inject constructor(
             for (i in 0 until n) {
                 val action = list.get(i) ?: continue
                 val unmatchedHosts = sdkStringListToList(action.hosts)
+                val ips = sdkStringListToList(action.ips)
+                val matchedIps = sdkStringListToList(action.matchedIps)
                 items.add(
                     BlockActionUi(
                         id = action.blockActionId?.idStr ?: "$i-${action.time}",
                         timeMillis = action.time,
                         hosts = unmatchedHosts,
-                        ips = sdkStringListToList(action.ips),
+                        ips = ips,
                         matchedHosts = sdkStringListToList(action.matchedHosts),
-                        matchedIps = sdkStringListToList(action.matchedIps),
+                        matchedIps = matchedIps,
                         hostBaseNames = collapseHosts(unmatchedHosts),
                         block = action.block,
                         local = action.local,
@@ -196,6 +231,10 @@ class BlockActionsViewModel @Inject constructor(
                         hasRouteOverride = action.routeOverride != null,
                         overrideId = action.overrideId?.idStr,
                         byteCount = action.byteCount,
+                        exitShortIds = (matchedIps + ips)
+                            .flatMap { exitsByIp[it] ?: emptySet() }
+                            .distinct()
+                            .sorted(),
                     )
                 )
             }
