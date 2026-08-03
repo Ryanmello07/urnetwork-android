@@ -387,11 +387,11 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         toggle = developerViewModel.setQuarantineGroupFollow,
     )
     DeveloperDurationSetting(
-        label = stringResource(id = R.string.dev_group_follow_freshness),
-        detail = stringResource(id = R.string.dev_group_follow_freshness_detail),
-        millis = reliability?.groupFollowReceiveFreshnessMillis ?: 0L,
-        presets = DeveloperViewModel.GROUP_FOLLOW_FRESHNESS_PRESETS,
-        onSelect = developerViewModel.setGroupFollowFreshnessMillis,
+        label = stringResource(id = R.string.dev_group_follow_window),
+        detail = stringResource(id = R.string.dev_group_follow_window_detail),
+        millis = reliability?.groupFollowWindowMillis ?: 0L,
+        presets = DeveloperViewModel.GROUP_FOLLOW_WINDOW_PRESETS,
+        onSelect = developerViewModel.setGroupFollowWindowMillis,
     )
     DeveloperCountSetting(
         label = stringResource(id = R.string.dev_removal_budget_count),

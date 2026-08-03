@@ -154,19 +154,22 @@ class DeveloperViewModel @Inject constructor(
 
     /**
      * Lets a quarantined exit keep inheriting new flows from sites already on
-     * it (while it still shows recent receive traffic), so a bench does not
-     * split the site's egress IP. Off restores the scatter, the A/B point.
+     * it (through the early part of the bench, when the verdict is least
+     * proven), so a bench does not split the site's egress IP. Off restores
+     * the scatter, the A/B point.
      */
     val setQuarantineGroupFollow: (Boolean) -> Unit = { follow ->
         update { s -> s.quarantineGroupFollow = follow }
     }
 
     /**
-     * How recently a benched exit must have received return traffic for its
-     * sites to keep following it. 0 disables the follow.
+     * How long into a quarantine episode a site's new connections keep
+     * following their benched exit. Early benches are usually false alarms;
+     * one that sustains is trending toward removal and stops collecting
+     * flows first. 0 disables the follow.
      */
-    val setGroupFollowFreshnessMillis: (Long) -> Unit = { millis ->
-        update { s -> s.groupFollowReceiveFreshnessMillis = millis }
+    val setGroupFollowWindowMillis: (Long) -> Unit = { millis ->
+        update { s -> s.groupFollowWindowMillis = millis }
     }
 
     /**
@@ -535,10 +538,12 @@ class DeveloperViewModel @Inject constructor(
         val PROBE_SAMPLE_PRESETS = listOf(0, 4, 16, 64)
 
         /**
-         * connect default 10s. How recently a benched exit must have received
-         * for its sites to keep following it; 0 turns the follow off.
+         * connect default 45s. How long into a bench a site keeps following
+         * its exit; 0 turns the follow off. 45s covers the observed
+         * false-positive bench range (every field acquittal landed inside
+         * ~50s) while stopping before the ~60s drain-to-conviction zone.
          */
-        val GROUP_FOLLOW_FRESHNESS_PRESETS = listOf(0L, 5_000L, 10_000L, 30_000L)
+        val GROUP_FOLLOW_WINDOW_PRESETS = listOf(0L, 15_000L, 45_000L, 90_000L)
 
         /**
          * connect default 8 flows per extra required silent destination. 0
