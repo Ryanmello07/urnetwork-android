@@ -103,6 +103,11 @@ import kotlin.concurrent.thread
     private var appliedTunnelIncludedAppIds: Set<String> = emptySet()
     private var appliedTunnelExcludedAppIds: Set<String> = emptySet()
 
+    // the pinned app set currently installed as the flow-owner lookup, used
+    // to skip reinstalling an identical one (see applyPinnedAppLookup).
+    // guarded by applyPinnedAppLookup's own synchronization
+    private var appliedPinnedAppIds: Set<String>? = null
+
     // the (ipv4, ipv6) dns servers currently applied to the tunnel, used to
     // detect when a rebuild is needed
     private var appliedTunnelDnsServers: Pair<List<String>, List<String>> =
@@ -445,17 +450,6 @@ import kotlin.concurrent.thread
     }
 
     /**
-     * The per-app split for the tunnel builder, derived from the device
-     * block action overrides. Returns (tunnelIncludedAppIds, tunnelExcludedAppIds).
-     *
-     * The sdk `OverrideLocalAppIds` is expressed from the local-routing side:
-     * `included` are apps routed locally (they bypass the tunnel), `excluded`
-     * are apps routed remotely (they go through the tunnel). From the tunnel
-     * builder's perspective this is inverted: remote-routed apps are the ones
-     * included in the tunnel (allowlist), local-routed apps are excluded
-     * (disallow / bypass).
-     */
-    /**
      * Installs (or clears) the flow-owner lookup that powers per-app pinning:
      * the Go side asks it once per new flow which pinned app owns the flow,
      * and every flow of that app then rides one exit -- one egress IP for the
@@ -463,10 +457,21 @@ import kotlin.concurrent.thread
      * change; null when nothing is pinned so the Go side skips the machinery
      * entirely.
      */
+    @Synchronized
     private fun applyPinnedAppLookup() {
         val app = application as MainApplication
         val device = app.device ?: return
         val pinnedPackages = sdkStringListToSet(device.pinnedAppIds)
+        // installing a lookup is not free on the go side: it invalidates the
+        // flow-owner cache and the recorded app placements, so every live
+        // flow's next packet pays a fresh platform call on the single tun
+        // reader for an answer only a NEW flow consumes. This fires on any
+        // block-action change and on any package broadcast -- a play store
+        // batch update would otherwise replay that burst dozens of times.
+        if (pinnedPackages == appliedPinnedAppIds) {
+            return
+        }
+        appliedPinnedAppIds = pinnedPackages
         // getConnectionOwnerUid is api 29+; below that a pin rule simply has
         // no per-app effect (the constellation table still groups by domain).
         // the two conditions are separate ifs so the NewApi lint sees a plain
@@ -627,6 +632,11 @@ import kotlin.concurrent.thread
         val app = application as MainApplication
 
         unregisterPackageChangeReceiver()
+        // the lookup holds this service's ConnectivityManager (and through it
+        // this Context); leaving it installed on the device would retain the
+        // destroyed service until the next start replaced it
+        app.device?.setFlowOwnerLookup(null)
+        appliedPinnedAppIds = null
 
         deviceOfflineSub?.close()
         deviceOfflineSub = null
