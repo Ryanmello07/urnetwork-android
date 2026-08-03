@@ -475,6 +475,33 @@ QUIC's PTO doubles per loss.
   carrying more of the load. If it does not move, the backoff theory is wrong
   and 20s is free.
 
+## Phase 11 — the rank gate was defeating the cap (2026-08-01)
+
+beta-118, on device: 86 flows on one quality exit, 4 on one speed exit, zero
+on the other twelve — after the bookkeeping fix, so those are true counts.
+With correct counting a sustained 5x cap overrun is arithmetically impossible
+through the filtered paths, which is what pointed at the path that is not
+filtered.
+
+`OrderedClients()` narrows the race field to the window's best platform rank
+("min tier" — server-assigned, `score/20`, missing latency/speed tests cost
+two tiers each). On a small pool one provider per window sits alone in the min
+tier, so every race had one candidate — and `underFlowCap`'s own
+never-narrow-below-2 escape then returned the saturated exit right back.
+The cap was structurally unenforceable exactly when one exit was hoovering
+every flow. The 14/15/7 spread in Phase 10 just means that day's pool had
+three providers sharing the min tier.
+
+Fix in connect: `raceCandidates` — min tier's under-cap exits first; when the
+min tier is fully at the cap, cross tiers to any under-cap exit (the
+"until necessary" the gate's comment promised); when everything is full,
+place on the min tier anyway. Cap 0 leaves the gate exactly as upstream ships
+it. Exit cards now show `tier N` so the rank structure is visible on device.
+
+- [ ] Verify on device: exits should staircase (~16 each, TOCTOU overshoot
+  aside) across tiers under load instead of 86/0/0. The tier labels should
+  show which providers the platform actually ranks best.
+
 ### Still unexplained
 
 The 68s stall against a 2-flow teardown from Phase 9 remains unaccounted for.
