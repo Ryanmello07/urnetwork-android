@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Ryanmello07/urnetwork-sdk
-          ref: feat/reliability-checkpoint-upstream
+          ref: feat/shared-fate-verdicts-upstream
           path: urnetwork-sdk
 
       - name: Set up JDK
@@ -94,7 +94,7 @@ jobs:
           go-version: stable
 
       - name: Check out connect dependency
-        run: git clone --depth 1 --branch feat/reliability-checkpoint-upstream https://github.com/Ryanmello07/connect.git connect
+        run: git clone --depth 1 --branch feat/shared-fate-verdicts-upstream https://github.com/Ryanmello07/connect.git connect
 
       - name: Check out glog dependency
         run: git clone --depth 1 https://github.com/urnetwork/glog.git glog
