@@ -225,6 +225,23 @@ class MainApplication : Application() {
         // ever "app" here -- but the layout is what the exporter enumerates, and
         // it keeps the sdk call identical across platforms.
         val logRoot = logRootDir(applicationContext.filesDir)
+        val processLogDir = File(logRoot, APP_LOG_PROCESS_NAME)
+
+        // Pre-upgrade builds wrote glog files straight into filesDir. Nothing
+        // ever prunes or exports that directory again once the root moves, so
+        // the old files are both dead storage and unreachable evidence. Run the
+        // migration BEFORE pointing glog at the new directory: SetLogDir's
+        // retention pass then treats the migrated files as part of the app's
+        // own history and keeps only the newest four of the merged set.
+        val migratedLogCount = try {
+            migrateLegacyLogFiles(applicationContext.filesDir, processLogDir)
+        } catch (t: Throwable) {
+            Log.e(TAG, "could not migrate pre-upgrade log files: ${t.message}", t)
+            0
+        }
+        if (0 < migratedLogCount) {
+            Log.i(TAG, "migrated $migratedLogCount pre-upgrade log files into $processLogDir")
+        }
 
         // gomobile binds Go's `error` return as a checked java exception, and
         // kotlin does not enforce checked exceptions -- so an unguarded call
