@@ -29,6 +29,7 @@ import com.bringyour.sdk.NetworkSpace
 import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.Sub
 import dagger.hilt.android.HiltAndroidApp
+import java.io.File
 import java.lang.ref.WeakReference
 import javax.inject.Inject
 import kotlin.math.min
@@ -219,8 +220,12 @@ class MainApplication : Application() {
             Sdk.setMemoryProfileRate(BuildConfig.URNETWORK_MEMORY_PROFILE_RATE_BYTES)
         }
 
-        val path: String = applicationContext.filesDir.absolutePath
-        Sdk.setLogDir(path)
+        // One subdirectory per writing process, under a shared root. Android is
+        // single-process (no android:process in the manifest), so there is only
+        // ever "app" here -- but the layout is what the exporter enumerates, and
+        // it keeps the sdk call identical across platforms.
+        val logRoot: String = File(applicationContext.filesDir, "logs").absolutePath
+        Sdk.setLogDirForProcess(logRoot, "app")
 
         val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager?
         val maxMemoryMib = activityManager?.memoryClass?.toLong() ?: 32
