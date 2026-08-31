@@ -47,6 +47,8 @@ import com.bringyour.network.ui.components.URTextInputLabel
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.MainTintedBackgroundBase
+import com.bringyour.network.ui.theme.RedDark
+import com.bringyour.network.ui.theme.TextDanger
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.bringyour.sdk.Exit
@@ -135,6 +137,44 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     // of. exportDiagnostics already tolerates a null device on its own
     // (deviceManager.device?.let { ... }), which is what makes this safe.
     URTextInputLabel(text = stringResource(id = R.string.dev_section_diagnostics))
+
+    // ABOVE the export rows on purpose: the order of operations is set the
+    // level, reproduce the fault, then export. A verbosity control placed
+    // under the export actions is found only after the capture it was supposed
+    // to widen, and the bundle it produced is the useless one -- close to half
+    // the log statements in `connect` (roughly 290 of some 700), every
+    // contract, transport and window line among them, sit behind V(1)/V(2) and
+    // are simply not written at level 0.
+    DeveloperVerbositySetting(
+        level = developerViewModel.logVerbosity,
+        onSelect = developerViewModel.setLogVerbosity,
+    )
+
+    // Persistent, not a one-shot toast: it has to be on screen at the moment
+    // the user reaches for "Export all logs (raw)", which can be many minutes
+    // after the level was raised. This is the difference between a bundle that
+    // is safe to attach to a support thread and one carrying every site the
+    // user visited while reproducing.
+    if (logVerbosityRecordsDestinations(developerViewModel.logVerbosity)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .background(RedDark, RoundedCornerShape(8.dp))
+                .padding(12.dp),
+        ) {
+            Text(
+                stringResource(id = R.string.dev_log_verbosity_warning_title),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextDanger,
+            )
+            Text(
+                stringResource(id = R.string.dev_log_verbosity_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+            )
+        }
+    }
 
     val context = LocalContext.current
     val shareBundle: (java.io.File) -> Unit = { file ->
@@ -821,6 +861,78 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     }
 
     Spacer(modifier = Modifier.height(32.dp))
+}
+
+/**
+ * The glog verbosity of the process that writes the logs, cycling
+ * Default -> Verbose -> Trace on tap.
+ *
+ * The value shown is the one the DEVICE reports, never the one last asked for.
+ * A set can be clamped by the sdk, refused outright by a hosted device, or
+ * declined by an older device peer over the rpc, and none of those throw --
+ * so a level that failed to apply has to be visible here rather than assumed,
+ * or the user reproduces a fault believing they are capturing V(1) contract
+ * accounting and exports a bundle that has none.
+ *
+ * "Unavailable" is not the same as level 0: it means there is no device to ask
+ * yet, so the row is inert rather than reporting a default that is not in
+ * force.
+ */
+@Composable
+private fun DeveloperVerbositySetting(
+    level: Long?,
+    onSelect: (Long) -> Unit,
+) {
+    val named = logVerbosityLevel(level)
+    val valueLabel = when (named) {
+        LogVerbosityLevel.DEFAULT -> R.string.dev_log_verbosity_default
+        LogVerbosityLevel.VERBOSE -> R.string.dev_log_verbosity_verbose
+        LogVerbosityLevel.TRACE -> R.string.dev_log_verbosity_trace
+        null -> R.string.dev_log_verbosity_unavailable
+    }
+    // the detail line names what THIS level buys, so the cost of the next step
+    // is read before it is taken rather than discovered in the bundle
+    val detail = when (named) {
+        LogVerbosityLevel.DEFAULT -> R.string.dev_log_verbosity_default_detail
+        LogVerbosityLevel.VERBOSE -> R.string.dev_log_verbosity_verbose_detail
+        LogVerbosityLevel.TRACE -> R.string.dev_log_verbosity_trace_detail
+        null -> R.string.dev_log_verbosity_unavailable_detail
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = level != null) {
+                onSelect(nextLogVerbosity(level ?: LOG_VERBOSITY_DEFAULT))
+            }
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(0.72f)) {
+            Text(
+                stringResource(id = R.string.dev_log_verbosity),
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White,
+            )
+            Text(
+                stringResource(id = detail),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        Text(
+            stringResource(id = valueLabel),
+            style = MaterialTheme.typography.bodyLarge,
+            // a level that records real destinations is not an ordinary
+            // setting value, and must not read as one
+            color = when {
+                level == null -> TextMuted
+                logVerbosityRecordsDestinations(level) -> TextDanger
+                else -> BlueMedium
+            },
+        )
+    }
 }
 
 /**

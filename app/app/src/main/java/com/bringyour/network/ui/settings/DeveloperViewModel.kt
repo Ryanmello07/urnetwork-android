@@ -68,6 +68,21 @@ class DeveloperViewModel @Inject constructor(
     var lastExport by mutableStateOf<DiagnosticExportSummary?>(null)
         private set
 
+    /**
+     * The verbosity the DEVICE reports it is logging at, or null when there is
+     * no device to ask (signed out, or before one has been created).
+     *
+     * Read back from the device rather than remembered from the last tap. The
+     * level is process-global state behind a glog flag, and on ios it is set in
+     * the network extension over the rpc, so a set can be refused (a hosted
+     * device) or fail to cross (an older device peer) with nothing thrown here.
+     * Showing the value the user asked for would then claim a capture is
+     * running verbose when it is still at 0 -- and the bundle exported from it
+     * would be the empty one this whole feature exists to prevent.
+     */
+    var logVerbosity by mutableStateOf<Long?>(null)
+        private set
+
     var inventory by mutableStateOf<List<LogRow>>(listOf())
         private set
 
@@ -369,6 +384,32 @@ class DeveloperViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Raises or lowers the verbosity of the process that actually writes the
+     * logs worth raising it for.
+     *
+     * Always through the DEVICE, never Sdk.setLogVerbosity: that one reaches
+     * only the calling process, and on ios `connect` -- the contract
+     * accounting, the transport internals, the window diagnostics -- runs in
+     * the network extension, a separate process with its own glog state. The
+     * app process is not where any of it is written. Device.SetLogVerbosity
+     * sets both, carrying the level over the rpc (or queueing it for the next
+     * sync when the tunnel is down, which is the usual case here: the level is
+     * raised BEFORE connecting to reproduce). Android runs a DeviceLocal in
+     * one process, so this is the same trap FlushGlog hit and the same fix --
+     * going through the device is what keeps the two platforms honest.
+     *
+     * The level is then READ BACK from the device rather than assumed. The sdk
+     * clamps out of range values, a hosted device refuses the call outright,
+     * and an older device peer can decline the rpc method -- none of which
+     * throws. Reading back is what makes a set that did not take visible.
+     */
+    val setLogVerbosity: (Long) -> Unit = { level ->
+        val device = deviceManager.device
+        device?.setLogVerbosity(level)
+        logVerbosity = device?.getLogVerbosity()
+    }
+
     fun toggleLogSelection(name: String) {
         selectedLogNames = if (selectedLogNames.contains(name)) {
             selectedLogNames - name
@@ -379,6 +420,13 @@ class DeveloperViewModel @Inject constructor(
 
     fun refresh() {
         val device = deviceManager.device
+
+        // Polled with the rest of the readout rather than cached from the last
+        // tap: the flag lives in the device's process, and another process (or
+        // the restore a device runs at construction) can move it under us. A
+        // stale "Verbose" here is the one lie this control cannot afford.
+        logVerbosity = device?.getLogVerbosity()
+
         if (device == null) {
             exits = listOf()
             reliability = null
@@ -964,6 +1012,82 @@ data class DiagnosticExportSummary(
         )
     }
 }
+
+/**
+ * The three glog levels the sdk defines (`Sdk.LogVerbosityDefault`, `Trace`,
+ * `Detail`), as the java `long` gobind binds a Go `int` to.
+ *
+ * Named for what each one BUYS, because the whole point of the control is that
+ * the interesting logging is off by default: `connect` gates its contract
+ * accounting, transport internals and window diagnostics behind V(1) and V(2),
+ * so at level 0 a bundle from a live connected session contains only rpc
+ * chatter and nothing about contracts or transports at all.
+ */
+const val LOG_VERBOSITY_DEFAULT = 0L
+
+/** V(1): contract accounting and per-packet block decisions. */
+const val LOG_VERBOSITY_VERBOSE = 1L
+
+/** V(2): transport and window internals. */
+const val LOG_VERBOSITY_TRACE = 2L
+
+/** What a tap cycles through, in order. */
+val LOG_VERBOSITY_PRESETS = listOf(
+    LOG_VERBOSITY_DEFAULT,
+    LOG_VERBOSITY_VERBOSE,
+    LOG_VERBOSITY_TRACE,
+)
+
+/**
+ * The level a tap moves to, wrapping back to Default after Trace.
+ *
+ * A level that is not one of the presets lands on the FIRST one, matching the
+ * other stepper rows on this screen. That is reachable in practice: the sdk
+ * reports whatever the `-v` flag says, including a value an embedder set on
+ * the command line above the sdk's own range, and stepping from an unknown
+ * value has to go somewhere predictable.
+ */
+fun nextLogVerbosity(level: Long): Long {
+    val index = LOG_VERBOSITY_PRESETS.indexOf(level)
+    return LOG_VERBOSITY_PRESETS[(index + 1) % LOG_VERBOSITY_PRESETS.size]
+}
+
+/** The three levels this control offers, plus "no device to ask" as null. */
+enum class LogVerbosityLevel { DEFAULT, VERBOSE, TRACE }
+
+/**
+ * Which level a raw verbosity is displayed as, or null when there is no device
+ * to read one from.
+ *
+ * Out-of-range values are folded toward the nearest level rather than dropped:
+ * `GetLogVerbosity` reports the flag itself, so a -v of 5 set some other way
+ * is a real possibility, and at 5 every V(2) statement fires -- calling that
+ * anything but Trace would understate what the logs now contain.
+ */
+fun logVerbosityLevel(level: Long?): LogVerbosityLevel? {
+    if (level == null) {
+        return null
+    }
+    return when {
+        level <= LOG_VERBOSITY_DEFAULT -> LogVerbosityLevel.DEFAULT
+        level == LOG_VERBOSITY_VERBOSE -> LogVerbosityLevel.VERBOSE
+        else -> LogVerbosityLevel.TRACE
+    }
+}
+
+/**
+ * True when the level currently in force writes the destination addresses and
+ * ports of real traffic into the logs, which is what the persistent warning on
+ * the screen is for.
+ *
+ * Keyed off the level READ BACK from the device, so it is never shown for a
+ * raise that did not actually take, and never hidden for one that did.
+ */
+fun logVerbosityRecordsDestinations(level: Long?): Boolean =
+    when (logVerbosityLevel(level)) {
+        LogVerbosityLevel.VERBOSE, LogVerbosityLevel.TRACE -> true
+        else -> false
+    }
 
 /**
  * A plain-kotlin snapshot of one row of the log inventory.
