@@ -224,8 +224,25 @@ class MainApplication : Application() {
         // single-process (no android:process in the manifest), so there is only
         // ever "app" here -- but the layout is what the exporter enumerates, and
         // it keeps the sdk call identical across platforms.
-        val logRoot: String = File(applicationContext.filesDir, "logs").absolutePath
-        Sdk.setLogDirForProcess(logRoot, "app")
+        val logRoot = logRootDir(applicationContext.filesDir)
+
+        // gomobile binds Go's `error` return as a checked java exception, and
+        // kotlin does not enforce checked exceptions -- so an unguarded call
+        // compiles and then propagates out of Application.onCreate as an
+        // unhandled crash on EVERY launch. The sdk's own contract is the
+        // opposite ("logging must never be what breaks a launch"), and the
+        // fallback meant to make the error unreachable cannot work here: it
+        // targets os.TempDir(), which on android is "/tmp" -- absent and not
+        // creatable inside the app sandbox -- so if filesDir/logs cannot be
+        // created (storage full, quota, EIO) the error really is returned.
+        // Catching it turns an unbootable app back into a logging problem:
+        // glog keeps whatever destination it already had, and the exporter
+        // reports the source as missing rather than pretending it is there.
+        try {
+            Sdk.setLogDirForProcess(logRoot.absolutePath, APP_LOG_PROCESS_NAME)
+        } catch (t: Throwable) {
+            Log.e(TAG, "could not point logging at $logRoot: ${t.message}", t)
+        }
 
         val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager?
         val maxMemoryMib = activityManager?.memoryClass?.toLong() ?: 32
