@@ -884,7 +884,7 @@ private fun DeveloperVerbositySetting(
     onSelect: (Long) -> Unit,
 ) {
     val named = logVerbosityLevel(level)
-    val valueLabel = when (named) {
+    val name = when (named) {
         LogVerbosityLevel.DEFAULT -> R.string.dev_log_verbosity_default
         LogVerbosityLevel.VERBOSE -> R.string.dev_log_verbosity_verbose
         LogVerbosityLevel.TRACE -> R.string.dev_log_verbosity_trace
@@ -922,7 +922,14 @@ private fun DeveloperVerbositySetting(
             )
         }
         Text(
-            stringResource(id = valueLabel),
+            // the number as well as the name -- it is what the sdk reports and
+            // what a support thread compares against the bundle's manifest,
+            // and it is the only place a level outside the sdk's range shows
+            if (level == null) {
+                stringResource(id = name)
+            } else {
+                logVerbosityValueLabel(level, stringResource(id = name))
+            },
             style = MaterialTheme.typography.bodyLarge,
             // a level that records real destinations is not an ordinary
             // setting value, and must not read as one

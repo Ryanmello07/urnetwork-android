@@ -68,6 +68,20 @@ class LogVerbosityTest {
     }
 
     @Test
+    fun theValueLabelReportsTheLevelTheDeviceGave() {
+        // the name says what the row means; the number is what the sdk reports
+        // and what a support thread compares against a bundle's manifest
+        assertEquals("0 · Default", logVerbosityValueLabel(LOG_VERBOSITY_DEFAULT, "Default"))
+        assertEquals("1 · Verbose", logVerbosityValueLabel(LOG_VERBOSITY_VERBOSE, "Verbose"))
+        assertEquals("2 · Trace", logVerbosityValueLabel(LOG_VERBOSITY_TRACE, "Trace"))
+        // a level an embedder set past the sdk's range is reported as the
+        // number it actually is rather than quietly redrawn as 2 -- this row
+        // is the only place the discrepancy could show. Matches iOS's
+        // LogVerbosityTests.theValueLabelReportsTheLevelTheDeviceGave.
+        assertEquals("7 · Trace", logVerbosityValueLabel(7L, "Trace"))
+    }
+
+    @Test
     fun theDestinationWarningIsShownAtEveryLevelThatRecordsThem() {
         // the difference between a bundle that is safe to attach to a support
         // thread and one carrying every site the user visited. V(1) is where

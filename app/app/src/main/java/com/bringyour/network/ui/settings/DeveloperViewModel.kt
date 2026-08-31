@@ -1076,6 +1076,18 @@ fun logVerbosityLevel(level: Long?): LogVerbosityLevel? {
 }
 
 /**
+ * The value shown on the control: the number the device reported, then the
+ * name of the level it maps to -- "1 · Verbose".
+ *
+ * Both, because they answer different questions. The name says what the row
+ * means; the number is what the sdk reports, what a support thread can compare
+ * against a bundle's manifest, and the only place a level outside the sdk's
+ * range would ever be visible -- a -v of 7 reads "7 · Trace" rather than
+ * being quietly redrawn as 2. Matches iOS's LogVerbosity.valueLabel.
+ */
+fun logVerbosityValueLabel(level: Long, name: String): String = "$level · $name"
+
+/**
  * True when the level currently in force writes the destination addresses and
  * ports of real traffic into the logs, which is what the persistent warning on
  * the screen is for.
