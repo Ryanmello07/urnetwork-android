@@ -60,7 +60,12 @@ class DeveloperViewModel @Inject constructor(
     var lastAction by mutableStateOf<String?>(null)
         private set
 
-    var lastExport by mutableStateOf<String?>(null)
+    /**
+     * What the last export produced, as NUMBERS rather than a finished
+     * sentence -- see [DiagnosticExportSummary]. The screen renders it, which
+     * is the only place a `<plurals>` resource can be resolved from.
+     */
+    var lastExport by mutableStateOf<DiagnosticExportSummary?>(null)
         private set
 
     var inventory by mutableStateOf<List<LogRow>>(listOf())
@@ -158,7 +163,7 @@ class DeveloperViewModel @Inject constructor(
                 val outcome = withContext(Dispatchers.IO) {
                     buildDiagnosticBundle(destDir, redact, selected, nowMillis)
                 }
-                lastExport = outcome.message
+                lastExport = outcome.summary
                 pendingShare = outcome.file
             } finally {
                 exporting = false
@@ -246,15 +251,20 @@ class DeveloperViewModel @Inject constructor(
             }
 
             val result = Sdk.exportDiagnosticBundle(dest.absolutePath, options)
-            val message = buildString {
-                append("Exported ${result.fileCount} log files (${formatByteCountCompact(result.byteCount)})")
-                for (i in 0 until result.missingSources.len()) {
-                    append("\nNot included: ${result.missingSources.get(i)}")
-                }
-            }
-            DiagnosticExportOutcome(dest, message)
+            DiagnosticExportOutcome(
+                dest,
+                DiagnosticExportSummary(
+                    // ExportResult.FileCount is a Go `int`, which gobind binds
+                    // as a java long; a plurals lookup selects on an int
+                    fileCount = result.fileCount.toInt(),
+                    byteCount = result.byteCount,
+                    missingSources = (0 until result.missingSources.len()).map {
+                        result.missingSources.get(it)
+                    },
+                ),
+            )
         } catch (e: Exception) {
-            DiagnosticExportOutcome(null, "Export failed: ${e.message}")
+            DiagnosticExportOutcome(null, DiagnosticExportSummary.failed(e.message))
         }
     }
 
@@ -921,10 +931,39 @@ class DeveloperViewModel @Inject constructor(
 
 /**
  * The result of building a bundle off the main thread: the file it landed at
- * (null if the export failed outright) and the human-readable summary for
+ * (null if the export failed outright) and the summary for
  * [DeveloperViewModel.lastExport].
  */
-private data class DiagnosticExportOutcome(val file: File?, val message: String)
+private data class DiagnosticExportOutcome(val file: File?, val summary: DiagnosticExportSummary)
+
+/**
+ * What an export produced, carried as numbers.
+ *
+ * The count is deliberately NOT formatted here. The summary used to be built
+ * as `"Exported ${result.fileCount} log files"`, which reads "Exported 1 log
+ * files" for the single-file case that a selective export produces most often.
+ * Only a `<plurals>` resource can pick the right form, only a composable can
+ * resolve one, and a count already baked into a string cannot be pluralised
+ * afterwards -- so the count travels as an Int and
+ * `R.plurals.dev_export_summary` selects on it at the point of display.
+ */
+data class DiagnosticExportSummary(
+    val fileCount: Int,
+    val byteCount: Long,
+    val missingSources: List<String>,
+    /** Non-null when no bundle was written at all; the reason, verbatim. */
+    val failure: String? = null,
+) {
+    companion object {
+        /** An export that produced no bundle. `reason` is an exception message. */
+        fun failed(reason: String?): DiagnosticExportSummary = DiagnosticExportSummary(
+            fileCount = 0,
+            byteCount = 0L,
+            missingSources = listOf(),
+            failure = reason ?: "unknown error",
+        )
+    }
+}
 
 /**
  * A plain-kotlin snapshot of one row of the log inventory.

@@ -34,12 +34,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.bringyour.network.R
+import com.bringyour.network.utils.formatByteCountCompact
 import com.bringyour.network.ui.components.URSwitch
 import com.bringyour.network.ui.components.URTextInputLabel
 import com.bringyour.network.ui.theme.Black
@@ -267,7 +269,33 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     }
 
     developerViewModel.lastExport?.let { lastExport ->
-        Text(lastExport, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        // Resolved here rather than in the viewmodel because this is where a
+        // <plurals> can be read: "Exported 1 log files" was a count formatted
+        // into a fixed English phrase, and a selective export of one file is
+        // the common case that produced it.
+        val failure = lastExport.failure
+        Text(
+            if (failure != null) {
+                stringResource(id = R.string.dev_export_failed, failure)
+            } else {
+                pluralStringResource(
+                    id = R.plurals.dev_export_summary,
+                    count = lastExport.fileCount,
+                    lastExport.fileCount,
+                    formatByteCountCompact(lastExport.byteCount),
+                )
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+
+        lastExport.missingSources.forEach { missing ->
+            Text(
+                stringResource(id = R.string.dev_export_not_included, missing),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
     }
 
     if (!developerViewModel.connected) {
