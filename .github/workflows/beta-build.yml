@@ -52,7 +52,13 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # `id` matters: the SDK build step below reads this action's ndk-path
+      # OUTPUT. It used to pass `ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}`,
+      # which is self-referential -- it resolves against the workflow/job env
+      # map, where nothing defines it, so it set the variable to the empty
+      # string and overrode anything the action had exported.
       - name: Set up Android NDK
+        id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
@@ -81,9 +87,17 @@ jobs:
           BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
           WARP_HOME: ${{ github.workspace }}/urnetwork-sdk
           WARP_VERSION_HOME: ${{ github.workspace }}/urnetwork-sdk/version
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
+          # build_android resolves llvm-objcopy under ANDROID_NDK_HOME and
+          # `test -n`s it under `set -e`. Empty, that fails ~90s into the
+          # recipe as an opaque `find: '': No such file or directory`. Say so
+          # here instead.
+          if [ ! -d "$ANDROID_NDK_HOME" ]; then
+            echo "::error::ANDROID_NDK_HOME is not a directory (got '$ANDROID_NDK_HOME') -- the setup-ndk step did not produce an ndk-path"
+            exit 1
+          fi
           make init build_android
           # the sdk's build_android recipe keeps going after a failed
           # `gomobile bind`, so make can exit 0 having produced no aar. that
