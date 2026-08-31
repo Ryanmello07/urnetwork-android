@@ -5,13 +5,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bringyour.network.APP_LOG_PROCESS_NAME
 import com.bringyour.network.DeviceManager
+import com.bringyour.network.utils.formatByteCountCompact
 import com.bringyour.sdk.Exit
 import com.bringyour.sdk.ReliabilityMetrics
 import com.bringyour.sdk.ReliabilitySettings
 import com.bringyour.sdk.Sdk
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,19 +63,72 @@ class DeveloperViewModel @Inject constructor(
     var lastExport by mutableStateOf<String?>(null)
         private set
 
-    var inventory by mutableStateOf<List<com.bringyour.sdk.LogFileInfo>>(listOf())
+    var inventory by mutableStateOf<List<LogRow>>(listOf())
         private set
 
     var selectedLogNames by mutableStateOf<Set<String>>(setOf())
         private set
 
-    val connected: Boolean get() = reliability != null
+    /**
+     * Sources the exporter will not be able to read, as "<source>: <reason>",
+     * refreshed off the main thread whenever the inventory is.
+     *
+     * The spec requires the export ui to show "any unavailable source with its
+     * reason" BEFORE the user commits to an export, not only afterwards in the
+     * summary -- learning that the logs were unreachable after zipping them is
+     * not the degradation promise, it is a report of it.
+     */
+    var unavailableSources by mutableStateOf<List<String>>(listOf())
+        private set
 
     /**
-     * Writes a diagnostic bundle into destDir and hands it to onComplete, or
-     * null if the export failed outright. A source that could not be read is
-     * NOT a failure: it is reported inside the bundle and surfaced in
-     * lastExport.
+     * True from the tap that starts an export until its result is on screen.
+     *
+     * Two things need it. (1) Re-entrancy: [diagnosticBundleFileName] has
+     * one-second resolution and only a `-redacted` discriminator, so two
+     * exports of the same mode inside one second name the SAME file and the
+     * second os.Create truncates the zip the first is still streaming into --
+     * the share sheet then hands support a corrupt archive. (2) Feedback: a
+     * full export takes many seconds, and with nothing on screen to show for
+     * the tap, tapping again is the expected user response. Mirrors iOS's
+     * `DeveloperView.isExporting`.
+     */
+    var exporting by mutableStateOf(false)
+        private set
+
+    /** True while the inventory/availability snapshot is being read. */
+    var refreshingDiagnostics by mutableStateOf(false)
+        private set
+
+    /**
+     * A finished bundle waiting to be handed to the share sheet, consumed by
+     * the screen via [consumePendingShare].
+     *
+     * The export deliberately does NOT take a completion lambda: the one the
+     * screen would pass captures the composition's Activity, so a viewmodel
+     * that outlives a rotation would call startActivity on a destroyed one and
+     * would hold it alive for the whole export. Handing back state instead
+     * lets the screen share with whatever context is current.
+     */
+    var pendingShare by mutableStateOf<File?>(null)
+        private set
+
+    val connected: Boolean get() = reliability != null
+
+    /** Total on-disk size of everything the exporter can currently see. */
+    val inventoryByteCount: Long get() = inventory.sumOf { it.byteCount }
+
+    /** Total on-disk size of the rows currently checked in the picker. */
+    val selectedByteCount: Long
+        get() = inventory.filter { selectedLogNames.contains(it.name) }.sumOf { it.byteCount }
+
+    /**
+     * Writes a diagnostic bundle into destDir and leaves it in [pendingShare]
+     * for the screen to hand to the share sheet; a failure to write it at all
+     * is reported in [lastExport]. A source that could not be READ is not a
+     * failure: it is recorded inside the bundle, listed in
+     * [unavailableSources] before the export, and repeated in [lastExport]
+     * after it.
      *
      * The logcat dump is a blocking external-process spawn, and the bundle
      * write walks the full on-disk log inventory and zips it (with a
@@ -82,22 +138,58 @@ class DeveloperViewModel @Inject constructor(
      * risking an ANR past Android's ~5s input-dispatch watchdog on any
      * nontrivial log volume -- exactly the volume a diagnostics export exists
      * to handle. So the work happens on Dispatchers.IO and the result comes
-     * back through onComplete instead of a return value.
+     * back as state rather than a return value.
+     *
+     * A tap arriving while [exporting] is already true is dropped: see that
+     * field for why a second concurrent export corrupts the first one's zip.
      */
     fun exportDiagnostics(
         destDir: File,
         redact: Boolean,
         selected: List<String>,
         nowMillis: Long,
-        onComplete: (File?) -> Unit = {},
     ) {
-        viewModelScope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                buildDiagnosticBundle(destDir, redact, selected, nowMillis)
-            }
-            lastExport = outcome.message
-            onComplete(outcome.file)
+        if (exporting) {
+            return
         }
+        exporting = true
+        viewModelScope.launch {
+            try {
+                val outcome = withContext(Dispatchers.IO) {
+                    buildDiagnosticBundle(destDir, redact, selected, nowMillis)
+                }
+                lastExport = outcome.message
+                pendingShare = outcome.file
+            } finally {
+                exporting = false
+            }
+        }
+    }
+
+    /**
+     * The picker's export, and the only caller that may pass a selection.
+     *
+     * Separate from [exportDiagnostics] because an EMPTY selection must never
+     * reach the sdk from this control: empty SelectedNames means "no filter"
+     * there, so "Export selected" with nothing checked would produce a
+     * complete RAW bundle -- every severity, every rotation, plus the logcat
+     * dump and a manifest carrying client_id and instance_id in the clear --
+     * under a label promising a narrow subset. The row is disabled in that
+     * state as well; this is the second guard, so no future caller can
+     * reintroduce the hazard. iOS guards it in the same two places
+     * (DiagnosticExportService.canExportSelection).
+     */
+    fun exportSelectedDiagnostics(destDir: File, nowMillis: Long) {
+        val selected = selectedLogNames.toList()
+        if (!canExportSelection(selected)) {
+            return
+        }
+        exportDiagnostics(destDir, redact = false, selected = selected, nowMillis = nowMillis)
+    }
+
+    /** Clears a bundle once the screen has handed it to the share sheet. */
+    fun consumePendingShare() {
+        pendingShare = null
     }
 
     /**
@@ -114,6 +206,14 @@ class DeveloperViewModel @Inject constructor(
     ): DiagnosticExportOutcome {
         val dest = File(destDir, diagnosticBundleFileName(nowMillis, redact))
         return try {
+            destDir.mkdirs()
+            // A bundle is a handoff to the share sheet, never storage: at up to
+            // 4x16MB of logs each, keeping every past export costs hundreds of
+            // MB until the OS reclaims the cache. This also sweeps up a zip
+            // orphaned by an export whose coroutine was cancelled (navigating
+            // off the screen mid-export) before it could report the file.
+            pruneOldBundles(destDir, dest)
+
             val options = Sdk.newExportOptions()
             options.redact = redact
             options.includeManifest = true
@@ -122,11 +222,32 @@ class DeveloperViewModel @Inject constructor(
 
             deviceManager.device?.let { options.setManifestJson(it.diagnosticManifestJson()) }
 
-            options.addPlatformLog("logcat.txt", readLogcat())
+            // Goal 5: a source that cannot be read is RECORDED as missing, not
+            // silently omitted. The sdk cannot do this for us -- LogInventory
+            // swallows directory-read failures and ExportDiagnosticBundle only
+            // ever learns about per-FILE open/stat errors -- so without this an
+            // unreadable filesDir/logs yields a bundle with zero log entries,
+            // an empty "NOT INCLUDED" section and "Exported 0 log files", and
+            // the support engineer is told nothing about why.
+            unavailableLogSources().forEach { (source, reason) ->
+                options.missingSourceReason(source, reason)
+            }
+
+            val logcat = readLogcat()
+            val logcatText = logcat.text
+            if (logcatText != null) {
+                options.addPlatformLog(LOGCAT_LOG_NAME, logcatText)
+            } else {
+                // Recorded as a missing SOURCE rather than written as the body
+                // of platform/logcat.txt: a failure stored inside the file it
+                // was supposed to fill never reaches README.txt's NOT INCLUDED
+                // list, the ExportResult, or the summary on screen.
+                options.missingSourceReason(LOGCAT_LOG_NAME, logcat.failureReason)
+            }
 
             val result = Sdk.exportDiagnosticBundle(dest.absolutePath, options)
             val message = buildString {
-                append("Exported ${result.fileCount} log files (${result.byteCount / 1024} KiB)")
+                append("Exported ${result.fileCount} log files (${formatByteCountCompact(result.byteCount)})")
                 for (i in 0 until result.missingSources.len()) {
                     append("\nNot included: ${result.missingSources.get(i)}")
                 }
@@ -137,16 +258,105 @@ class DeveloperViewModel @Inject constructor(
         }
     }
 
-    private fun readLogcat(): String = try {
-        val process = ProcessBuilder(logcatDumpCommand()).redirectErrorStream(true).start()
-        process.inputStream.bufferedReader().use { it.readText() }
-    } catch (e: Exception) {
-        "logcat unavailable: ${e.message}"
+    /** Deletes every previously exported bundle in destDir, keeping [keep]. */
+    private fun pruneOldBundles(destDir: File, keep: File) {
+        destDir.listFiles()?.forEach { file ->
+            if (file.isFile && file != keep && isDiagnosticBundleName(file.name)) {
+                file.delete()
+            }
+        }
     }
 
-    fun refreshInventory() {
+    /**
+     * Every log source the exporter will not be able to read, as
+     * (source, reason) pairs. Empty is the normal case.
+     */
+    private fun unavailableLogSources(): List<Pair<String, String>> {
+        val reason = logSourceUnavailableReason(Sdk.getLogRoot(), APP_LOG_PROCESS_NAME)
+        return if (reason == null) listOf() else listOf(APP_LOG_PROCESS_NAME to reason)
+    }
+
+    /** A logcat dump, or the reason there isn't one. */
+    private data class LogcatDump(val text: String?, val failureReason: String)
+
+    private fun readLogcat(): LogcatDump {
+        var started: Process? = null
+        return try {
+            val process = ProcessBuilder(logcatDumpCommand()).redirectErrorStream(true).start()
+            started = process
+            // Bounded twice: `-t` caps the lines logcat prints, and this caps
+            // what is materialised if the buffer was resized (a developer
+            // debugging the very fault this feature exists for has usually run
+            // `logcat -G 8M`). The dump is held as a kotlin String (2 bytes per
+            // char), copied into a Go string and read again by deflate -- three
+            // live copies, under a Go soft memory limit set to 3/4 of the app
+            // heap.
+            val text = process.inputStream.bufferedReader().use { readAtMost(it, LOGCAT_MAX_CHARS) }
+            // `logcat -d` dumps and exits, but bound the wait anyway: an
+            // unwaited child is left as a zombie, and a logcat that never exits
+            // must not pin this thread forever.
+            if (!process.waitFor(LOGCAT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                process.destroy()
+            }
+            LogcatDump(text, "")
+        } catch (e: Exception) {
+            LogcatDump(null, "logcat unavailable: ${e.message}")
+        } finally {
+            // Never leave the child running: stopping at the cap above can
+            // leave logcat with a full pipe and nothing draining it.
+            started?.destroy()
+        }
+    }
+
+    /**
+     * Snapshots the log inventory and the unavailable sources, off the main
+     * thread.
+     *
+     * Sdk.logInventory() is an os.ReadDir of the root plus every process
+     * directory, with an Info() per entry, all across the gomobile bridge --
+     * it was being called straight from a Compose click handler. The rows it
+     * returns are Go proxies too, so every source/severity/byteCount read in
+     * the picker was another JNI hop, repeated per row per recomposition.
+     * Snapshotting into plain kotlin values here removes both.
+     */
+    fun refreshDiagnostics() {
+        if (refreshingDiagnostics) {
+            return
+        }
+        refreshingDiagnostics = true
+        viewModelScope.launch {
+            try {
+                // one hop, both reads: withContext is not inline, so its
+                // result is the way values come back out of it
+                val snapshot = withContext(Dispatchers.IO) {
+                    readLogInventory() to unavailableLogSources()
+                }
+                val rows = snapshot.first
+                inventory = rows
+                unavailableSources = snapshot.second.map { (source, reason) -> "$source: $reason" }
+                // A file can rotate away between opening the picker and
+                // exporting. The sdk filter silently drops a selected name it
+                // no longer finds, so the user would get fewer files than the
+                // picker showed with nothing saying so -- reconcile instead.
+                selectedLogNames = selectedLogNames.intersect(rows.map { it.name }.toSet())
+            } finally {
+                refreshingDiagnostics = false
+            }
+        }
+    }
+
+    private fun readLogInventory(): List<LogRow> {
         val list = Sdk.logInventory()
-        inventory = (0 until list.len()).map { list.get(it) }
+        return (0 until list.len()).map { i ->
+            val info = list.get(i)
+            LogRow(
+                name = info.name,
+                source = info.source,
+                severity = info.severity,
+                byteCount = info.byteCount,
+                modifiedMillis = info.modifiedMillis,
+            )
+        }
     }
 
     fun toggleLogSelection(name: String) {
@@ -717,6 +927,43 @@ class DeveloperViewModel @Inject constructor(
 private data class DiagnosticExportOutcome(val file: File?, val message: String)
 
 /**
+ * A plain-kotlin snapshot of one row of the log inventory.
+ *
+ * The sdk's LogFileInfo is a gomobile proxy: every field read is a JNI hop
+ * into Go, and Compose reads name/source/severity/byteCount on every
+ * recomposition of the picker. Snapshotting once, off the main thread, keeps
+ * the bridge out of the frame.
+ */
+data class LogRow(
+    val name: String,
+    val source: String,
+    val severity: String,
+    val byteCount: Long,
+    val modifiedMillis: Long,
+)
+
+/** platform/<name> the android logcat dump is written to inside the bundle. */
+const val LOGCAT_LOG_NAME = "logcat.txt"
+
+/**
+ * Line cap on the logcat dump. The stock buffer is 256KB per device, but a
+ * developer debugging the fault this feature exists for has usually run
+ * `logcat -G 8M` -- and the dump is held as a kotlin String, copied into a Go
+ * string and read again by deflate, three live copies at once, under a Go
+ * soft memory limit set to 3/4 of the app heap.
+ */
+const val LOGCAT_MAX_LINES = 20000
+
+/** Hard ceiling on the characters materialised from the dump. */
+private const val LOGCAT_MAX_CHARS = 4 * 1024 * 1024
+
+/** How long to wait for `logcat -d` to exit before killing it. */
+private const val LOGCAT_TIMEOUT_SECONDS = 10L
+
+/** Every diagnostic bundle this app writes starts with this. */
+const val DIAGNOSTIC_BUNDLE_PREFIX = "urnetwork-diagnostics-"
+
+/**
  * Bundle names sort lexically in the same order they were made, so a support
  * thread with several attachments reads in order, and carry the mode so a
  * redacted bundle is never mistaken for a complete one.
@@ -726,16 +973,133 @@ fun diagnosticBundleFileName(millis: Long, redacted: Boolean): String {
         .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
         .format(java.util.Date(millis))
     val suffix = if (redacted) "-redacted" else ""
-    return "urnetwork-diagnostics-$stamp$suffix.zip"
+    return "$DIAGNOSTIC_BUNDLE_PREFIX$stamp$suffix.zip"
 }
+
+/** True for a file this app wrote as a diagnostic bundle. */
+fun isDiagnosticBundleName(name: String): Boolean =
+    name.startsWith(DIAGNOSTIC_BUNDLE_PREFIX) && name.endsWith(".zip")
 
 /**
  * `logcat -d` dumps and exits. Since android 4.1 an app reads only its OWN
  * buffer, which is exactly the wanted scope -- no permission is involved and
- * no other app's entries are reachable.
+ * no other app's entries are reachable. `-t` bounds the dump to the most
+ * recent lines: an unbounded read of a resized buffer is three live copies of
+ * however much the developer asked the device to keep.
  */
-fun logcatDumpCommand(): List<String> = listOf("logcat", "-d", "-v", "threadtime")
+fun logcatDumpCommand(): List<String> =
+    listOf("logcat", "-d", "-v", "threadtime", "-t", LOGCAT_MAX_LINES.toString())
+
+/**
+ * Reads at most maxChars characters, so a dump larger than expected costs a
+ * bounded allocation instead of the whole buffer.
+ */
+fun readAtMost(reader: java.io.Reader, maxChars: Int): String {
+    val buffer = CharArray(8 * 1024)
+    val out = StringBuilder()
+    while (out.length < maxChars) {
+        val n = reader.read(buffer, 0, minOf(buffer.size, maxChars - out.length))
+        if (n < 0) {
+            break
+        }
+        out.append(buffer, 0, n)
+    }
+    return out.toString()
+}
+
+/**
+ * "Export selected" must never fall back to exporting everything: an empty
+ * SelectedNames means "no filter" to the sdk ("Empty means every file"), so an
+ * unguarded empty selection produces a complete RAW bundle -- every severity,
+ * every rotation, the logcat dump and a manifest carrying client_id and
+ * instance_id in the clear -- from a control whose label promises a narrow
+ * subset. Mirrors iOS's DiagnosticExportService.canExportSelection.
+ */
+fun canExportSelection(selected: Collection<String>): Boolean = selected.isNotEmpty()
+
+/**
+ * Why the exporter will not be able to read this source's logs, or null when
+ * it can.
+ *
+ * The sdk reports per-file failures but swallows directory-read failures
+ * entirely, so this is the only place an unreadable log directory can be
+ * noticed on android -- and goal 5 requires such a source to be recorded as
+ * missing rather than silently omitted.
+ *
+ * Deliberately path-free: the reason is copied verbatim into the bundle's
+ * README "NOT INCLUDED" list, which the sdk writes without the redaction
+ * transform.
+ */
+fun logSourceUnavailableReason(logRoot: String, source: String): String? {
+    if (logRoot.isEmpty()) {
+        return "no log directory was recorded at startup"
+    }
+    val dir = File(logRoot, source)
+    return when {
+        !dir.exists() -> "no log directory on disk"
+        !dir.isDirectory -> "the log path is not a directory"
+        !dir.canRead() || dir.list() == null -> "the log directory could not be read"
+        else -> null
+    }
+}
+
+/**
+ * What the export would contain, shown before the user commits to it: a
+ * bundle is up to 4x16MB per process, which is not a thing to discover
+ * afterwards. Mirrors iOS's DiagnosticExportService.inventoryLabel.
+ *
+ * Sizes go through the app's own formatByteCountCompact rather than
+ * `byteCount / 1024`: that integer division rendered a freshly rotated
+ * 400-byte log as "0 KiB", and in a picker "0" reads as "nothing in this
+ * file" rather than as a rounding.
+ */
+fun inventoryLabel(fileCount: Int, byteCount: Long): String {
+    if (fileCount == 0) {
+        return "No log files on disk"
+    }
+    val files = if (fileCount == 1) "log file" else "log files"
+    return "$fileCount $files on disk · ${formatByteCountCompact(byteCount)}"
+}
+
+/** The same, for the subset currently checked in the picker. */
+fun selectionLabel(fileCount: Int, byteCount: Long): String {
+    if (fileCount == 0) {
+        return "Nothing selected"
+    }
+    val files = if (fileCount == 1) "file" else "files"
+    return "Selected $fileCount $files · ${formatByteCountCompact(byteCount)}"
+}
+
+/**
+ * When a log was last written, UTC, or "" when unknown. The spec's picker rows
+ * name severity, size AND modified time: which file covers the incident is a
+ * question about time, and the glog file name does not answer it legibly.
+ */
+fun logFileModifiedLabel(modifiedMillis: Long): String {
+    if (modifiedMillis <= 0L) {
+        return ""
+    }
+    val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+        .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        .format(java.util.Date(modifiedMillis))
+    return "${stamp}Z"
+}
 
 /** The one-line label for a row in the selective log picker. */
-fun logFileRowLabel(source: String, severity: String, byteCount: Long): String =
-    "$source · $severity · ${byteCount / 1024} KiB"
+fun logFileRowLabel(
+    source: String,
+    severity: String,
+    byteCount: Long,
+    modifiedMillis: Long = 0L,
+): String = buildString {
+    append(source)
+    append(" · ")
+    append(severity)
+    append(" · ")
+    append(formatByteCountCompact(byteCount))
+    val modified = logFileModifiedLabel(modifiedMillis)
+    if (modified.isNotEmpty()) {
+        append(" · ")
+        append(modified)
+    }
+}

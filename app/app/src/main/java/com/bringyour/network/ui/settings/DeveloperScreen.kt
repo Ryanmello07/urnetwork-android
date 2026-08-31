@@ -147,25 +147,75 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
 
     // cacheDir/share is already declared to the FileProvider as "share"
     // (res/xml/file_paths.xml), so a bundle written there is shareable with no
-    // manifest change.
-    val shareDir = java.io.File(context.cacheDir, "share").apply { mkdirs() }
+    // manifest change. remember{} because a composable body runs on every
+    // recomposition -- and this one recomposes on each reliability/metrics
+    // poll -- while the directory is created by the exporter itself, on
+    // Dispatchers.IO: File.mkdirs() stats the path before it can return, which
+    // is a disk hit the ui thread should never take.
+    val shareDir = remember(context) { java.io.File(context.cacheDir, "share") }
 
-    DeveloperAction(label = stringResource(id = R.string.dev_export_all_logs)) {
-        developerViewModel.exportDiagnostics(shareDir, redact = false, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
-            file?.let(shareBundle)
+    // The bundle comes back as state rather than through a completion lambda:
+    // a lambda declared here captures this composition's Activity, so an
+    // export outliving a rotation would call startActivity on a destroyed one,
+    // and the viewmodel would hold it alive for the whole export.
+    val pendingShare = developerViewModel.pendingShare
+    LaunchedEffect(pendingShare) {
+        pendingShare?.let { file ->
+            shareBundle(file)
+            developerViewModel.consumePendingShare()
         }
     }
 
-    DeveloperAction(label = stringResource(id = R.string.dev_export_redacted_logs)) {
-        developerViewModel.exportDiagnostics(shareDir, redact = true, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
-            file?.let(shareBundle)
-        }
+    // The spec's ui section requires the total size before exporting and any
+    // unavailable source with its reason -- both BEFORE the user commits to a
+    // bundle of up to 4x16MB per process, not afterwards in the summary. The
+    // read is directory i/o plus a stat per file across the gomobile bridge,
+    // so it happens once on entry, off the main thread.
+    LaunchedEffect(Unit) {
+        developerViewModel.refreshDiagnostics()
+    }
+
+    val exporting = developerViewModel.exporting
+
+    Text(
+        inventoryLabel(developerViewModel.inventory.size, developerViewModel.inventoryByteCount),
+        style = MaterialTheme.typography.bodySmall,
+        color = TextMuted,
+    )
+
+    developerViewModel.unavailableSources.forEach { unavailable ->
+        Text(
+            stringResource(id = R.string.dev_export_unavailable, unavailable),
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+    }
+
+    DeveloperAction(label = stringResource(id = R.string.dev_export_all_logs), enabled = !exporting) {
+        developerViewModel.exportDiagnostics(
+            shareDir,
+            redact = false,
+            selected = emptyList(),
+            nowMillis = System.currentTimeMillis(),
+        )
+    }
+
+    DeveloperAction(label = stringResource(id = R.string.dev_export_redacted_logs), enabled = !exporting) {
+        developerViewModel.exportDiagnostics(
+            shareDir,
+            redact = true,
+            selected = emptyList(),
+            nowMillis = System.currentTimeMillis(),
+        )
     }
 
     var showPicker by remember { mutableStateOf(false) }
 
-    DeveloperAction(label = stringResource(id = R.string.dev_choose_logs)) {
-        developerViewModel.refreshInventory()
+    DeveloperAction(
+        label = stringResource(id = R.string.dev_choose_logs),
+        enabled = !exporting && !developerViewModel.refreshingDiagnostics,
+    ) {
+        developerViewModel.refreshDiagnostics()
         showPicker = !showPicker
     }
 
@@ -179,23 +229,41 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    logFileRowLabel(info.source, info.severity, info.byteCount),
+                    logFileRowLabel(info.source, info.severity, info.byteCount, info.modifiedMillis),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (developerViewModel.selectedLogNames.contains(info.name)) BlueMedium else TextMuted,
                 )
             }
         }
 
-        DeveloperAction(label = stringResource(id = R.string.dev_export_selected)) {
-            developerViewModel.exportDiagnostics(
-                shareDir,
-                redact = false,
-                selected = developerViewModel.selectedLogNames.toList(),
-                nowMillis = System.currentTimeMillis(),
-            ) { file ->
-                file?.let(shareBundle)
-            }
+        Text(
+            selectionLabel(
+                developerViewModel.selectedLogNames.size,
+                developerViewModel.selectedByteCount,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+
+        // Disabled -- and a no-op even if it were somehow tapped -- with
+        // nothing checked, or while an export is already running: an empty
+        // selection means "no filter" to the sdk, which would otherwise export
+        // every log file unredacted, the opposite of what this row's label
+        // promises. iOS guards it in the same two places.
+        DeveloperAction(
+            label = stringResource(id = R.string.dev_export_selected),
+            enabled = !exporting && canExportSelection(developerViewModel.selectedLogNames),
+        ) {
+            developerViewModel.exportSelectedDiagnostics(shareDir, System.currentTimeMillis())
         }
+    }
+
+    if (exporting) {
+        Text(
+            stringResource(id = R.string.dev_exporting),
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
     }
 
     developerViewModel.lastExport?.let { lastExport ->
@@ -881,15 +949,20 @@ private fun DeveloperToggle(
 @Composable
 private fun DeveloperAction(
     label: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Text(
         label,
         style = MaterialTheme.typography.bodyMedium,
-        color = BlueMedium,
+        // a disabled action has to LOOK disabled: an active-looking control
+        // that silently does nothing reads as a broken app, and here the
+        // "nothing" is deliberate (an empty selection, or an export already
+        // running)
+        color = if (enabled) BlueMedium else TextMuted,
         modifier = Modifier
             .padding(vertical = 8.dp)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
     )
 }
 
