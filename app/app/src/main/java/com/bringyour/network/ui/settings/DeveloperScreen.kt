@@ -26,6 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -664,6 +668,42 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     DeveloperAction(label = stringResource(id = R.string.dev_export_redacted_logs)) {
         developerViewModel.exportDiagnostics(shareDir, redact = true, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
             file?.let(shareBundle)
+        }
+    }
+
+    var showPicker by remember { mutableStateOf(false) }
+
+    DeveloperAction(label = stringResource(id = R.string.dev_choose_logs)) {
+        developerViewModel.refreshInventory()
+        showPicker = !showPicker
+    }
+
+    if (showPicker) {
+        developerViewModel.inventory.forEach { info ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { developerViewModel.toggleLogSelection(info.name) }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    logFileRowLabel(info.source, info.severity, info.byteCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (developerViewModel.selectedLogNames.contains(info.name)) BlueMedium else TextMuted,
+                )
+            }
+        }
+
+        DeveloperAction(label = stringResource(id = R.string.dev_export_selected)) {
+            developerViewModel.exportDiagnostics(
+                shareDir,
+                redact = false,
+                selected = developerViewModel.selectedLogNames.toList(),
+                nowMillis = System.currentTimeMillis(),
+            ) { file ->
+                file?.let(shareBundle)
+            }
         }
     }
 

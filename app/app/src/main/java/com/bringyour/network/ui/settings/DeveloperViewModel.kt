@@ -60,6 +60,12 @@ class DeveloperViewModel @Inject constructor(
     var lastExport by mutableStateOf<String?>(null)
         private set
 
+    var inventory by mutableStateOf<List<com.bringyour.sdk.LogFileInfo>>(listOf())
+        private set
+
+    var selectedLogNames by mutableStateOf<Set<String>>(setOf())
+        private set
+
     val connected: Boolean get() = reliability != null
 
     /**
@@ -136,6 +142,19 @@ class DeveloperViewModel @Inject constructor(
         process.inputStream.bufferedReader().use { it.readText() }
     } catch (e: Exception) {
         "logcat unavailable: ${e.message}"
+    }
+
+    fun refreshInventory() {
+        val list = Sdk.logInventory()
+        inventory = (0 until list.len()).map { list.get(it) }
+    }
+
+    fun toggleLogSelection(name: String) {
+        selectedLogNames = if (selectedLogNames.contains(name)) {
+            selectedLogNames - name
+        } else {
+            selectedLogNames + name
+        }
     }
 
     fun refresh() {
@@ -716,3 +735,7 @@ fun diagnosticBundleFileName(millis: Long, redacted: Boolean): String {
  * no other app's entries are reachable.
  */
 fun logcatDumpCommand(): List<String> = listOf("logcat", "-d", "-v", "threadtime")
+
+/** The one-line label for a row in the selective log picker. */
+fun logFileRowLabel(source: String, severity: String, byteCount: Long): String =
+    "$source · $severity · ${byteCount / 1024} KiB"

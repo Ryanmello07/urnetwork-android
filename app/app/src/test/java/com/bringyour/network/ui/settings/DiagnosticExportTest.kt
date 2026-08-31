@@ -23,4 +23,12 @@ class DiagnosticExportTest {
     fun logcatCommandReadsOnlyThisAppsOwnBuffer() {
         assertEquals(listOf("logcat", "-d", "-v", "threadtime"), logcatDumpCommand())
     }
+
+    @Test
+    fun inventoryRowLabelNamesTheSourceSeverityAndSize() {
+        val label = logFileRowLabel(source = "extension", severity = "ERROR", byteCount = 2048L)
+        assertTrue("should name the source, was $label", label.contains("extension"))
+        assertTrue("should name the severity, was $label", label.contains("ERROR"))
+        assertTrue("should show KiB, was $label", label.contains("2 KiB"))
+    }
 }

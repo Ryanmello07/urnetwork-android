@@ -721,5 +721,6 @@
     <string name="dev_export_all_logs">Export all logs (raw)</string>
     <string name="dev_export_redacted_logs">Export redacted logs</string>
     <string name="dev_choose_logs">Choose logs…</string>
+    <string name="dev_export_selected">Export selected</string>
     <string name="dev_export_share">Share diagnostic bundle</string>
 </resources>
