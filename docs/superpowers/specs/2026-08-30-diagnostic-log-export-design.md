@@ -14,28 +14,56 @@ saw. Support has to reproduce it, and the detail that would explain it —
 transport selection, window evaluation, provider dial failures — lives in
 client logs nobody can retrieve.
 
-Two partial attempts exist, and both fall short:
+### Everything that reads logs today is already broken
 
-- **Android** has `ExportLogButton` and `ShareLogFileButton` in the *Feedback*
-  screen. `ExportLogButton` takes only the single newest file whose name
-  contains `.log.INFO` — no WARNING, no ERROR, no FATAL, and none of the older
-  rotations.
-- **iOS** has `LogExportService` / `ExportLogsButton`, and they do not work.
-  `SdkSetLogDir` is called only in `PacketTunnelProvider.swift:608`, in the
-  network-extension process. The app holds a `SdkDeviceRemote`; the real
-  `DeviceLocal` runs in the extension. `LogExportService.swift:50` calls
-  `SdkGetLogDir()` from the *app* process, where `SetLogDir` was never called,
-  so it reads glog's default path rather than the extension's. There is no
-  app-group entitlement in any of the three `.entitlements` files, so the app
-  cannot reach the extension's container at all. `ExportLogsButton()` is
-  commented out at `FeedbackView.swift:60`, so none of this is reachable.
+`sdk.GetLogDir()` returns `""` **in every process**, so every consumer of it
+reads nothing.
 
-`Device.UploadLogs(feedbackId)` (`sdk/device_local.go:5621`) does zip all four
-severities and POST them, and it is already RPC-bridged
-(`DeviceRemote.UploadLogs` → `DeviceLocalRpc.UploadLogs`,
-`sdk/device_rpc.go:5027`). It is the right precedent, but it uploads to the
-API; it never produces a local file, and the user cannot see or keep what was
-sent.
+`GetLogDir` reads the glog `log_dir` *flag* (`sdk/sdk.go:151-156`). But
+`glog.SetLogDir` mutates only the package `logDirs` slice and `dirSet`, never
+that flag (`glog/glog_file.go:583-585`), and `sdk.SetLogDir`
+(`sdk/sdk.go:162-173`) no longer calls `flag.Set("log_dir", …)` — sdk commit
+`9f41a00` "set log directory from app" (2025-11-25) removed those lines.
+
+Verified empirically:
+
+```
+SetLogDir("/tmp/…/001") -> GetLogDir() = ""
+files actually written:    [sdk.test.INFO,
+                            sdk.test.Mac.ryanmello.log.INFO.20260830-201831.59048]
+os.ReadDir(GetLogDir()) -> 0 entries, err=open : no such file or directory
+```
+
+Consequences, all of them current production behaviour:
+
+- **`Device.UploadLogs(feedbackId)`** (`sdk/device_local.go:5621`) opens with
+  `logDir := GetLogDir()` and `os.ReadDir(logDir)`. "Attach logs to feedback"
+  has been attaching nothing since 2025-11-25.
+- **Android** `ExportLogButton(logDir = Sdk.getLogDir())` and
+  `ShareLogFileButton(logDir = Sdk.getLogDir())` receive `""`, so they list no
+  files and render the "no log files found" branch. Android's export does not
+  work either — and separately, `ExportLogButton` would only ever have taken
+  the single newest `.log.INFO`, with no WARNING/ERROR/FATAL and no rotations.
+- **iOS** `LogExportService.swift:50` gets `""` and falls through to its
+  "No log directory available" ad-hoc file.
+
+Fixing `GetLogDir` is therefore Task 1, and it repairs the feedback-attachment
+flow as a side effect of the export work.
+
+iOS is additionally broken in its own right. `SdkSetLogDir` is called only in
+`PacketTunnelProvider.swift:608`, in the network-extension process. The app
+holds a `SdkDeviceRemote`; the real `DeviceLocal` runs in the extension. glog
+writes **no files at all** until `SetLogDir` is called — there is no default
+temp destination (`glog/glog_file.go`, `SetLogDir` doc comment) — so the iOS
+app process produces no log files whatsoever. And there is no app-group
+entitlement in any of the three `.entitlements` files, so the app cannot reach
+the extension's container regardless. `ExportLogsButton()` is commented out at
+`FeedbackView.swift:60`, so none of it is reachable anyway.
+
+`UploadLogs` is still the right structural precedent — it zips all four
+severities and is already RPC-bridged (`DeviceRemote.UploadLogs` →
+`DeviceLocalRpc.UploadLogs`, `sdk/device_rpc.go:5027`). But it uploads to the
+API; it never produces a local file the user can see or keep.
 
 ## Goals
 
@@ -69,8 +97,24 @@ misbehaving. This is the single most important constraint here.
 directory** (`sdk/sdk.go:79`). Two processes writing into one directory would
 evict each other's history.
 
-**The iOS app process never sets a log directory at all**, so its own SDK
-logging goes to glog's default temp path rather than anywhere collectable.
+**The iOS app process never sets a log directory at all.** Since glog writes
+nothing until `SetLogDir`, that process emits no log files at all — its SDK
+logging is simply lost, not merely misplaced.
+
+**glog log directories contain symlinks as well as files.** Each severity gets
+a `<program>.<SEVERITY>` symlink beside the real
+`<program>.<host>.<user>.log.<SEVERITY>.<YYYYMMDD>-<HHMMSS>.<pid>` file
+(`glog/glog_file.go:124-140`). Inventory must skip symlinks or every file is
+counted twice.
+
+**A glog entry is not always one line.** Files open with a 5-line plaintext
+header and rotate with a 2-line footer; backtraces are appended as
+`"\n\n%v\n"`, and those continuation lines carry no `[IWEF]` header prefix
+(`glog/glog.go:179-199`, `glog/glog_file.go:392-414`). A redaction filter must
+treat unprefixed lines as continuations rather than assuming one entry per
+line. The header format is
+`[IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg`, and individual messages
+are capped at `MaxLogMessageLen = 15000` (`glog/logsink.go:33`).
 
 **Platform-side logging is not captured anywhere today**: 249 `print()` calls
 on iOS (not even in `OSLog`) and 196 `android.util.Log` calls on Android
@@ -298,15 +342,32 @@ already exists: `SettingsForm-iOS.swift:467` → `navigate(.developer)` →
 `ExportLogsButton` are **deleted**, not extended — they read the wrong
 process's directory, and the commented-out call site goes with them.
 
-**Android** — the developer menu does not exist on `beta/custom-server`. It is
-on `feat/vpn-reliability-and-dev-menu` (`DeveloperScreen.kt`, 553 lines;
-`DeveloperViewModel.kt`, 245 lines; a `SettingsScreen` entry; strings). Those
-are **cherry-picked as additions**. That branch must not be merged: it predates
-the seedphrase work, and its `SettingsScreen.kt` diff removes
-`SeedphraseDisplayScreen`, the generated/regenerating seedphrase state and the
-`pendingSeedphraseAction` dialog, which would revert shipped functionality.
+**Android** — the developer menu **already exists on `beta/custom-server`**, as
+of the upstream merge of 2026-08-30. Upstream had absorbed the
+`feat/vpn-reliability-and-dev-menu` work and extended it, so the merged
+version is a superset of that branch's:
+
+| | on `beta/custom-server` |
+|---|---|
+| `ui/settings/DeveloperScreen.kt` | present, 900 lines (branch had 553) |
+| `ui/settings/DeveloperViewModel.kt` | present, 606 lines (branch had 245) |
+| `Route.Developer` | `ui/MainNavViewModel.kt:105` |
+| nav wiring | `ui/MainNavHost.kt:78` (import), `:1119-1126` (composable) |
+| settings entry | `ui/settings/SettingsScreen.kt:1346-1370` |
+| strings | all 51 keys present |
+
+**No cherry-pick is needed, and `feat/vpn-reliability-and-dev-menu` must not be
+applied** — re-applying its purely-additive `SettingsScreen.kt` hunk would
+duplicate the Developer entry, and the branch predates the seedphrase work.
+The only remaining Android UI work is adding a Diagnostics section to the
+existing `DeveloperScreen`.
+
 Delivery via `ActivityResultContracts.CreateDocument("application/zip")` and a
-FileProvider share intent.
+FileProvider share intent. The FileProvider already exists — authority
+`${applicationId}.fileprovider` at `AndroidManifest.xml:75-83`, with
+`res/xml/file_paths.xml` already exposing `filesDir` as `logs` and
+`cacheDir/share` as `share` — so no manifest or paths change is required.
+`ShareLogFileButton.kt` is the share-intent pattern to reuse.
 
 The Android Feedback screen's existing buttons are left in place; this feature
 does not change that flow.
