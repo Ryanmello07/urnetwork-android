@@ -8,7 +8,9 @@ import com.bringyour.network.DeviceManager
 import com.bringyour.sdk.Exit
 import com.bringyour.sdk.ReliabilityMetrics
 import com.bringyour.sdk.ReliabilitySettings
+import com.bringyour.sdk.Sdk
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.File
 import javax.inject.Inject
 
 /**
@@ -51,7 +53,49 @@ class DeveloperViewModel @Inject constructor(
     var lastAction by mutableStateOf<String?>(null)
         private set
 
+    var lastExport by mutableStateOf<String?>(null)
+        private set
+
     val connected: Boolean get() = reliability != null
+
+    /**
+     * Writes a diagnostic bundle into destDir and returns it, or null if the
+     * export failed outright. A source that could not be read is NOT a
+     * failure: it is reported inside the bundle and surfaced in lastExport.
+     */
+    fun exportDiagnostics(destDir: File, redact: Boolean, selected: List<String>, nowMillis: Long): File? {
+        val dest = File(destDir, diagnosticBundleFileName(nowMillis, redact))
+        return try {
+            val options = Sdk.newExportOptions()
+            options.redact = redact
+            options.includeManifest = true
+            options.includePlatformLogs = true
+            selected.forEach { options.selectedNames.add(it) }
+
+            deviceManager.device?.let { options.setManifestJson(it.diagnosticManifestJson()) }
+
+            options.addPlatformLog("logcat.txt", readLogcat())
+
+            val result = Sdk.exportDiagnosticBundle(dest.absolutePath, options)
+            lastExport = buildString {
+                append("Exported ${result.fileCount} log files (${result.byteCount / 1024} KiB)")
+                for (i in 0 until result.missingSources.len()) {
+                    append("\nNot included: ${result.missingSources.get(i)}")
+                }
+            }
+            dest
+        } catch (e: Exception) {
+            lastExport = "Export failed: ${e.message}"
+            null
+        }
+    }
+
+    private fun readLogcat(): String = try {
+        val process = ProcessBuilder(logcatDumpCommand()).redirectErrorStream(true).start()
+        process.inputStream.bufferedReader().use { it.readText() }
+    } catch (e: Exception) {
+        "logcat unavailable: ${e.message}"
+    }
 
     fun refresh() {
         val device = deviceManager.device
@@ -604,3 +648,23 @@ class DeveloperViewModel @Inject constructor(
         val MIN_BLACKHOLE_DESTINATIONS_PRESETS = listOf(0, 1, 2, 3)
     }
 }
+
+/**
+ * Bundle names sort lexically in the same order they were made, so a support
+ * thread with several attachments reads in order, and carry the mode so a
+ * redacted bundle is never mistaken for a complete one.
+ */
+fun diagnosticBundleFileName(millis: Long, redacted: Boolean): String {
+    val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+        .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+        .format(java.util.Date(millis))
+    val suffix = if (redacted) "-redacted" else ""
+    return "urnetwork-diagnostics-$stamp$suffix.zip"
+}
+
+/**
+ * `logcat -d` dumps and exits. Since android 4.1 an app reads only its OWN
+ * buffer, which is exactly the wanted scope -- no permission is involved and
+ * no other app's entries are reachable.
+ */
+fun logcatDumpCommand(): List<String> = listOf("logcat", "-d", "-v", "threadtime")

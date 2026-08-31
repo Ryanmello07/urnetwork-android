@@ -717,4 +717,9 @@
         <item quantity="one">Total referrals: %1$d</item>
         <item quantity="other">Total referrals: %1$d</item>
     </plurals>
+    <string name="dev_section_diagnostics">Diagnostics</string>
+    <string name="dev_export_all_logs">Export all logs (raw)</string>
+    <string name="dev_export_redacted_logs">Export redacted logs</string>
+    <string name="dev_choose_logs">Choose logs…</string>
+    <string name="dev_export_share">Share diagnostic bundle</string>
 </resources>
