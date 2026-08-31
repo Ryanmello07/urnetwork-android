@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.bringyour.network.DeviceManager
 import com.bringyour.sdk.Exit
 import com.bringyour.sdk.ReliabilityMetrics
@@ -12,6 +13,9 @@ import com.bringyour.sdk.Sdk
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Backs the Developer section: the reliability toggles, the exit readout, and
@@ -59,11 +63,49 @@ class DeveloperViewModel @Inject constructor(
     val connected: Boolean get() = reliability != null
 
     /**
-     * Writes a diagnostic bundle into destDir and returns it, or null if the
-     * export failed outright. A source that could not be read is NOT a
-     * failure: it is reported inside the bundle and surfaced in lastExport.
+     * Writes a diagnostic bundle into destDir and hands it to onComplete, or
+     * null if the export failed outright. A source that could not be read is
+     * NOT a failure: it is reported inside the bundle and surfaced in
+     * lastExport.
+     *
+     * The logcat dump is a blocking external-process spawn, and the bundle
+     * write walks the full on-disk log inventory and zips it (with a
+     * per-line HMAC redaction pass when redact is set). Both are blocking
+     * I/O; run on the caller's thread they would block Compose's
+     * click-dispatch (the main thread) for however long that inventory takes,
+     * risking an ANR past Android's ~5s input-dispatch watchdog on any
+     * nontrivial log volume -- exactly the volume a diagnostics export exists
+     * to handle. So the work happens on Dispatchers.IO and the result comes
+     * back through onComplete instead of a return value.
      */
-    fun exportDiagnostics(destDir: File, redact: Boolean, selected: List<String>, nowMillis: Long): File? {
+    fun exportDiagnostics(
+        destDir: File,
+        redact: Boolean,
+        selected: List<String>,
+        nowMillis: Long,
+        onComplete: (File?) -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                buildDiagnosticBundle(destDir, redact, selected, nowMillis)
+            }
+            lastExport = outcome.message
+            onComplete(outcome.file)
+        }
+    }
+
+    /**
+     * Does the actual (blocking) export work. Called only from
+     * [exportDiagnostics] inside a Dispatchers.IO block -- never touches
+     * mutableStateOf state directly, so it has no thread requirement of its
+     * own beyond "not the main thread".
+     */
+    private fun buildDiagnosticBundle(
+        destDir: File,
+        redact: Boolean,
+        selected: List<String>,
+        nowMillis: Long,
+    ): DiagnosticExportOutcome {
         val dest = File(destDir, diagnosticBundleFileName(nowMillis, redact))
         return try {
             val options = Sdk.newExportOptions()
@@ -77,16 +119,15 @@ class DeveloperViewModel @Inject constructor(
             options.addPlatformLog("logcat.txt", readLogcat())
 
             val result = Sdk.exportDiagnosticBundle(dest.absolutePath, options)
-            lastExport = buildString {
+            val message = buildString {
                 append("Exported ${result.fileCount} log files (${result.byteCount / 1024} KiB)")
                 for (i in 0 until result.missingSources.len()) {
                     append("\nNot included: ${result.missingSources.get(i)}")
                 }
             }
-            dest
+            DiagnosticExportOutcome(dest, message)
         } catch (e: Exception) {
-            lastExport = "Export failed: ${e.message}"
-            null
+            DiagnosticExportOutcome(null, "Export failed: ${e.message}")
         }
     }
 
@@ -648,6 +689,13 @@ class DeveloperViewModel @Inject constructor(
         val MIN_BLACKHOLE_DESTINATIONS_PRESETS = listOf(0, 1, 2, 3)
     }
 }
+
+/**
+ * The result of building a bundle off the main thread: the file it landed at
+ * (null if the export failed outright) and the human-readable summary for
+ * [DeveloperViewModel.lastExport].
+ */
+private data class DiagnosticExportOutcome(val file: File?, val message: String)
 
 /**
  * Bundle names sort lexically in the same order they were made, so a support

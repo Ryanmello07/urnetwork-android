@@ -656,13 +656,15 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     val shareDir = java.io.File(context.cacheDir, "share").apply { mkdirs() }
 
     DeveloperAction(label = stringResource(id = R.string.dev_export_all_logs)) {
-        developerViewModel.exportDiagnostics(shareDir, redact = false, selected = emptyList(), nowMillis = System.currentTimeMillis())
-            ?.let(shareBundle)
+        developerViewModel.exportDiagnostics(shareDir, redact = false, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
+            file?.let(shareBundle)
+        }
     }
 
     DeveloperAction(label = stringResource(id = R.string.dev_export_redacted_logs)) {
-        developerViewModel.exportDiagnostics(shareDir, redact = true, selected = emptyList(), nowMillis = System.currentTimeMillis())
-            ?.let(shareBundle)
+        developerViewModel.exportDiagnostics(shareDir, redact = true, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
+            file?.let(shareBundle)
+        }
     }
 
     developerViewModel.lastExport?.let { lastExport ->
