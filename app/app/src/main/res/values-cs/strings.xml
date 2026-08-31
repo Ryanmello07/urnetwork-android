@@ -20,11 +20,13 @@
     <string name="api_error_contact">Pokud problém přetrvává, kontaktujte nás na %1$s nebo se připojte k našemu %2$s pro přímou podporu.</string>
     <string name="app_excluded_toast">%1$s bude obcházet VPN</string>
     <string name="app_included_toast">%1$s bude používat VPN</string>
+    <string name="app_pinned_toast">%1$s bude používat jednoho poskytovatele</string>
     <string name="app_split_active_exclude">Vyloučení aktivní — vyloučené aplikace obcházejí VPN</string>
     <string name="app_split_active_include">Zahrnutí aktivní — VPN používají jen zahrnuté aplikace</string>
     <string name="app_split_active_none">Bez rozdělení — VPN používají všechny aplikace</string>
     <string name="app_split_precedence_note">Zahrnuté aplikace mají přednost: pokud je zahrnutá jakákoli aplikace, VPN používají jen zahrnuté aplikace a vyloučení nemá žádný účinek.</string>
     <string name="app_split_rules">Pravidla rozdělení aplikací</string>
+    <string name="app_split_starter">0 rozdělených aplikací</string>
     <string name="apply_bonus">Použít bonus</string>
     <string name="apps">Aplikace</string>
     <string name="are_you_sure_delete_account">Opravdu chcete svůj účet odstranit?</string>
@@ -65,6 +67,7 @@
     <string name="change">Změnit</string>
     <string name="change_network_api">Změnit síťové API</string>
     <string name="change_network_api_title">Změnit síťové API</string>
+    <string name="change_network_name_hint">Klepnutím na ikonu úprav změníte název sítě</string>
     <string name="change_password">Změnit heslo</string>
     <string name="check_internet">Zkontrolujte své internetové připojení</string>
     <string name="check_ip">Zkontrolovat mou IP</string>
@@ -77,6 +80,7 @@
     <string name="cities">Města</string>
     <string name="claim">Vyzvědněte</string>
     <string name="claim_multiplier">Nárokujte si násobej</string>
+    <string name="claim_network_name_hint">Získejte vlastní název sítě, který nahradí automaticky vygenerovaný</string>
     <string name="client_contracts">Kontrakty klienta</string>
     <string name="client_id_copied">ID klienta zkopírováno</string>
     <string name="client_statistics">Statistiky klienta</string>
@@ -102,6 +106,7 @@
     <string name="contract_stack_max">max %1$s</string>
     <string name="contracts_appear_connected">Kontrakty se zde zobrazí po připojení.</string>
     <string name="contracts_appear_providing">Kontrakty se zde zobrazí během poskytování.</string>
+    <string name="copied">Zkopírováno!</string>
     <string name="copy">Kopírovat</string>
     <string name="copy_auth_code">Kopírovat ověřovací kód</string>
     <string name="countries">Země</string>
@@ -148,6 +153,7 @@
     <string name="earnings">Výdělky</string>
     <string name="earnings_doubled">Získáváte x2 body</string>
     <string name="edit_device_name">Upravit název zařízení</string>
+    <string name="edit_network_name">Upravit název sítě</string>
     <string name="edit_profile">Upravit profil</string>
     <string name="edit_referral_code">Upravit doporučující kód</string>
     <string name="edit_split_rule">Upravit pravidlo rozdělení</string>
@@ -179,6 +185,7 @@
     <string name="google_auth_btn_text">Přihlásit se přes Google</string>
     <string name="guest">Host</string>
     <string name="how_are_we_doing">Jak se nám daří?</string>
+    <string name="identity_key_hash_copied">Otisk identitního klíče zkopírován</string>
     <string name="ignore_battery_optimizations">Ignorovat optimalizace baterie</string>
     <string name="include_app">Směrovat přes VPN</string>
     <string name="include_app_description">Tunel používají jen zahrnuté aplikace.</string>
@@ -219,12 +226,31 @@
     <string name="make_default">Udělat výchozí</string>
     <string name="manage_subscription">Správa předplatného</string>
     <string name="member">Člen</string>
+    <string name="mock_location_active">Synchronizace: %1$s</string>
+    <string name="mock_location_disclosure_detectable">Aplikace dokážou poznat, že jde o simulovanou polohu. Bankovní aplikace, aplikace pro objednávání jízd a rozvoz i některé hry mohou při zapnutí této funkce odmítnout fungovat.</string>
+    <string name="mock_location_disclosure_device_wide">Tím se změní poloha hlášená všem aplikacím ve vašem zařízení, nejen aplikaci URnetwork.</string>
+    <string name="mock_location_disclosure_turn_off_first">Vypněte tuto funkci v aplikaci URnetwork dříve, než vypnete možnosti pro vývojáře, zrušíte výběr aplikace URnetwork nebo aplikaci odinstalujete — jinak může poloha zařízení zůstat zamrzlá až do restartu.</string>
+    <string name="mock_location_error_cleanup_required">Aplikaci URnetwork se nepodařilo odstranit simulovanou polohu. Znovu vyberte URnetwork v možnostech pro vývojáře a funkci vypněte, nebo restartujte zařízení.</string>
+    <string name="mock_location_guide_intro">Když je tato funkce zapnutá, aplikace v tomto zařízení vidí místo vaší skutečné polohy polohu poskytovatele, ke kterému jste připojeni nejdéle.</string>
+    <string name="mock_location_guide_title">Synchronizace polohy zařízení</string>
+    <string name="mock_location_needs_setup">Vyžaduje nastavení</string>
+    <string name="mock_location_open_about_phone">Otevřít „Informace o telefonu“</string>
+    <string name="mock_location_open_developer_options">Otevřít možnosti pro vývojáře</string>
+    <string name="mock_location_open_location_settings">Otevřít nastavení polohy</string>
+    <string name="mock_location_ready">Hotovo. Zapnutím přepínače synchronizujete polohu zařízení s nejdéle připojeným poskytovatelem.</string>
+    <string name="mock_location_settings_row">Synchronizace polohy zařízení</string>
+    <string name="mock_location_step_developer_options">Zapněte možnosti pro vývojáře: otevřete „Informace o telefonu“ a sedmkrát klepněte na „Číslo sestavení“.</string>
+    <string name="mock_location_step_location_services">V nastavení systému zapněte funkci „Poloha“, aby aplikace mohly polohu přijímat.</string>
+    <string name="mock_location_step_select_app">V možnostech pro vývojáře klepněte na „Vybrat aplikaci pro simulovanou polohu“ a zvolte URnetwork.</string>
+    <string name="mock_location_waiting_for_provider">Čeká se na polohu poskytovatele</string>
+    <string name="multiple_ips">Více IP adres</string>
     <string name="multiplier">Násobitel</string>
     <string name="name_label">Jméno</string>
     <string name="name_placeholder">Vaše jméno</string>
     <string name="need_more_data_faster">Potřebujete více dat a rychleji?</string>
     <string name="net_points_earned">získané net body</string>
     <string name="net_provided">Poskytnutá čistá hodnota</string>
+    <string name="network">Síť</string>
     <string name="network_api_api_url_help">Ponechte prázdné pro odvození ze síťové domény.</string>
     <string name="network_api_api_url_label">URL API (volitelné)</string>
     <string name="network_api_apply">Použít síťové API</string>
@@ -284,19 +310,35 @@
     <string name="payout_wallets">Výplatní peněženky</string>
     <string name="payouts">Výplaty</string>
     <string name="payouts_amount_threshold">Výplaty probíhají každou neděli v 00:00 UTC a vyžadují dosažení minimální hranice USDC.</string>
+    <string name="peer_count_one">1 uzel</string>
+    <string name="peer_count_other">%d uzlů</string>
     <string name="pending_data_key">Čekající</string>
     <string name="pending_mb_provided">Čekající: %1$s MB poskytnuto</string>
     <string name="pending_payout">Čeká se na výplatu</string>
+    <string name="pin_app">Připnout k jednomu poskytovateli</string>
+    <string name="pin_app_description">Udrží všechna připojení této aplikace u jednoho poskytovatele, takže její API a obrázky sdílejí jednu IP adresu. Použijte u aplikací, jejichž obsah se přes VPN nenačte</string>
+    <string name="pinned">Připnuto</string>
     <string name="plan">Plán</string>
     <string name="please_try_again">Prosím, zkuste to znovu.</string>
     <string name="please_wait">Prosím, počkejte několik minut a zkuste to znovu.</string>
     <string name="points_breakdown">Rozdělení bodů</string>
+    <string name="post_quantum_encryption">Postkvantové šifrování</string>
+    <string name="post_quantum_encryption_fallback_note">Záložní režim zapnut (dočasně)</string>
+    <string name="post_quantum_identity">Postkvantová identita</string>
+    <string name="post_quantum_identity_explanation">Váš identitní klíč je uložen lokálně v tomto zařízení. Pokud se klíč některého uzlu liší od jeho lokálně uloženého klíče, znamená to, že provozovateli sítě nelze důvěřovat.</string>
     <string name="private_network">Soukromá síť</string>
     <string name="processing_payment">Zpracovává se platba</string>
     <string name="profile">Profil</string>
     <string name="promoted_locations">Propagované lokace</string>
     <string name="provide_mode">Režim poskytování</string>
+    <string name="provider_connected_duration_hours">%1$d h %2$d min</string>
+    <string name="provider_connected_duration_minutes">%1$d min</string>
+    <string name="provider_connected_duration_seconds">%1$d s</string>
     <string name="provider_contracts">Kontrakty poskytovatele</string>
+    <string name="provider_identities">Identity poskytovatelů</string>
+    <string name="provider_location_unknown">Neznámá poloha</string>
+    <string name="provider_locations_empty">Žádní připojení poskytovatelé</string>
+    <string name="provider_locations_title">Lokality poskytovatelů</string>
     <string name="provider_statistics">Statistiky poskytovatele</string>
     <string name="providing_disabled">Poskytování je vypnuté</string>
     <string name="ready_to_connect">Připraveno k připojení</string>
@@ -313,14 +355,16 @@
     <string name="refer_friends_detail">Více připojení pomáhá naší komunitě zůstat anonymní (a pomáhá vám vydělávat!)</string>
     <string name="refer_friends_header">Doporučte přátele</string>
     <string name="refer_friends_increase_free_data">Doporučte pár přátel a sledujte, jak vaše bezplatná data rostou.</string>
-    <string name="refer_friends_perks">Získáte +%1$s GiB/měsíc na celý život</string>
-    <string name="refer_friends_they_get_data">Váš přítel získá +%1$s GiB/měsíc na celý život</string>
+    <string name="refer_friends_perks">Získáte +%1$s GiB/den na celý život</string>
+    <string name="refer_friends_they_get_data">Váš přítel získá +%1$s GiB/den na celý život</string>
     <string name="referral">Doporučení</string>
-    <string name="referral_bonus">+%1$d GiB/měsíc</string>
+    <string name="referral_bonus">+%1$d GiB/den</string>
     <string name="referral_bonus_applied">Uplatnění bonusu za doporučení</string>
     <string name="referral_code">Doporující kód</string>
     <string name="referral_code_capped">Tento kód byl již vyčerpán</string>
     <string name="referral_network">Síť doporučení</string>
+    <string name="referral_royal_welcome">Královské přivítání!</string>
+    <string name="referral_royal_welcome_detail">Doporučení potvrzeno — vy i váš přítel získáte každý +%1$d GiB/den dat zdarma, na celý život.</string>
     <string name="referral_royalty">Doporučujete po královsku!</string>
     <string name="referral_share_message">Přidejte se ke mně na URnetwork! Stáhněte si aplikaci a při registraci zadejte doporučující kód %1$s.</string>
     <string name="regions">Regiony</string>
@@ -354,6 +398,7 @@
     <string name="see_world_content">Zobrazit veškerý\nkontent světa</string>
     <string name="see_world_content_description">Prohlédněte si veškerý obsah světa pomocí sítě URnetwork</string>
     <string name="seeker_token_verified">Token Seeker ověřen!</string>
+    <string name="select_location_provider_content_description">Glóbus: výběr lokality poskytovatele</string>
     <string name="send">Odeslat</string>
     <string name="send_feedback">Pošlete nám svůj názor přímo nebo se připojte k našemu %1$s pro přímou podporu.</string>
     <string name="send_product_updates">Zasílání aktualizací produktů</string>
@@ -390,9 +435,13 @@
     <string name="supporter">Pro</string>
     <string name="switch_account">Přepnutí účtu</string>
     <string name="switch_account_details">Chcete se odpojit od %1$s a změnit účet?</string>
+    <string name="sync_device_location_with_oldest_provider">Synchronizovat polohu zařízení s nejdéle připojeným poskytovatelem</string>
+    <string name="sync_device_location_with_provider">Synchronizovat polohu zařízení s poskytovatelem</string>
     <string name="tap_to_connect">Klepnout pro připojení</string>
     <string name="tap_to_refetch">Klepněte pro pokus o načtení polohy.</string>
     <string name="this_region">tomto regionu</string>
+    <string name="tile_status_connected">Připojeno</string>
+    <string name="tile_status_disconnected">Odpojeno</string>
     <string name="title_login">Přihlásit se</string>
     <string name="top_matches">Nejlepší shody</string>
     <string name="total_account_points">Celkový počet bodů na účtu</string>
@@ -421,6 +470,7 @@
     <string name="upgrade_now">Upgradujte nyní</string>
     <string name="upgrade_subscription">Upgradovat předplatné</string>
     <string name="urnetwork_intro_description">URnetwork je nejlokálnější a nejvíce soukromá síť na světě.</string>
+    <string name="use_most_stable_provider">Používá nejstabilnějšího poskytovatele</string>
     <string name="use_recommended_settings">Použít doporučené nastavení</string>
     <string name="used_data_key">Použité</string>
     <string name="user_auth_label">Email nebo telefon</string>
@@ -431,6 +481,7 @@
     <string name="verify_seeker_token_btn">Ověřte si žeton předběžné objednávky Seeker</string>
     <string name="verify_send_error">Chyba</string>
     <string name="version_info">Informace o verzi a sestavení</string>
+    <string name="via_exit">přes %1$s</string>
     <string name="wallet">Peněženka</string>
     <string name="wallet_address">Adresa peněženky</string>
     <string name="wallet_address_label">Adresa peněženky</string>
@@ -473,6 +524,18 @@
         <item quantity="many">%1$d hostitele</item>
         <item quantity="other">%1$d hostitelů</item>
     </plurals>
+    <plurals name="ip_count">
+        <item quantity="one">%1$d IP adresa</item>
+        <item quantity="few">%1$d IP adresy</item>
+        <item quantity="many">%1$d IP adresy</item>
+        <item quantity="other">%1$d IP adres</item>
+    </plurals>
+    <plurals name="network_peer_count">
+        <item quantity="one">Máte %1$d další zařízení online</item>
+        <item quantity="few">Máte %1$d další zařízení online</item>
+        <item quantity="many">Máte %1$d dalšího zařízení online</item>
+        <item quantity="other">Máte %1$d dalších zařízení online</item>
+    </plurals>
     <plurals name="new_items_count">
         <item quantity="one">%1$d nový</item>
         <item quantity="few">%1$d nové</item>
@@ -490,6 +553,24 @@
         <item quantity="few">%1$d poskytovatelé</item>
         <item quantity="many">%1$d poskytovatele</item>
         <item quantity="other">%1$d poskytovatelů</item>
+    </plurals>
+    <plurals name="referral_celebration_detail">
+        <item quantity="one">Právě se přes váš kód připojil k URnetwork přítel. Oba získáváte +%2$d GiB dat zdarma denně — na celý život.</item>
+        <item quantity="few">Právě se přes váš kód připojili k URnetwork %1$d přátelé. Každý z nich vám vynáší +%2$d GiB dat zdarma denně — na celý život.</item>
+        <item quantity="many">Právě se přes váš kód připojilo k URnetwork %1$d přátel. Každý z nich vám vynáší +%2$d GiB dat zdarma denně — na celý život.</item>
+        <item quantity="other">Právě se přes váš kód připojilo k URnetwork %1$d přátel. Každý z nich vám vynáší +%2$d GiB dat zdarma denně — na celý život.</item>
+    </plurals>
+    <plurals name="referral_crowned_congrats">
+        <item quantity="one">Připojil se přítel — získáváte +%2$d GiB/den, na celý život.</item>
+        <item quantity="few">Připojili se %1$d přátelé — získáváte +%2$d GiB/den, na celý život.</item>
+        <item quantity="many">Připojilo se %1$d přátel — získáváte +%2$d GiB/den, na celý život.</item>
+        <item quantity="other">Připojilo se %1$d přátel — získáváte +%2$d GiB/den, na celý život.</item>
+    </plurals>
+    <plurals name="referral_toast_joined">
+        <item quantity="one">Přes váš kód se připojil přítel! +%2$d GiB/den, na celý život.</item>
+        <item quantity="few">Přes váš kód se připojili %1$d přátelé! +%2$d GiB/den za každého, na celý život.</item>
+        <item quantity="many">Přes váš kód se připojilo %1$d přátel! +%2$d GiB/den za každého, na celý život.</item>
+        <item quantity="other">Přes váš kód se připojilo %1$d přátel! +%2$d GiB/den za každého, na celý život.</item>
     </plurals>
     <plurals name="split_rule_count">
         <item quantity="one">%1$d pravidlo rozdělení</item>

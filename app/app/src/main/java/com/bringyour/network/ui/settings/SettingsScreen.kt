@@ -1018,17 +1018,69 @@ private fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    stringResource(id = R.string.kill_switch),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(id = R.string.kill_switch),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White
+                    )
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    InfoIconWithOverlay(
+                        contentDescription = stringResource(
+                            id = R.string.show_kill_switch_exception
+                        )
+                    ) {
+                        Column {
+                            Text(
+                                stringResource(id = R.string.kill_switch_exception),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                stringResource(id = R.string.kill_switch_exception_detail),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BlueLight
+                            )
+                        }
+                    }
+                }
 
                 URSwitch(
                     checked = !routeLocal,
                     toggle = {
                         toggleRouteLocal()
                     },
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            /**
+             * Device location sync (the mock location provider setup guide)
+             */
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        navController.navigate(Route.MockLocationGuide)
+                    }
+                    .padding(vertical = 6.dp)
+                ,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    stringResource(id = R.string.mock_location_settings_row),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Keyboard Arrow Right",
+                    tint = TextMuted
                 )
             }
 
@@ -1294,6 +1346,29 @@ private fun SettingsScreen(
             /**
             * Version
              */
+            URTextInputLabel(stringResource(id = R.string.developer))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        navController.navigate(Route.Developer)
+                    }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    stringResource(id = R.string.dev_open_tools),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(id = R.string.dev_open_tools),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             URTextInputLabel(stringResource(id = R.string.version_info))
 
             Row(

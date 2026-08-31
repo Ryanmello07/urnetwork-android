@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.IpPrefix
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -20,7 +21,6 @@ import com.bringyour.sdk.IoLoop
 import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.Sub
 import com.bringyour.sdk.WindowStatus
-import java.lang.ref.WeakReference
 import java.net.InetAddress
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
@@ -31,6 +31,13 @@ import kotlin.concurrent.thread
     companion object {
         const val NOTIFICATION_ID = 101
         const val NOTIFICATION_CHANNEL_ID = "URnetwork"
+        /**
+         * IPv4 used to establish the tunnel when the SDK has not handed back a
+         * tunnel address, so a tunnel is always built (fail-closed). TEST-NET-1
+         * (192.0.2.0/24) is reserved documentation space. With capture routes it
+         * is a blocking blackhole; with no routes (escape) it routes nothing.
+         */
+        const val ESCAPE_FALLBACK_ADDRESS = "192.0.2.1"
 
         fun defaultExcludedPackageNames(): List<String> {
             // TODO grass, spectrum, session, discord
@@ -70,42 +77,39 @@ import kotlin.concurrent.thread
     val clientIpv4PrefixLength = 32
     // static fallback for when the sdk device is unavailable; the builder dns
     // normally comes from the device (see `tunnelDnsServers`). matches the SDK
-    // default tunnel resolvers.
-    //
-    // order is deliberate, and OS-level encrypted DNS is exactly what it avoids:
-    // https://security.googleblog.com/2022/07/dns-over-http3-in-android.html#fn2
-    // Android opportunistically upgrades well-known public resolvers (notably
-    // Google 8.8.8.8 and CloudFlare 1.1.1.1) to DoT/DoH. we do NOT want that: an
-    // OS-level encrypted resolver bypasses our UpgradeMux, which needs plain :53 to
-    // intercept unencrypted DNS and run our own DoH upgrade. Quad9 (9.9.9.9) leads
-    // because the OS does not auto-upgrade it, keeping the tunnel resolver on plain
-    // DNS; 1.1.1.1 follows as a secondary.
-    val dnsIpv4s = listOf("9.9.9.9", "1.1.1.1")
-
-    val clientIpv6: String? = null
-    val clientIpv6PrefixLength = 64
-    val dnsIpv6s = emptyList<String>()
-
+    // Fallback tunnel DNS identity for the unlikely interval where no SDK device
+    // is available. This is not the upstream resolver: UpgradeMux claims plain
+    // :53 and resolves over DoH. Normally tunnelDnsServers() returns the device's
+    // configured DnsUpgradeMaskAddress. The fallback belongs to URnetwork's
+    // 65.49.70.64/27 public subnet and stands in for the UpgradeMux; it is not
+    // an upstream DNS resolver.
+    val dnsIpv4s = listOf("65.49.70.65")
 
     //    private var pfd: ParcelFileDescriptor? = null
     private var packetFlow: PacketFlow? = null
+    private var alwaysOnGuardPfd: ParcelFileDescriptor? = null
+    private var boundDevice: DeviceLocal? = null
     private var foregroundStarted: Boolean = false
 
     private var deviceOfflineSub: Sub? = null
     private var windowStatusChangeSub: Sub? = null
+    /** Rebuilds the TUN when the kill switch (routeLocal) toggles. */
+    private var routeLocalSub: Sub? = null
+    /** Rebuilds the TUN when a connect request starts or stops. */
+    private var connectChangeSub: Sub? = null
     private var blockActionOverridesSub: Sub? = null
     private var dnsResolverSettingsSub: Sub? = null
     private var connected: Boolean = false
 
-    // the app split rule state currently applied to the tunnel, used to
-    // detect when a rebuild is needed
-    private var appliedTunnelIncludedAppIds: Set<String> = emptySet()
-    private var appliedTunnelExcludedAppIds: Set<String> = emptySet()
+    // Committed only after Builder.establish() succeeds. A failed seamless
+    // handover must remain visibly unapplied so the next listener/recovery
+    // callback retries it.
+    private var appliedTunnelConfiguration: VpnPacketFlowConfiguration? = null
 
-    // the (ipv4, ipv6) dns servers currently applied to the tunnel, used to
-    // detect when a rebuild is needed
-    private var appliedTunnelDnsServers: Pair<List<String>, List<String>> =
-        Pair(emptyList(), emptyList())
+    // the pinned app set currently installed as the flow-owner lookup, used
+    // to skip reinstalling an identical one (see applyPinnedAppLookup).
+    // guarded by applyPinnedAppLookup's own synchronization
+    private var appliedPinnedAppIds: Set<String>? = null
 
     @Volatile
     private var closeMonitorStarted: Boolean = false
@@ -120,22 +124,61 @@ import kotlin.concurrent.thread
 
         val stop = intent?.getBooleanExtra("stop", false) ?: false
         val start = intent?.getBooleanExtra("start", true) ?: false
+        val redelivered =
+            flags and android.app.Service.START_FLAG_REDELIVERY != 0 ||
+                flags and android.app.Service.START_FLAG_RETRY != 0
+        val source = intent?.getStringExtra("source")
+        val frameworkAlwaysOn =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && runCatching { isAlwaysOn }.getOrDefault(false)
+        val systemStart = vpnServiceSystemStart(source, frameworkAlwaysOn)
+        val commandVersion = intent?.getIntExtra("command_version", 0) ?: 0
+        // Read restored SDK state once. A listener can change the device state
+        // while Android is delivering this command; the admission decision and
+        // its diagnostic must describe the same snapshot.
+        val deviceRequiresVpn = app.restoredVpnServiceRequired()
+        val decision = decideVpnServiceStart(
+            VpnServiceStartFacts(
+                stopRequested = stop,
+                startRequested = start,
+                appMarkedActive = app.serviceActive,
+                deviceRequiresVpn = deviceRequiresVpn,
+                redelivered = redelivered,
+                systemStart = systemStart,
+                commandCompatible = vpnServiceCommandCompatible(source, commandVersion),
+            ),
+        )
 
-        if (stop || !app.serviceActive) {
+        if (decision == VpnServiceStartDecision.STOP) {
+            Log.i(
+                TAG,
+                    "[service]reject start stop=$stop start=$start redelivered=$redelivered " +
+                    "systemStart=$systemStart appActive=${app.serviceActive} " +
+                    "deviceRequiresVpn=$deviceRequiresVpn",
+            )
             stop()
-        } else if (start && app.service?.get() != this) {
+            // A stop/stale intent must not itself be retained for another
+            // redelivery. START_REDELIVER_INTENT is only for a service we
+            // actually accepted and intend Android to restore.
+            return START_NOT_STICKY
+        }
+
+        val foreground = if (intent?.hasExtra("foreground") == true) {
+            intent.getBooleanExtra("foreground", false)
+        } else {
+            app.restoredVpnForegroundDesired()
+        }
+
+        if (app.service?.get() != this) {
             app.service?.get().let { currentService ->
                 if (currentService != this) {
                     currentService?.stop()
                 }
             }
-            app.service = WeakReference(this)
+            app.vpnServiceDidStart(this, foreground, systemStart)
 
-            val foreground = intent?.getBooleanExtra("foreground", false) ?: false
-            val source = intent?.getStringExtra("source") ?: "unknown"
 //            val offline = intent.getBooleanExtra("offline", false)
 
-            if (foreground) {
+            if (foreground || app.isSystemAlwaysOnVpnActive()) {
                 startForegroundNotification("On")
                 // update the notification `NOTIFICATION_ID` and it will update the displayed notification
                 // see https://stackoverflow.com/questions/5528288/how-do-i-update-the-notification-text-for-a-foreground-service-in-android
@@ -143,179 +186,265 @@ import kotlin.concurrent.thread
                 stopForegroundNotification()
             }
 
-            // FIXME just let the user toggle route local which is also called "kill switch"
-            /*
-            // see https://developer.android.com/develop/connectivity/vpn#detect_always-on
-            var alwaysOn = source != "app"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (isAlwaysOn) {
-                    alwaysOn = true
-                }
+            attachToCurrentDevice()
+            if (app.device == null && systemStart) {
+                establishAlwaysOnGuard()
             }
-            if (alwaysOn) {
-                // this was started with always-on mode
-                // turn off local routing
-                app.deviceManager.routeLocal = false
-            }
-            */
-
-            connected = app.device?.windowStatus?.let {
-                0 < it.providerStateAdded
-            } ?: false
-
-//            if (canUpdatePfd(source)) {
-//                updatePfd(offline)
-//            }
-
-
-            fun offline():Boolean {
-                return app.device?.let { device ->
-                    device.offline && !device.vpnInterfaceWhileOffline
-                } ?: false
-            }
-            this@MainService.offline = offline()
-
-            deviceOfflineSub?.close()
-            deviceOfflineSub = app.device?.addOfflineChangeListener { deviceOffline, vpnInterfaceWhileOffline ->
-                Handler(mainLooper).post {
-                    val offline = offline()
-                    if (this@MainService.offline != offline) {
-                        this@MainService.offline = offline
-                        if (canUpdatePfd(source)) {
-                            updatePfd(offline)
-                        }
-                    }
-                }
-            }
-
-            fun updateWindowStatus(windowStatus: WindowStatus) {
-                val connected = 0 < windowStatus.providerStateAdded
-                if (!(packetFlow?.isActive() ?: false) || this@MainService.connected != connected) {
-                    this@MainService.connected = connected
-                    if (canUpdatePfd(source)) {
-                        updatePfd(offline)
-                    }
-                }
-            }
-
-            windowStatusChangeSub?.close()
-            windowStatusChangeSub = app.device?.addWindowStatusChangeListener { windowStatus ->
-                Handler(mainLooper).post {
-                    updateWindowStatus(windowStatus)
-                }
-            }
-            app.device?.windowStatus?.let { windowStatus ->
-                updateWindowStatus(windowStatus)
-            }
-
-            // rebuild the tunnel when the per-app split rules change so the
-            // allowed/disallowed application sets stay in sync
-            blockActionOverridesSub?.close()
-            blockActionOverridesSub = app.device?.addBlockActionOverridesChangeListener {
-                Handler(mainLooper).post {
-                    val (included, excluded) = tunnelAppSplit()
-                    if (included != appliedTunnelIncludedAppIds || excluded != appliedTunnelExcludedAppIds) {
-                        if (canUpdatePfd(source)) {
-                            updatePfd(offline)
-                        }
-                    }
-                }
-            }
-
-            // rebuild the tunnel when the dns settings change the builder dns
-            // servers (e.g. unencrypted local servers set or cleared)
-            dnsResolverSettingsSub?.close()
-            dnsResolverSettingsSub = app.device?.addDnsResolverSettingsChangeListener {
-                Handler(mainLooper).post {
-                    if (tunnelDnsServers() != appliedTunnelDnsServers) {
-                        if (canUpdatePfd(source)) {
-                            updatePfd(offline)
-                        }
-                    }
-                }
-            }
-
             startCloseMonitor()
+        } else {
+            // Duplicate delivery (including a redelivery racing the app's own
+            // reconcile): adopt the exact instance and update notification
+            // policy in place without rebuilding the TUN.
+            app.vpnServiceDidStart(this, foreground, systemStart)
+            setForegroundEnabled(foreground || app.isSystemAlwaysOnVpnActive())
+            onDeviceAvailable()
+            if (app.device == null && systemStart) {
+                establishAlwaysOnGuard()
+            }
         }
 
         // see https://developer.android.com/reference/android/app/Service#START_REDELIVER_INTENT
         return START_REDELIVER_INTENT
     }
 
-    fun canUpdatePfd(source: String): Boolean {
-        // see https://developer.android.com/develop/connectivity/vpn#detect_always-on
-        var alwaysOn = source != "app"
-        if (Build.VERSION_CODES.Q <= Build.VERSION.SDK_INT) {
-            if (isAlwaysOn) {
-                alwaysOn = true
+    private fun attachToCurrentDevice() {
+        val app = application as MainApplication
+        val currentDevice = app.device ?: return
+        if (boundDevice === currentDevice) {
+            reconcilePfd()
+            return
+        }
+
+        detachDeviceBindings(closePacketFlow = false)
+        boundDevice = currentDevice
+        connected = currentDevice.windowStatus?.let {
+            0 < it.providerStateAdded
+        } ?: false
+
+        fun currentOffline(): Boolean =
+            currentDevice.offline && !currentDevice.vpnInterfaceWhileOffline
+        offline = currentOffline()
+
+        deviceOfflineSub = currentDevice.addOfflineChangeListener { _, _ ->
+            Handler(mainLooper).post {
+                if (boundDevice !== currentDevice) return@post
+                val nextOffline = currentOffline()
+                if (offline != nextOffline) {
+                    offline = nextOffline
+                    reconcilePfd()
+                }
             }
         }
 
-        if (alwaysOn) {
-            // when always on, it appears we cannot recreate the pfd
-            // TODO is there some documentation on this?
-            return !(packetFlow?.isActive() ?: false)
-        } else {
-            return true
+        fun updateWindowStatus(windowStatus: WindowStatus) {
+            connected = 0 < windowStatus.providerStateAdded
+            reconcilePfd()
+        }
+        windowStatusChangeSub = currentDevice.addWindowStatusChangeListener { windowStatus ->
+            Handler(mainLooper).post {
+                if (boundDevice === currentDevice) updateWindowStatus(windowStatus)
+            }
+        }
+        currentDevice.windowStatus?.let(::updateWindowStatus)
+
+        blockActionOverridesSub = currentDevice.addBlockActionOverridesChangeListener {
+            Handler(mainLooper).post {
+                if (boundDevice !== currentDevice) return@post
+                applyPinnedAppLookup()
+                reconcilePfd()
+            }
+        }
+        applyPinnedAppLookup()
+        registerPackageChangeReceiver()
+
+        dnsResolverSettingsSub = currentDevice.addDnsResolverSettingsChangeListener {
+            Handler(mainLooper).post {
+                if (boundDevice === currentDevice) reconcilePfd()
+            }
+        }
+        // killSwitch (routeLocal) and connectRequested (connectEnabled) are
+        // material inputs to vpnPacketFlowMode: toggling either must rebuild
+        // the TUN so the routing mode changes, not just the service start.
+        routeLocalSub = currentDevice.addRouteLocalChangeListener {
+            Handler(mainLooper).post {
+                if (boundDevice === currentDevice) reconcilePfd()
+            }
+        }
+        connectChangeSub = currentDevice.addConnectChangeListener {
+            Handler(mainLooper).post {
+                if (boundDevice === currentDevice) reconcilePfd()
+            }
+        }
+        reconcilePfd()
+    }
+
+    fun onDeviceAvailable() {
+        if (android.os.Looper.myLooper() != mainLooper) {
+            Handler(mainLooper).post { onDeviceAvailable() }
+            return
+        }
+        val app = application as MainApplication
+        if (app.service?.get() !== this) return
+        attachToCurrentDevice()
+    }
+
+    private fun desiredTunnelConfiguration(): VpnPacketFlowConfiguration {
+        val app = application as MainApplication
+        val (includedAppIds, excludedAppIds) = tunnelAppSplit()
+        val clientIpv4 = vpnTunnelIpv4Address(app.device?.tunnelLocalAddress())
+        // The tunnel binds this address (falling back to ESCAPE_FALLBACK_ADDRESS)
+        // in updatePfd, so the DNS self-collision filter must use the same bound
+        // address: a DNS entry equal to the bound address is locally terminated.
+        val boundIpv4 = clientIpv4 ?: ESCAPE_FALLBACK_ADDRESS
+        val deviceDnsIpv4s = tunnelDnsServers()
+        return VpnPacketFlowConfiguration(
+            offline = offline,
+            connected = connected,
+            killSwitch = app.device?.routeLocal == false,
+            connectRequested = app.device?.connectEnabled == true,
+            includedAppIds = includedAppIds.toSet(),
+            excludedAppIds = excludedAppIds.toSet(),
+            dnsIpv4s = vpnDnsServersForClient(boundIpv4, deviceDnsIpv4s, dnsIpv4s),
+            clientIpv4 = clientIpv4,
+        )
+    }
+
+    private fun reconcilePfd() {
+        val app = application as MainApplication
+        if (vpnAlwaysOnGuardRequired(
+                systemAlwaysOn = app.isSystemAlwaysOnVpnActive(),
+                deviceAvailable = boundDevice != null,
+                providerConnected = connected,
+            )
+        ) {
+            establishAlwaysOnGuard()
+            return
+        }
+        if (boundDevice == null) {
+            Log.i(TAG, "[service]device unavailable outside Always-on; stopping")
+            stop()
+            return
+        }
+        val desired = desiredTunnelConfiguration()
+        if (vpnPacketFlowNeedsRebuild(
+                packetFlow?.isActive() ?: false,
+                appliedTunnelConfiguration,
+                desired,
+            )
+        ) {
+            updatePfd(desired)
         }
     }
 
-    fun updatePfd(offline: Boolean) {
-//        Log.i(TAG, "[io]UPDATE VPN")
+    private fun updatePfd(configuration: VpnPacketFlowConfiguration) {
         val app = application as MainApplication
 
         val builder = Builder()
         builder.setSession("URnetwork")
-        builder.setMtu(1440)
+        // Matches connect's provider packetizer and keeps one encrypted tunnel
+        // packet within H3's single-DATAGRAM payload ceiling.
+        builder.setMtu(Sdk.getDefaultTunnelMtu())
         builder.setBlocking(false)
         builder.setUnderlyingNetworks(null)
-        val (tunnelIncludedAppIds, tunnelExcludedAppIds) = tunnelAppSplit()
-        appliedTunnelIncludedAppIds = tunnelIncludedAppIds
-        appliedTunnelExcludedAppIds = tunnelExcludedAppIds
-        val (tunnelDnsIpv4s, tunnelDnsIpv6s) = tunnelDnsServers()
-        appliedTunnelDnsServers = Pair(tunnelDnsIpv4s, tunnelDnsIpv6s)
+        val tunnelIncludedAppIds = configuration.includedAppIds
+        val tunnelExcludedAppIds = configuration.excludedAppIds
+        val tunnelDnsIpv4s = configuration.dnsIpv4s
 
-        if (offline) {
-//            Log.i(TAG, "[io]OFFLINE")
-            // when offline, only allow traffic from a fake package name
-            // in this way, the vpn service remains active but no apps detect it as an interface
-            builder.addAllowedApplication("${packageName}.offline")
-        } else if (tunnelIncludedAppIds.isNotEmpty()) {
-            // per-app inclusions take precedence: allowlist mode, only the
-            // included apps use the tunnel (this app is excluded by omission)
-            for (includedPackageName in tunnelIncludedAppIds) {
-                try {
-                    builder.addAllowedApplication(includedPackageName)
-                } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+        // Routing mode is a pure decision so the fail-closed/escape path is
+        // unit-testable without an Android runtime. Named args avoid a silent
+        // positional swap of the two booleans. ESCAPE (offline, or up purely
+        // for provide with no live exit) keeps the tunnel established but adds
+        // no routes and no DNS, so Android points nothing at it: every app
+        // (including the tunnel owner) keeps its native network and DNS, and
+        // there is no dependence on an installed allow-listed package.
+        val mode = vpnPacketFlowMode(
+            offline = configuration.offline,
+            connected = configuration.connected,
+            killSwitch = configuration.killSwitch,
+            connectRequested = configuration.connectRequested,
+            includedAppIds = tunnelIncludedAppIds,
+        )
+        when (mode) {
+            VpnPacketFlowMode.ESCAPE -> {
+                // no app rules; the escape build below adds routes/DNS only for
+                // non-escape modes, so nothing is captured
+            }
+            VpnPacketFlowMode.PER_APP_ALLOWLIST -> {
+                    // per-app inclusions take precedence: allowlist mode, only
+                    // the included apps use the tunnel. tunnelAppSplit
+                    // sanitizes the VPN owner before this mode decision, so a
+                    // stale self-only rule cannot create an empty Android UID
+                    // set.
+                    for (includedPackageName in tunnelIncludedAppIds) {
+                        try {
+                            builder.addAllowedApplication(includedPackageName)
+                        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                        }
+                    }
+                }
+                VpnPacketFlowMode.DENYLIST -> {
+                    // denylist mode: everything not the tunnel owner uses the
+                    // tunnel, except the default excluded apps and per-app
+                    // exclusions
+                    builder.addDisallowedApplication(packageName)
+                    for (excludedPackageName in defaultExcludedPackageNames() + tunnelExcludedAppIds) {
+                        try {
+                            builder.addDisallowedApplication(excludedPackageName)
+                        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                        }
+                    }
                 }
             }
-        } else {
-            // denylist mode: everything uses the tunnel except this app,
-            // the default excluded apps, and the per-app exclusions
-            builder.addDisallowedApplication(packageName)
-            for (excludedPackageName in defaultExcludedPackageNames() + tunnelExcludedAppIds) {
-                try {
-                    builder.addDisallowedApplication(excludedPackageName)
-                } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
-                }
-            }
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)
         }
 
-        val clientIpv4: String? = app.device?.tunnelLocalAddress()
-        if (clientIpv4 != null) {
-            builder.allowFamily(AF_INET)
-            builder.addAddress(
-                clientIpv4,
-                clientIpv4PrefixLength
-            )
-            // DNS from the SDK device, like the tunnel address (see `tunnelDnsServers`);
-            // plain :53 lets the UpgradeMux intercept and upgrade it
-            for (dnsIpv4 in tunnelDnsIpv4s) {
-                builder.addDnsServer(dnsIpv4)
+        when (configuration.ipv6Policy) {
+            VpnIpv6Policy.BLOCK_UNSUPPORTED -> {
+                // For CAPTURE modes (allowlist/denylist): omit IPv6 entirely.
+                // Remote providers are IPv4-only, so the tunnel cannot forward
+                // IPv6; blocking the unconfigured family is correct there.
+                // The ESCAPE path below separately calls allowFamily(AF_INET6)
+                // so the phone's other apps keep their own IPv6 connectivity.
             }
+        }
+
+        val clientIpv4 = configuration.clientIpv4
+        val isEscape = mode == VpnPacketFlowMode.ESCAPE
+        // Always establish a tunnel, even when the SDK has not handed back a
+        // tunnel address. Without an address builder.establish() throws and
+        // the catch retains the previous interface, or with no prior interface
+        // leaves no TUN at all. For a kill-switch or connected state that
+        // fails OPEN (traffic to the ISP in the clear). Use a fixed
+        // documentation address (same class the always-on guard uses) as a
+        // fail-closed fallback: with capture routes it is a blocking blackhole;
+        // with no routes (escape) it routes nothing.
+        val tunnelAddress = clientIpv4 ?: ESCAPE_FALLBACK_ADDRESS
+        val ipv6Report = if (isEscape) "on" else "off"
+        if (isEscape) {
+            // Escaping: allow BOTH families. With no app rules every app is in
+            // scope, so without allowFamily(AF_INET6) the unconfigured IPv6
+            // family would be BLOCKED for every app (the exact bug this fix
+            // removes, on the v6 half). Address only, no routes, no DNS:
+            // Android routes nothing into it and every app keeps its native
+            // network and DNS.
+            builder.allowFamily(AF_INET)
+            builder.allowFamily(AF_INET6)
+        } else {
+            builder.allowFamily(AF_INET)
+        }
+        builder.addAddress(
+            tunnelAddress,
+            clientIpv4PrefixLength
+        )
+            if (!isEscape) {
+                // DNS from the SDK device (see `tunnelDnsServers`). It must
+                // be a distinct address routed through the TUN: Android
+                // locally terminates packets addressed to clientIpv4 before
+                // PacketFlow can hand them to UpgradeMux.
+                for (dnsIpv4 in tunnelDnsIpv4s) {
+                    builder.addDnsServer(dnsIpv4)
+                }
             if (Build.VERSION_CODES.TIRAMISU <= Build.VERSION.SDK_INT) {
                 builder.addRoute("0.0.0.0", 0)
                 builder.excludeRoute(IpPrefix(InetAddress.getByName("10.0.0.0"), 8))
@@ -367,61 +496,40 @@ import kotlin.concurrent.thread
                 builder.addRoute("8.0.0.0", 7)
                 builder.addRoute("11.0.0.0", 8)
             }
-        }
-        if (clientIpv6 != null) {
-            builder.allowFamily(AF_INET6)
-            builder.addAddress(
-                clientIpv6,
-                clientIpv6PrefixLength
-            )
-            for (dnsIpv6 in tunnelDnsIpv6s) {
-                builder.addDnsServer(dnsIpv6)
             }
-            if (Build.VERSION_CODES.TIRAMISU <= Build.VERSION.SDK_INT) {
-                builder.addRoute("::", 0)
-                builder.excludeRoute(IpPrefix(InetAddress.getByName("fd00::"), 8))
-            } else {
-                /*
-                python script:
-
-                n = [ipaddress.ip_network('::/0')]
-                for m in [ipaddress.ip_network('fd00::/8')]:
-                    n = [
-                        b
-                        for a in n
-                        for b in (list(a.address_exclude(m)) if a.overlaps(m) else [a])
-                    ]
-                for a in n:
-                    print('builder.addRoute("{}", {})'.format(a.network_address, a.prefixlen))
-                */
-
-                builder.addRoute("::", 1)
-                builder.addRoute("8000::", 2)
-                builder.addRoute("c000::", 3)
-                builder.addRoute("e000::", 4)
-                builder.addRoute("f000::", 5)
-                builder.addRoute("f800::", 6)
-                builder.addRoute("fe00::", 7)
-                builder.addRoute("fc00::", 8)
-            }
-        }
-
         app.device?.let { device ->
-            builder.establish()?.let { pfd ->
+            val pfd = try {
+                builder.establish()
+            } catch (e: Exception) {
+                Log.i(TAG, "[service]WARNING tunnel handover failed; retaining the existing interface: ${e.message}")
+                return
+            }
+            pfd?.let {
                 // cancel the previous packet flow after the new fd is in place, to avoid leaking packets
                 val replacedPacketFlow = packetFlow
-                packetFlow = PacketFlow(device, pfd) {
+                packetFlow = PacketFlow(device, it) {
                     Handler(mainLooper).post {
                         if (packetFlow == it) {
                             packetFlow = null
                             if (app.service?.get() == this@MainService) {
                                 device.tunnelStarted = false
-                                updatePfd(offline)
+                                reconcilePfd()
                             }
                         }
                     }
                 }
+                appliedTunnelConfiguration = configuration
+                val replacedGuard = alwaysOnGuardPfd
+                alwaysOnGuardPfd = null
+                replacedGuard?.close()
                 replacedPacketFlow?.close()
+                Log.i(
+                    TAG,
+                    "[service]tunnel applied offline=${configuration.offline} connected=${configuration.connected} " +
+                        "included=${configuration.includedAppIds.size} excluded=${configuration.excludedAppIds.size} " +
+                        "dns=${configuration.dnsIpv4s} address=${configuration.clientIpv4} " +
+                        "tunnelIpv6=${ipv6Report}",
+                )
                 if (app.service?.get() == this@MainService) {
                     device.tunnelStarted = true
                 } else {
@@ -432,44 +540,277 @@ import kotlin.concurrent.thread
                 stop()
             }
         } ?: run {
-            Log.i(TAG, "[service]WARNING tunnel was not started due to missing device.")
-            stop()
+            if (app.isSystemAlwaysOnVpnActive()) {
+                Log.i(TAG, "[service]device disappeared during tunnel handover; retaining Always-on guard")
+                establishAlwaysOnGuard()
+            } else {
+                stop()
+            }
         }
     }
 
     /**
-     * The per-app split for the tunnel builder, derived from the device
-     * block action overrides. Returns (tunnelIncludedAppIds, tunnelExcludedAppIds).
-     *
-     * The sdk `OverrideLocalAppIds` is expressed from the local-routing side:
-     * `included` are apps routed locally (they bypass the tunnel), `excluded`
-     * are apps routed remotely (they go through the tunnel). From the tunnel
-     * builder's perspective this is inverted: remote-routed apps are the ones
-     * included in the tunnel (allowlist), local-routed apps are excluded
-     * (disallow / bypass).
+     * Android can start an Always-on VPN before the user has authenticated (or
+     * keep it selected after logout). Hold a real IPv4 VPN interface so the OS
+     * does not enter a restart loop. Traffic is intentionally fail-closed until
+     * a DeviceLocal is restored; the VPN app itself is excluded so login and
+     * provider discovery can recover the session.
      */
-    private fun tunnelAppSplit(): Pair<Set<String>, Set<String>> {
+    private fun establishAlwaysOnGuard(): Boolean {
+        if (alwaysOnGuardPfd != null) {
+            packetFlow?.close()
+            packetFlow = null
+            appliedTunnelConfiguration = null
+            return true
+        }
+        val builder = Builder()
+            .setSession("URnetwork — sign in required")
+            .setMtu(Sdk.getDefaultTunnelMtu())
+            .setBlocking(false)
+            .setUnderlyingNetworks(null)
+            .addDisallowedApplication(packageName)
+            .addAddress("192.0.2.1", 32)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer("192.0.2.2")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setMetered(false)
+        }
+        val established = try {
+            builder.establish()
+        } catch (e: Exception) {
+            Log.i(TAG, "[service]could not establish Always-on authentication guard: ${e.message}")
+            null
+        } ?: return false
+
+        val previous = alwaysOnGuardPfd
+        val replacedPacketFlow = packetFlow
+        alwaysOnGuardPfd = established
+        packetFlow = null
+        appliedTunnelConfiguration = null
+        previous?.close()
+        replacedPacketFlow?.close()
+        Log.i(TAG, "[service]Always-on authentication guard established")
+        return true
+    }
+
+    /** Keep the OS-owned VPN alive while MainApplication replaces/logs out its device. */
+    fun retainAlwaysOnWithoutDevice(): Boolean {
+        if (android.os.Looper.myLooper() != mainLooper) {
+            Handler(mainLooper).post { retainAlwaysOnWithoutDevice() }
+            return true
+        }
         val app = application as MainApplication
-        val overrideAppIds = app.device?.localOverrideAppIds ?: return Pair(emptySet(), emptySet())
-        val tunnelIncluded = sdkStringListToSet(overrideAppIds.excluded)
-        val tunnelExcluded = sdkStringListToSet(overrideAppIds.included)
-        return Pair(tunnelIncluded, tunnelExcluded)
+        if (app.service?.get() !== this || !establishAlwaysOnGuard()) return false
+        app.device?.tunnelStarted = false
+        detachDeviceBindings(closePacketFlow = true)
+        return true
+    }
+
+    private fun detachDeviceBindings(closePacketFlow: Boolean) {
+        val app = application as MainApplication
+        unregisterPackageChangeReceiver()
+        boundDevice?.setFlowOwnerLookup(null)
+        appliedPinnedAppIds = null
+        deviceOfflineSub?.close()
+        deviceOfflineSub = null
+        windowStatusChangeSub?.close()
+        windowStatusChangeSub = null
+        blockActionOverridesSub?.close()
+        blockActionOverridesSub = null
+        dnsResolverSettingsSub?.close()
+        dnsResolverSettingsSub = null
+        routeLocalSub?.close()
+        routeLocalSub = null
+        connectChangeSub?.close()
+        connectChangeSub = null
+        boundDevice = null
+        if (closePacketFlow) {
+            packetFlow?.close()
+            packetFlow = null
+            appliedTunnelConfiguration = null
+        }
     }
 
     /**
-     * The (ipv4, ipv6) dns servers for the tunnel builder, from the sdk device
-     * like the tunnel address: the dns settings' unencrypted local servers when
-     * set, otherwise the device default (plain 1.1.1.1, which the UpgradeMux can
-     * intercept and upgrade). Falls back to the static defaults when the device
-     * is unavailable.
+     * Installs (or clears) the flow-owner lookup that powers per-app pinning:
+     * the Go side asks it once per new flow which pinned app owns the flow,
+     * and every flow of that app then rides one exit -- one egress IP for the
+     * whole app, API session and CDNs alike. Swapped wholesale on every rules
+     * change; null when nothing is pinned so the Go side skips the machinery
+     * entirely.
      */
-    private fun tunnelDnsServers(): Pair<List<String>, List<String>> {
+    @Synchronized
+    private fun applyPinnedAppLookup(force: Boolean = false) {
         val app = application as MainApplication
-        val device = app.device ?: return Pair(dnsIpv4s, dnsIpv6s)
-        return Pair(
-            sdkStringListToList(device.tunnelDnsAddressesIpv4()).ifEmpty { dnsIpv4s },
-            sdkStringListToList(device.tunnelDnsAddressesIpv6()),
+        val device = app.device ?: return
+        val pinnedPackages = sdkStringListToSet(device.pinnedAppIds)
+        // installing a lookup is not free on the go side: it invalidates the
+        // flow-owner cache and the recorded app placements, so every live
+        // flow's next packet pays a fresh platform call on the single tun
+        // reader for an answer only a NEW flow consumes. This fires on any
+        // block-action change and on any package broadcast -- a play store
+        // batch update would otherwise replay that burst dozens of times.
+        //
+        // force bypasses the memo: a package event never changes the pinned
+        // package-name SET, only the uid map frozen inside the lookup, so
+        // the receiver's rebuild would otherwise always be a no-op -- and a
+        // reinstalled (uid-recycled) pinned app would keep a stale map.
+        if (!force && pinnedPackages == appliedPinnedAppIds) {
+            return
+        }
+        appliedPinnedAppIds = pinnedPackages
+        // getConnectionOwnerUid is api 29+; below that a pin rule simply has
+        // no per-app effect (the constellation table still groups by domain).
+        // the two conditions are separate ifs so the NewApi lint sees a plain
+        // version guard rather than a disjunction it may not fold
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            device.setFlowOwnerLookup(null)
+            return
+        }
+        if (pinnedPackages.isEmpty()) {
+            device.setFlowOwnerLookup(null)
+            return
+        }
+        val connectivityManager = getSystemService(ConnectivityManager::class.java) ?: return
+        device.setFlowOwnerLookup(
+            PinnedAppFlowLookup(connectivityManager, packageManager, pinnedPackages)
         )
+    }
+
+    /**
+     * Rebuilds the pinned-app lookup when packages change. The lookup maps
+     * uid -> package once at construction, and uids are NOT stable across an
+     * uninstall/reinstall -- worse, Android recycles them, so a stale map can
+     * attribute a newly installed app's flows to a pinned package. Cheap to
+     * rebuild, so rebuild on any package event.
+     */
+    private val packageChangeReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            // getPackageUid per pinned app plus two gomobile crossings: small,
+            // but this runs on the main looper inside a broadcast, and a
+            // package replace fires it more than once
+            val changedPackage = intent?.data?.schemeSpecificPart
+            thread {
+                // only a PINNED package's install state can invalidate the
+                // frozen uid map; every other app's broadcast is noise, and
+                // reinstalling an identical lookup wipes the go-side flow
+                // caches (a play store batch update would replay that burst
+                // dozens of times). An event with no package forces, safely.
+                val app = application as MainApplication
+                val pinned = sdkStringListToSet(app.device?.pinnedAppIds)
+                if (changedPackage != null && changedPackage !in pinned) {
+                    return@thread
+                }
+                applyPinnedAppLookup(force = true)
+            }
+        }
+    }
+
+    @Volatile
+    private var packageChangeReceiverRegistered = false
+
+    private fun registerPackageChangeReceiver() {
+        if (packageChangeReceiverRegistered) {
+            return
+        }
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        // these are framework protected-broadcasts, so the export flag is not
+        // required at runtime -- but UnspecifiedRegisterReceiverFlag is an
+        // error-severity lint at this targetSdk, and lintVitalRelease is fatal
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            packageChangeReceiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        packageChangeReceiverRegistered = true
+    }
+
+    private fun unregisterPackageChangeReceiver() {
+        if (!packageChangeReceiverRegistered) {
+            return
+        }
+        try {
+            unregisterReceiver(packageChangeReceiver)
+        } catch (_: IllegalArgumentException) {
+        }
+        packageChangeReceiverRegistered = false
+    }
+
+    /**
+     * The (allow-list, deny-list) app sets for the tunnel builder.
+     *
+     * The sdk names these from the ROUTE's point of view and this inverts
+     * them: a local-routed app bypasses the vpn (builder disallow), a
+     * remote-routed app uses it (builder allow).
+     *
+     * Pinned apps need care. Pinning holds an app to one exit INSIDE the
+     * tunnel -- it is placement, not membership -- so the sdk deliberately
+     * omits pinned apps from both sets. But "allowlist mode" is built from
+     * the allow set ALONE ("excluded by omission" below), so simply omitting
+     * a pinned app drops it out of the vpn entirely the moment any other app
+     * is included. Union the pinned apps into the allow set exactly when
+     * allowlist mode is active; in denylist mode omission is correct, since
+     * everything not denied already uses the tunnel.
+     */
+    private fun tunnelAppSplit(): Pair<Set<String>, Set<String>> {
+        val app = application as MainApplication
+        val device = app.device ?: return Pair(emptySet(), emptySet())
+        val overrideAppIds = device.localOverrideAppIds ?: return Pair(emptySet(), emptySet())
+        var tunnelIncluded = sdkStringListToSet(overrideAppIds.excluded)
+        val tunnelExcluded = sdkStringListToSet(overrideAppIds.included)
+        if (tunnelIncluded.isNotEmpty()) {
+            // subtract what the denylist branch would have excluded anyway
+            // (this app, the default exclusions, and any explicit exclude
+            // rule), or a pinned app that is also default-excluded would be
+            // in the tunnel in allowlist mode and out of it in denylist mode
+            // -- the same rule meaning opposite things depending on whether
+            // an unrelated include rule happens to exist
+            val neverTunneled = defaultExcludedPackageNames().toSet() +
+                tunnelExcluded +
+                packageName
+            tunnelIncluded = tunnelIncluded +
+                (sdkStringListToSet(device.pinnedAppIds) - neverTunneled)
+        }
+        return sanitizeTunnelAppSplit(
+            packageName,
+            tunnelIncluded,
+            tunnelExcluded,
+            isPackageInstalled = { isPackageInstalled(it) },
+        )
+    }
+
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return try {
+            if (Build.VERSION_CODES.TIRAMISU <= Build.VERSION.SDK_INT) {
+                packageManager.getApplicationInfo(
+                    packageName,
+                    android.content.pm.PackageManager.ApplicationInfoFlags.of(0),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(packageName, 0)
+            }
+            true
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+
+    /**
+     * The IPv4 DNS servers for the tunnel builder, from the SDK device like the
+     * tunnel address. The tunnel deliberately does not consume the SDK's IPv6
+     * DNS list until remote providers can forward IPv6.
+     */
+    private fun tunnelDnsServers(): List<String> {
+        val app = application as MainApplication
+        val device = app.device ?: return dnsIpv4s
+        return sdkStringListToList(device.tunnelDnsAddressesIpv4()).ifEmpty { dnsIpv4s }
     }
 
     private fun sdkStringListToSet(list: com.bringyour.sdk.StringList?): Set<String> {
@@ -505,27 +846,16 @@ import kotlin.concurrent.thread
     fun stop() {
         val app = application as MainApplication
 
-        deviceOfflineSub?.close()
-        deviceOfflineSub = null
-
-        windowStatusChangeSub?.close()
-        windowStatusChangeSub = null
-
-        blockActionOverridesSub?.close()
-        blockActionOverridesSub = null
-
-        dnsResolverSettingsSub?.close()
-        dnsResolverSettingsSub = null
-
-        packetFlow?.close()
-        packetFlow = null
+        detachDeviceBindings(closePacketFlow = true)
+        alwaysOnGuardPfd?.close()
+        alwaysOnGuardPfd = null
 
         stopForegroundNotification()
         stopSelf()
 
         if (app.service?.get() == this) {
             app.device?.tunnelStarted = false
-            app.service = null
+            app.vpnServiceDidStop(this)
         }
     }
 
@@ -560,6 +890,25 @@ import kotlin.concurrent.thread
 
         startForeground(NOTIFICATION_ID, notification)
         foregroundStarted = true
+    }
+
+    /**
+     * Foreground notification policy is orthogonal to the TUN descriptor.
+     * Updating it in place avoids a service/TUN restart when Auto providing
+     * hands off to a client connection (or back again).
+     */
+    fun setForegroundEnabled(enabled: Boolean): Boolean {
+        return try {
+            if (enabled) {
+                startForegroundNotification("On")
+            } else {
+                stopForegroundNotification()
+            }
+            true
+        } catch (e: Exception) {
+            Log.i(TAG, "Unable to update VPN foreground state in place: ${e.message}")
+            false
+        }
     }
 
 
@@ -635,4 +984,3 @@ private class PacketFlow(deviceLocal: DeviceLocal, pfd: ParcelFileDescriptor, en
         }
     }
 }
-

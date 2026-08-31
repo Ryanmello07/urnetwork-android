@@ -68,7 +68,7 @@ val RedDark = Red900
 val Red = Red400
 val Yellow = Yellow200
 val Green = Green300
-val Amber = Color(0xFFF5C242)  // idle/none status (0 network peers)
+val Amber = Color(0xFFF5C242)  // idle/none status (0 network peers); runtime constraint warnings
 
 val MainBorderBase = Color(0x1FFFFFFF)
 
@@ -88,3 +88,12 @@ val SheetBlack = Black.lighten(0.03f)
 // nothing else, gold reads as "this account is Pro" rather than as decoration.
 val ProGold = Color(0xFFFFC400)
 val ProGoldLight = Color(0xFFFFE082)
+
+// Referral gold. The ur.io referral-panel palette (#F5B93C family), used only for the
+// referral king-frog moments. Deliberately a warmer gold than ProGold so the Pro ring
+// keeps its meaning while referral royalty gets its own.
+val ReferralGold = Color(0xFFF5B93C)
+val ReferralGoldLight = Color(0xFFFFD76A)
+val ReferralGoldPale = Color(0xFFFFE38A)
+// text on gold surfaces (the site's #241a05 ink)
+val ReferralGoldInk = Color(0xFF241A05)

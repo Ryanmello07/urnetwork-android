@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -34,7 +36,10 @@ fun ConnectStatusIndicator(
     displayReconnectTunnel: Boolean,
     contractStatus: ContractStatus?,
     currentPlan: Plan,
-    isPollingSubscriptionBalance: Boolean
+    isPollingSubscriptionBalance: Boolean,
+    // when set, the connected-providers label opens the provider locations
+    // detail (only meaningful while connected)
+    onShowProviderLocations: (() -> Unit)? = null
 ) {
 
     val text = when {
@@ -71,6 +76,15 @@ fun ConnectStatusIndicator(
         ConnectStatus.DISCONNECTED -> "Disconnected"
     }
 
+    // the provider count is the affordance: tapping it opens the per-provider
+    // locations detail. Any other status text is not interactive.
+    val showProviderLocations = onShowProviderLocations?.takeIf {
+        status == ConnectStatus.CONNECTED &&
+                !displayReconnectTunnel &&
+                !isPollingSubscriptionBalance &&
+                !(contractStatus?.insufficientBalance == true && currentPlan != Plan.Supporter)
+    }
+
     AnimatedVisibility(
         visible = text.isNotEmpty(),
         enter = fadeIn(),
@@ -78,7 +92,16 @@ fun ConnectStatusIndicator(
     ) {
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("acceptance.connect.status")
+                .then(
+                    if (showProviderLocations != null) {
+                        Modifier.clickable { showProviderLocations() }
+                    } else {
+                        Modifier
+                    }
+                ),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {

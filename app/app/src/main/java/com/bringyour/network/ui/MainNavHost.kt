@@ -51,12 +51,17 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -70,15 +75,19 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.bringyour.network.ui.account.AccountScreen
+import com.bringyour.network.ui.settings.DeveloperScreen
 import com.bringyour.network.ui.account.ProviderIdentitiesScreen
 import com.bringyour.network.ui.components.overlays.FullScreenOverlay
 import com.bringyour.network.ui.components.overlays.WelcomeAnimatedMainOverlay
+import com.bringyour.network.ui.components.referral.REFERRAL_BONUS_GIB_PER_DAY
+import com.bringyour.network.ui.components.referral.ReferralRoyalToast
 import com.bringyour.network.ui.connect.ConnectScreen
 import com.bringyour.network.ui.connect.ConnectViewModel
 import com.bringyour.network.ui.feedback.FeedbackScreen
 import com.bringyour.network.ui.settings.SettingsViewModel
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.bringyour.network.ui.shared.viewmodels.PlanViewModel
+import com.bringyour.network.ui.shared.viewmodels.ReferralCelebration
 import com.bringyour.network.ui.shared.viewmodels.ReferralCodeViewModel
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.MainBorderBase
@@ -119,7 +128,12 @@ import com.bringyour.network.ui.shared.viewmodels.Plan
 import com.bringyour.network.ui.shared.viewmodels.SolanaPaymentViewModel
 import com.bringyour.network.ui.stats.AppSplitRulesScreen
 import com.bringyour.network.ui.stats.ContractStatsScreen
+import com.bringyour.network.ui.connect.providerlocations.MockLocationGuideScreen
+import com.bringyour.network.ui.connect.providerlocations.MockLocationSection
+import com.bringyour.network.ui.connect.providerlocations.ProviderLocationsScreen
 import com.bringyour.network.ui.stats.DnsSettingsScreen
+import com.bringyour.network.ui.stats.TransportSettingsKind
+import com.bringyour.network.ui.stats.TransportSettingsScreen
 import com.bringyour.network.ui.stats.SplitRulesScreen
 import com.bringyour.network.ui.theme.Pink
 import com.bringyour.network.ui.upgrade.UpgradeScreen
@@ -154,10 +168,12 @@ fun MainNavHost(
     val reliabilityWindow by networkReliabilityViewModel.reliabilityWindow.collectAsState()
     val totalReferralCount by referralCodeViewModel.totalReferralCount.collectAsState()
     val referralCode by referralCodeViewModel.referralCode.collectAsState()
+    val pendingReferralCelebration by referralCodeViewModel.pendingCelebration.collectAsState()
     val pendingSolanaSubReference by solanaPaymentViewModel.pendingSolanaSubscriptionReference.collectAsState()
     val isCheckingSolanaTransaction by subscriptionBalanceViewModel.isCheckingSolanaTransaction.collectAsState()
     val displayIntroFunnel by mainNavViewModel.displayIntroFunnel.collectAsState()
     val allowPromptIntroFunnel by mainNavViewModel.allowDisplayIntroFunnel.collectAsState()
+    val hasActiveSubscription by subscriptionBalanceViewModel.hasActiveSubscription.collectAsState()
 
     val navItemColors = NavigationSuiteDefaults.itemColors(
         navigationBarItemColors = NavigationBarItemDefaults.colors(
@@ -318,6 +334,84 @@ fun MainNavHost(
     }
 
     /**
+     * The post-payment confirmation poll exhausted its 2-minute budget without the
+     * server confirming the subscription. This used to end in a log line
+     * ("polling timed out") -- the honest terminal state is: payment received,
+     * confirmation still in flight, the plan updates by itself, do NOT buy again.
+     */
+    var showConfirmationDelayedDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        subscriptionBalanceViewModel.confirmationTimedOutSequence.collect { sequence ->
+            if (!subscriptionBalanceViewModel.consumeConfirmationTimedOutSequence(sequence)) {
+                return@collect
+            }
+
+            showConfirmationDelayedDialog = true
+        }
+    }
+
+    /**
+     * The purchase is persisted client-side but the server never gave a terminal
+     * answer to the report within the bounded in-session retries (Play flavor). Same
+     * honest terminal state as the poll timeout: payment received, confirmation in
+     * flight, do NOT buy again -- the daily reconcile worker carries the report.
+     */
+    LaunchedEffect(Unit) {
+        planViewModel.purchaseReportDeferredSequence.collect { sequence ->
+            if (!planViewModel.consumePurchaseReportDeferredSequence(sequence)) {
+                return@collect
+            }
+
+            showConfirmationDelayedDialog = true
+        }
+    }
+
+    if (showConfirmationDelayedDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmationDelayedDialog = false },
+            title = { Text(stringResource(id = R.string.payment_received_title)) },
+            text = { Text(stringResource(id = R.string.payment_confirmation_delayed)) },
+            confirmButton = {
+                TextButton(onClick = { showConfirmationDelayedDialog = false }) {
+                    Text(stringResource(id = R.string.close))
+                }
+            }
+        )
+    }
+
+    /**
+     * The server verified the Play purchase but it belongs to a DIFFERENT network
+     * than the one logged in. The purchase is real (it stays acknowledged so Play
+     * does not auto-refund it) and the linked network is the one credited -- so no
+     * success overlay here, just the honest way out: use the account it was
+     * purchased under.
+     */
+    var showPurchaseWrongNetworkDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        planViewModel.purchaseWrongNetworkSequence.collect { sequence ->
+            if (!planViewModel.consumePurchaseWrongNetworkSequence(sequence)) {
+                return@collect
+            }
+
+            showPurchaseWrongNetworkDialog = true
+        }
+    }
+
+    if (showPurchaseWrongNetworkDialog) {
+        AlertDialog(
+            onDismissRequest = { showPurchaseWrongNetworkDialog = false },
+            text = { Text(stringResource(id = R.string.subscription_purchased_under_different_account)) },
+            confirmButton = {
+                TextButton(onClick = { showPurchaseWrongNetworkDialog = false }) {
+                    Text(stringResource(id = R.string.close))
+                }
+            }
+        )
+    }
+
+    /**
      * A purchase Play accepted but has NOT completed (awaiting approval, or an
      * out-of-band payment). There is nothing to poll for -- the PURCHASED state does
      * not arrive now -- so just tell the user, and do NOT close the screen or claim an
@@ -462,7 +556,11 @@ fun MainNavHost(
                                         if (screen.route == Route.Leaderboard) {
                                             Icon(imageVector = Icons.Filled.StackedLineChart, contentDescription = stringResource(id = R.string.leaderboard))
                                         } else {
-                                            Icon(painterResource(id = iconRes), contentDescription = screen.description)
+                                            Icon(
+                                                painter = painterResource(id = iconRes),
+                                                contentDescription = screen.description,
+                                                modifier = Modifier.testTag("acceptance.nav.${screen.description.lowercase()}")
+                                            )
                                         }
 
                                     },
@@ -603,7 +701,55 @@ fun MainNavHost(
     FullScreenOverlay(
         overlayViewModel,
         referralCode = referralCode,
+        planUpgradeConfirmed = hasActiveSubscription,
+        totalReferralCount = totalReferralCount,
+        referralCelebrationJoined = pendingReferralCelebration?.joined ?: 1L,
+        onReferralCelebrationDismissed = {
+            referralCodeViewModel.clearCelebration()
+        },
     )
+
+    /**
+     * Referral celebrations: the first referral gets the full-screen crowning
+     * overlay; later ones get a passing gold toast. Detected by the referral
+     * poll against the per-network celebrated baseline.
+     */
+    LaunchedEffect(pendingReferralCelebration) {
+        val celebration = pendingReferralCelebration ?: return@LaunchedEffect
+        if (celebration.isFirst) {
+            overlayViewModel.launch(OverlayMode.ReferralCelebration)
+        } else {
+            // let the toast play, then clear it
+            delay(5000)
+            referralCodeViewModel.clearCelebration()
+        }
+    }
+
+    // keep the last toast content mounted so the exit animation has text
+    var lastToastCelebration by remember {
+        mutableStateOf<ReferralCelebration?>(null)
+    }
+    pendingReferralCelebration?.let { celebration ->
+        if (!celebration.isFirst) {
+            lastToastCelebration = celebration
+        }
+    }
+
+    lastToastCelebration?.let { celebration ->
+        ReferralRoyalToast(
+            visible = pendingReferralCelebration != null && pendingReferralCelebration?.isFirst == false,
+            text = pluralStringResource(
+                id = R.plurals.referral_toast_joined,
+                count = celebration.joined.toInt(),
+                celebration.joined.toInt(),
+                REFERRAL_BONUS_GIB_PER_DAY
+            ),
+            onClick = {
+                referralCodeViewModel.clearCelebration()
+                overlayViewModel.launch(OverlayMode.Refer)
+            },
+        )
+    }
 
 }
 
@@ -832,6 +978,45 @@ fun MainNavContent(
                     navController = navController,
                 )
             }
+
+            composable<Route.TransportSettings>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) { backStackEntry ->
+                val route: Route.TransportSettings = backStackEntry.toRoute()
+                TransportSettingsScreen(
+                    navController = navController,
+                    kind = if (route.provider) TransportSettingsKind.PROVIDER else TransportSettingsKind.CLIENT,
+                )
+            }
+
+            composable<Route.ProviderLocations>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                ProviderLocationsScreen(
+                    navController = navController,
+                    getLocationColor = locationsListViewModel.getLocationColor,
+                    mockLocationSection = {
+                        MockLocationSection(navController = navController)
+                    },
+                )
+            }
+
+            composable<Route.MockLocationGuide>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                MockLocationGuideScreen(
+                    navController = navController,
+                )
+            }
         }
 
         composable<Route.Support>(
@@ -929,6 +1114,15 @@ fun MainNavContent(
                 ProviderIdentitiesScreen(
                     navController = navController,
                 )
+            }
+
+            composable<Route.Developer>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                DeveloperScreen(navController = navController)
             }
 
             composable<Route.BlockedRegions>(

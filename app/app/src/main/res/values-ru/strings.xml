@@ -20,11 +20,13 @@
     <string name="api_error_contact">Если проблема сохраняется, свяжитесь с нами по адресу %1$s или присоединяйтесь к нашему %2$s для получения прямой поддержки.</string>
     <string name="app_excluded_toast">%1$s будет работать в обход VPN</string>
     <string name="app_included_toast">%1$s будет работать через VPN</string>
+    <string name="app_pinned_toast">%1$s будет использовать одного провайдера</string>
     <string name="app_split_active_exclude">Режим исключения — исключённые приложения обходят VPN</string>
     <string name="app_split_active_include">Режим включения — VPN используют только включённые приложения</string>
     <string name="app_split_active_none">Без разделения — VPN используют все приложения</string>
     <string name="app_split_precedence_note">Включённые приложения имеют приоритет: если включено хотя бы одно приложение, VPN используют только включённые, а исключения не действуют.</string>
     <string name="app_split_rules">Правила разделения приложений</string>
+    <string name="app_split_starter">0 приложений в разделении</string>
     <string name="apply_bonus">Применить бонус</string>
     <string name="apps">Приложения</string>
     <string name="are_you_sure_delete_account">Вы уверены, что хотите удалить свой аккаунт?</string>
@@ -65,6 +67,7 @@
     <string name="change">Изменить</string>
     <string name="change_network_api">Изменить API сети</string>
     <string name="change_network_api_title">Изменить API сети</string>
+    <string name="change_network_name_hint">Нажмите на значок редактирования, чтобы изменить имя сети</string>
     <string name="change_password">Изменить пароль</string>
     <string name="check_internet">Проверьте ваше интернет-соединение</string>
     <string name="check_ip">Проверить мой IP</string>
@@ -77,6 +80,7 @@
     <string name="cities">Города</string>
     <string name="claim">Получить</string>
     <string name="claim_multiplier">Получить множитель</string>
+    <string name="claim_network_name_hint">Получите собственное имя сети вместо автоматически созданного</string>
     <string name="client_contracts">Контракты клиента</string>
     <string name="client_id_copied">ID клиента скопирован</string>
     <string name="client_statistics">Статистика клиента</string>
@@ -102,6 +106,7 @@
     <string name="contract_stack_max">макс %1$s</string>
     <string name="contracts_appear_connected">Контракты появятся здесь при подключении.</string>
     <string name="contracts_appear_providing">Контракты появятся здесь во время предоставления.</string>
+    <string name="copied">Скопировано!</string>
     <string name="copy">Копировать</string>
     <string name="copy_auth_code">Скопировать код аутентификации</string>
     <string name="countries">Страны</string>
@@ -148,6 +153,7 @@
     <string name="earnings">Заработок</string>
     <string name="earnings_doubled">Вы зарабатываете x2 очков</string>
     <string name="edit_device_name">Изменить имя устройства</string>
+    <string name="edit_network_name">Изменить имя сети</string>
     <string name="edit_profile">Редактировать профиль</string>
     <string name="edit_referral_code">Изменить реферальный код</string>
     <string name="edit_split_rule">Изменить правило разделения</string>
@@ -179,6 +185,7 @@
     <string name="google_auth_btn_text">Войти через Google</string>
     <string name="guest">Гость</string>
     <string name="how_are_we_doing">Как наши успехи?</string>
+    <string name="identity_key_hash_copied">Хеш ключа идентификации скопирован</string>
     <string name="ignore_battery_optimizations">Игнорировать оптимизацию батареи</string>
     <string name="include_app">Направить через VPN</string>
     <string name="include_app_description">Туннель используют только включённые приложения.</string>
@@ -219,12 +226,31 @@
     <string name="make_default">Сделать по умолчанию</string>
     <string name="manage_subscription">Управление подпиской</string>
     <string name="member">Участник</string>
+    <string name="mock_location_active">Синхронизация: %1$s</string>
+    <string name="mock_location_disclosure_detectable">Приложения могут определить, что местоположение фиктивное. Банковские приложения, сервисы такси и доставки, а также некоторые игры могут отказаться работать, пока эта функция включена.</string>
+    <string name="mock_location_disclosure_device_wide">Это изменяет местоположение, которое видят все приложения на вашем устройстве, а не только URnetwork.</string>
+    <string name="mock_location_disclosure_turn_off_first">Отключите эту функцию в URnetwork, прежде чем выключать параметры разработчика, снимать выбор URnetwork или удалять приложение — иначе местоположение устройства может остаться замороженным до перезагрузки.</string>
+    <string name="mock_location_error_cleanup_required">URnetwork не удалось убрать фиктивное местоположение. Снова выберите URnetwork в параметрах разработчика и отключите эту функцию или перезагрузите устройство.</string>
+    <string name="mock_location_guide_intro">Когда эта функция включена, приложения на этом устройстве видят вместо вашего реального местоположения локацию провайдера, к которому вы подключены дольше всего.</string>
+    <string name="mock_location_guide_title">Синхронизация местоположения устройства</string>
+    <string name="mock_location_needs_setup">Требуется настройка</string>
+    <string name="mock_location_open_about_phone">Открыть «О телефоне»</string>
+    <string name="mock_location_open_developer_options">Открыть параметры разработчика</string>
+    <string name="mock_location_open_location_settings">Открыть настройки местоположения</string>
+    <string name="mock_location_ready">Готово. Включите переключатель, чтобы синхронизировать местоположение устройства с провайдером, подключенным дольше всего.</string>
+    <string name="mock_location_settings_row">Синхронизация местоположения устройства</string>
+    <string name="mock_location_step_developer_options">Включите параметры разработчика: откройте «О телефоне» и семь раз нажмите на «Номер сборки».</string>
+    <string name="mock_location_step_location_services">Включите «Местоположение» в настройках системы, чтобы приложения могли получать местоположение.</string>
+    <string name="mock_location_step_select_app">В параметрах разработчика нажмите «Выбрать приложение для фиктивных местоположений» и выберите URnetwork.</string>
+    <string name="mock_location_waiting_for_provider">Ожидание локации провайдера</string>
+    <string name="multiple_ips">Несколько IP</string>
     <string name="multiplier">Множитель</string>
     <string name="name_label">Имя</string>
     <string name="name_placeholder">Ваше имя</string>
     <string name="need_more_data_faster">Нужно больше данных и выше скорость?</string>
     <string name="net_points_earned">заработано очков (нетто)</string>
     <string name="net_provided">Предоставлено (нетто)</string>
+    <string name="network">Сеть</string>
     <string name="network_api_api_url_help">Оставьте пустым, чтобы вывести из домена сети.</string>
     <string name="network_api_api_url_label">URL API (необязательно)</string>
     <string name="network_api_apply">Применить API сети</string>
@@ -284,19 +310,35 @@
     <string name="payout_wallets">Кошельки для выплат</string>
     <string name="payouts">Выплаты</string>
     <string name="payouts_amount_threshold">Выплаты происходят каждое воскресенье в 00:00 UTC и требуют достижения минимального порога USDC.</string>
+    <string name="peer_count_one">1 узел</string>
+    <string name="peer_count_other">%d узлов</string>
     <string name="pending_data_key">В ожидании</string>
     <string name="pending_mb_provided">В ожидании: предоставлено %1$s МБ</string>
     <string name="pending_payout">Ожидаемая выплата</string>
+    <string name="pin_app">Закрепить за одним провайдером</string>
+    <string name="pin_app_description">Удерживает все соединения этого приложения на одном провайдере, чтобы его API и изображения использовали один IP-адрес. Подходит для приложений, содержимое которых не загружается через VPN</string>
+    <string name="pinned">Закреплено</string>
     <string name="plan">Тариф</string>
     <string name="please_try_again">Пожалуйста, попробуйте снова.</string>
     <string name="please_wait">Пожалуйста, подождите несколько минут и попробуйте снова.</string>
     <string name="points_breakdown">Разбивка очков</string>
+    <string name="post_quantum_encryption">Постквантовое шифрование</string>
+    <string name="post_quantum_encryption_fallback_note">Резервный режим включён (временно)</string>
+    <string name="post_quantum_identity">Постквантовая идентификация</string>
+    <string name="post_quantum_identity_explanation">Ваш ключ идентификации хранится локально на этом устройстве. Если ключ какого-либо узла отличается от сохранённого локально, это значит, что оператору сети нельзя доверять.</string>
     <string name="private_network">Частная сеть</string>
     <string name="processing_payment">Обработка платежа</string>
     <string name="profile">Профиль</string>
     <string name="promoted_locations">Продвигаемые локации</string>
     <string name="provide_mode">Режим предоставления</string>
+    <string name="provider_connected_duration_hours">%1$d ч %2$d мин</string>
+    <string name="provider_connected_duration_minutes">%1$d мин</string>
+    <string name="provider_connected_duration_seconds">%1$d с</string>
     <string name="provider_contracts">Контракты провайдера</string>
+    <string name="provider_identities">Идентификаторы провайдеров</string>
+    <string name="provider_location_unknown">Локация неизвестна</string>
+    <string name="provider_locations_empty">Нет подключенных провайдеров</string>
+    <string name="provider_locations_title">Локации провайдеров</string>
     <string name="provider_statistics">Статистика провайдера</string>
     <string name="providing_disabled">Предоставление отключено</string>
     <string name="ready_to_connect">Готово к подключению</string>
@@ -313,14 +355,16 @@
     <string name="refer_friends_detail">Больше подключений помогают нашему сообществу оставаться анонимным (и помогают вам зарабатывать!)</string>
     <string name="refer_friends_header">Пригласить друзей</string>
     <string name="refer_friends_increase_free_data">Пригласите друзей и наблюдайте, как увеличивается ваш бесплатный трафик.</string>
-    <string name="refer_friends_perks">Вы получаете +%1$s GiB/месяц навсегда</string>
-    <string name="refer_friends_they_get_data">Ваш друг получает +%1$s GiB/месяц навсегда</string>
+    <string name="refer_friends_perks">Вы получаете +%1$s GiB/день навсегда</string>
+    <string name="refer_friends_they_get_data">Ваш друг получает +%1$s GiB/день навсегда</string>
     <string name="referral">Реферал</string>
-    <string name="referral_bonus">+%1$d GiB/месяц</string>
+    <string name="referral_bonus">+%1$d GiB/день</string>
     <string name="referral_bonus_applied">Реферальный бонус применен</string>
     <string name="referral_code">Реферальный код</string>
     <string name="referral_code_capped">Этот код уже был использован</string>
     <string name="referral_network">Реферальная сеть</string>
+    <string name="referral_royal_welcome">Королевский приём!</string>
+    <string name="referral_royal_welcome_detail">Реферал подтверждён — вы и ваш друг получаете по +%1$d GiB бесплатных данных в день, навсегда.</string>
     <string name="referral_royalty">Вы — звезда рефералов!</string>
     <string name="referral_share_message">Присоединяйтесь ко мне в URnetwork! Установите приложение и введите реферальный код %1$s при регистрации.</string>
     <string name="regions">Регионы</string>
@@ -354,6 +398,7 @@
     <string name="see_world_content">Смотрите контент\nсо всего мира</string>
     <string name="see_world_content_description">Смотрите контент со всего мира с URnetwork</string>
     <string name="seeker_token_verified">Токен Seeker проверен!</string>
+    <string name="select_location_provider_content_description">Глобус: выбрать локацию провайдера</string>
     <string name="send">Отправить</string>
     <string name="send_feedback">Отправьте нам свой отзыв напрямую или присоединяйтесь к нашему %1$s для прямой поддержки.</string>
     <string name="send_product_updates">Присылайте мне обновления продукта</string>
@@ -390,9 +435,13 @@
     <string name="supporter">Pro</string>
     <string name="switch_account">Сменить аккаунт</string>
     <string name="switch_account_details">Вы хотите отключиться от %1$s и сменить аккаунт?</string>
+    <string name="sync_device_location_with_oldest_provider">Синхронизировать местоположение устройства с провайдером, подключенным дольше всего</string>
+    <string name="sync_device_location_with_provider">Синхронизировать местоположение устройства с провайдером</string>
     <string name="tap_to_connect">Нажмите для подключения</string>
     <string name="tap_to_refetch">Нажмите, чтобы повторить попытку получения локации.</string>
     <string name="this_region">этом регионе</string>
+    <string name="tile_status_connected">Подключено</string>
+    <string name="tile_status_disconnected">Отключено</string>
     <string name="title_login">Вход</string>
     <string name="top_matches">Лучшие совпадения</string>
     <string name="total_account_points">Всего очков аккаунта</string>
@@ -421,6 +470,7 @@
     <string name="upgrade_now">Улучшить сейчас</string>
     <string name="upgrade_subscription">Улучшить подписку</string>
     <string name="urnetwork_intro_description">URnetwork — самая локальная и самая приватная сеть на планете.</string>
+    <string name="use_most_stable_provider">Используется самый стабильный провайдер</string>
     <string name="use_recommended_settings">Использовать рекомендованные настройки</string>
     <string name="used_data_key">Использовано</string>
     <string name="user_auth_label">Email или телефон</string>
@@ -431,6 +481,7 @@
     <string name="verify_seeker_token_btn">Проверить токен Seeker Pre-Order</string>
     <string name="verify_send_error">Ошибка</string>
     <string name="version_info">Информация о версии и сборке</string>
+    <string name="via_exit">через %1$s</string>
     <string name="wallet">Кошелек</string>
     <string name="wallet_address">Адрес кошелька</string>
     <string name="wallet_address_label">Адрес кошелька</string>
@@ -473,6 +524,18 @@
         <item quantity="many">%1$d хостов</item>
         <item quantity="other">%1$d хоста</item>
     </plurals>
+    <plurals name="ip_count">
+        <item quantity="one">%1$d IP-адрес</item>
+        <item quantity="few">%1$d IP-адреса</item>
+        <item quantity="many">%1$d IP-адресов</item>
+        <item quantity="other">%1$d IP-адресов</item>
+    </plurals>
+    <plurals name="network_peer_count">
+        <item quantity="one">У вас %1$d другое устройство онлайн</item>
+        <item quantity="few">У вас %1$d других устройства онлайн</item>
+        <item quantity="many">У вас %1$d других устройств онлайн</item>
+        <item quantity="other">У вас %1$d других устройств онлайн</item>
+    </plurals>
     <plurals name="new_items_count">
         <item quantity="one">%1$d новый</item>
         <item quantity="few">%1$d новых</item>
@@ -490,6 +553,24 @@
         <item quantity="few">%1$d провайдера</item>
         <item quantity="many">%1$d провайдеров</item>
         <item quantity="other">%1$d провайдеров</item>
+    </plurals>
+    <plurals name="referral_celebration_detail">
+        <item quantity="one">Друг только что присоединился к URnetwork по вашему коду. Вы оба получаете +%2$d GiB бесплатных данных в день — навсегда.</item>
+        <item quantity="few">%1$d друга только что присоединились к URnetwork по вашему коду. Каждый приносит вам +%2$d GiB бесплатных данных в день — навсегда.</item>
+        <item quantity="many">%1$d друзей только что присоединились к URnetwork по вашему коду. Каждый приносит вам +%2$d GiB бесплатных данных в день — навсегда.</item>
+        <item quantity="other">%1$d друзей только что присоединились к URnetwork по вашему коду. Каждый приносит вам +%2$d GiB бесплатных данных в день — навсегда.</item>
+    </plurals>
+    <plurals name="referral_crowned_congrats">
+        <item quantity="one">Присоединился друг — вы получаете +%2$d GiB в день, навсегда.</item>
+        <item quantity="few">Присоединились %1$d друга — вы получаете +%2$d GiB в день, навсегда.</item>
+        <item quantity="many">Присоединились %1$d друзей — вы получаете +%2$d GiB в день, навсегда.</item>
+        <item quantity="other">Присоединились %1$d друзей — вы получаете +%2$d GiB в день, навсегда.</item>
+    </plurals>
+    <plurals name="referral_toast_joined">
+        <item quantity="one">Друг присоединился по вашему коду! +%2$d GiB в день, навсегда.</item>
+        <item quantity="few">%1$d друга присоединились по вашему коду! По +%2$d GiB в день за каждого, навсегда.</item>
+        <item quantity="many">%1$d друзей присоединились по вашему коду! По +%2$d GiB в день за каждого, навсегда.</item>
+        <item quantity="other">%1$d друзей присоединились по вашему коду! По +%2$d GiB в день за каждого, навсегда.</item>
     </plurals>
     <plurals name="split_rule_count">
         <item quantity="one">%1$d правило разделения</item>

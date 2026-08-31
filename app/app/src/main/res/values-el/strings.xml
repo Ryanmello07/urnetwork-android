@@ -20,11 +20,13 @@
     <string name="api_error_contact">Αν το πρόβλημα παραμένει, επικοινωνήστε μαζί μας στο %1$s ή μπείτε στο %2$s μας για άμεση υποστήριξη.</string>
     <string name="app_excluded_toast">Η εφαρμογή %1$s θα παρακάμπτει το VPN</string>
     <string name="app_included_toast">Η εφαρμογή %1$s θα δρομολογείται μέσω του VPN</string>
+    <string name="app_pinned_toast">Η εφαρμογή %1$s θα χρησιμοποιεί έναν πάροχο</string>
     <string name="app_split_active_exclude">Ενεργή εξαίρεση — οι εξαιρούμενες εφαρμογές παρακάμπτουν το VPN</string>
     <string name="app_split_active_include">Ενεργή συμπερίληψη — μόνο οι συμπεριλαμβανόμενες εφαρμογές χρησιμοποιούν το VPN</string>
     <string name="app_split_active_none">Χωρίς διαχωρισμό εφαρμογών — όλες οι εφαρμογές χρησιμοποιούν το VPN</string>
     <string name="app_split_precedence_note">Οι συμπεριλαμβανόμενες εφαρμογές έχουν προτεραιότητα: αν συμπεριληφθεί έστω μία εφαρμογή, μόνο αυτές χρησιμοποιούν το VPN και οι εξαιρέσεις δεν ισχύουν.</string>
     <string name="app_split_rules">Κανόνες διαχωρισμού εφαρμογών</string>
+    <string name="app_split_starter">0 εφαρμογές σε διαχωρισμό</string>
     <string name="apply_bonus">Εφαρμογή μπόνους</string>
     <string name="apps">Εφαρμογές</string>
     <string name="are_you_sure_delete_account">Είστε βέβαιοι ότι θέλετε να διαγράψετε τον λογαριασμό σας;</string>
@@ -65,6 +67,7 @@
     <string name="change">Αλλαγή</string>
     <string name="change_network_api">Αλλαγή API δικτύου</string>
     <string name="change_network_api_title">Αλλαγή API δικτύου</string>
+    <string name="change_network_name_hint">Πατήστε το εικονίδιο επεξεργασίας για να αλλάξετε το όνομα δικτύου σας</string>
     <string name="change_password">Αλλαγή κωδικού πρόσβασης</string>
     <string name="check_internet">Ελέγξτε τη σύνδεση στο διαδίκτυο</string>
     <string name="check_ip">Έλεγχος της διεύθυνσης IP μου</string>
@@ -77,6 +80,7 @@
     <string name="cities">Πόλεις</string>
     <string name="claim">Απαίτηση</string>
     <string name="claim_multiplier">Αξιώστε τον πολλαπλασιαστή</string>
+    <string name="claim_network_name_hint">Αποκτήστε ένα προσαρμοσμένο όνομα δικτύου που θα αντικαταστήσει το αυτόματα δημιουργημένο</string>
     <string name="client_contracts">Συμβόλαια πελάτη</string>
     <string name="client_id_copied">Το ID πελάτη αντιγράφηκε</string>
     <string name="client_statistics">Στατιστικά πελάτη</string>
@@ -102,6 +106,7 @@
     <string name="contract_stack_max">μέγ. %1$s</string>
     <string name="contracts_appear_connected">Τα συμβόλαια εμφανίζονται εδώ όταν είστε συνδεδεμένοι.</string>
     <string name="contracts_appear_providing">Τα συμβόλαια εμφανίζονται εδώ όταν παρέχετε.</string>
+    <string name="copied">Αντιγράφηκε!</string>
     <string name="copy">Αντιγραφή</string>
     <string name="copy_auth_code">Αντιγραφή κωδικού ταυτοποίησης</string>
     <string name="countries">Χώρες</string>
@@ -148,6 +153,7 @@
     <string name="earnings">Κέρδη</string>
     <string name="earnings_doubled">Κερδίζετε x2 πόντους</string>
     <string name="edit_device_name">Επεξεργασία ονόματος συσκευής</string>
+    <string name="edit_network_name">Επεξεργασία ονόματος δικτύου</string>
     <string name="edit_profile">Επεξεργασία προφίλ</string>
     <string name="edit_referral_code">Επεξεργασία κωδικού παραπομπής</string>
     <string name="edit_split_rule">Επεξεργασία κανόνα διαχωρισμού</string>
@@ -179,6 +185,7 @@
     <string name="google_auth_btn_text">Συνδέσου με Google</string>
     <string name="guest">Επισκέπτης</string>
     <string name="how_are_we_doing">Πώς τα πάμε;</string>
+    <string name="identity_key_hash_copied">Το hash του κλειδιού ταυτότητας αντιγράφηκε</string>
     <string name="ignore_battery_optimizations">Παράβλεψη βελτιστοποιήσεων μπαταρίας</string>
     <string name="include_app">Δρομολόγηση μέσω VPN</string>
     <string name="include_app_description">Μόνο οι συμπεριλαμβανόμενες εφαρμογές χρησιμοποιούν το τούνελ.</string>
@@ -219,12 +226,31 @@
     <string name="make_default">Ορισμός ως προεπιλογή</string>
     <string name="manage_subscription">Διαχείριση συνδρομής</string>
     <string name="member">Μέλος</string>
+    <string name="mock_location_active">Συγχρονισμός με %1$s</string>
+    <string name="mock_location_disclosure_detectable">Οι εφαρμογές μπορούν να αντιληφθούν ότι η τοποθεσία είναι εικονική. Εφαρμογές τραπεζών, μεταφορών, παράδοσης και ορισμένα παιχνίδια ενδέχεται να αρνηθούν να λειτουργήσουν όσο αυτό είναι ενεργό.</string>
+    <string name="mock_location_disclosure_device_wide">Αυτό αλλάζει την τοποθεσία που αναφέρεται σε κάθε εφαρμογή στη συσκευή σας, όχι μόνο στο URnetwork.</string>
+    <string name="mock_location_disclosure_turn_off_first">Απενεργοποιήστε το στο URnetwork πριν απενεργοποιήσετε τις επιλογές προγραμματιστή, καταργήσετε την επιλογή του URnetwork ή απεγκαταστήσετε την εφαρμογή — διαφορετικά η τοποθεσία της συσκευής σας μπορεί να μείνει παγωμένη μέχρι την επανεκκίνηση.</string>
+    <string name="mock_location_error_cleanup_required">Το URnetwork δεν μπόρεσε να καταργήσει την εικονική τοποθεσία. Επιλέξτε ξανά το URnetwork στις επιλογές προγραμματιστή και απενεργοποιήστε το, ή επανεκκινήστε τη συσκευή σας.</string>
+    <string name="mock_location_guide_intro">Όταν είναι ενεργοποιημένο, οι εφαρμογές σε αυτήν τη συσκευή βλέπουν την τοποθεσία του παρόχου με τον οποίο είστε συνδεδεμένοι το περισσότερο διάστημα, αντί για την πραγματική σας τοποθεσία.</string>
+    <string name="mock_location_guide_title">Συγχρονισμός τοποθεσίας συσκευής</string>
+    <string name="mock_location_needs_setup">Απαιτείται ρύθμιση</string>
+    <string name="mock_location_open_about_phone">Άνοιγμα «Πληροφορίες τηλεφώνου»</string>
+    <string name="mock_location_open_developer_options">Άνοιγμα επιλογών προγραμματιστή</string>
+    <string name="mock_location_open_location_settings">Άνοιγμα ρυθμίσεων τοποθεσίας</string>
+    <string name="mock_location_ready">Έτοιμο. Ενεργοποιήστε τον διακόπτη για να συγχρονίσετε την τοποθεσία της συσκευής σας με τον παλαιότερο συνδεδεμένο πάροχο.</string>
+    <string name="mock_location_settings_row">Συγχρονισμός τοποθεσίας συσκευής</string>
+    <string name="mock_location_step_developer_options">Ενεργοποιήστε τις επιλογές προγραμματιστή: ανοίξτε τις «Πληροφορίες τηλεφώνου» και πατήστε επτά φορές τον «Αριθμό έκδοσης».</string>
+    <string name="mock_location_step_location_services">Ενεργοποιήστε την «Τοποθεσία» στις ρυθμίσεις συστήματος, ώστε οι εφαρμογές να λαμβάνουν την τοποθεσία.</string>
+    <string name="mock_location_step_select_app">Στις επιλογές προγραμματιστή, πατήστε «Επιλογή εφαρμογής εικονικής τοποθεσίας» και επιλέξτε URnetwork.</string>
+    <string name="mock_location_waiting_for_provider">Αναμονή για τοποθεσία παρόχου</string>
+    <string name="multiple_ips">Πολλαπλές IP</string>
     <string name="multiplier">Πολλαπλασιαστής</string>
     <string name="name_label">Όνομα</string>
     <string name="name_placeholder">Το όνομά σας</string>
     <string name="need_more_data_faster">Χρειάζεστε περισσότερα δεδομένα, πιο γρήγορα;</string>
     <string name="net_points_earned">Καθαροί πόντοι που κερδήθηκαν</string>
     <string name="net_provided">Παρεχόμενο Δίκτυο</string>
+    <string name="network">Δίκτυο</string>
     <string name="network_api_api_url_help">Αφήστε το κενό για να προκύψει από τον τομέα δικτύου.</string>
     <string name="network_api_api_url_label">URL του API (προαιρετικό)</string>
     <string name="network_api_apply">Εφαρμογή API δικτύου</string>
@@ -284,19 +310,35 @@
     <string name="payout_wallets">Πορτοφόλια πληρωμής</string>
     <string name="payouts">Πληρωμές</string>
     <string name="payouts_amount_threshold">Οι πληρωμές πραγματοποιούνται κάθε Κυριακή στις 00:00 UTC και απαιτούν την επίτευξη ενός ελάχιστου ορίου USDC.</string>
+    <string name="peer_count_one">1 κόμβος</string>
+    <string name="peer_count_other">%d κόμβοι</string>
     <string name="pending_data_key">Σε εκκρεμότητα</string>
     <string name="pending_mb_provided">Σε εκκρεμότητα: παρέχονται %1$s MB</string>
     <string name="pending_payout">Εκκρεμής πληρωμή</string>
+    <string name="pin_app">Καρφίτσωμα σε έναν πάροχο</string>
+    <string name="pin_app_description">Διατηρεί όλες τις συνδέσεις αυτής της εφαρμογής σε έναν πάροχο, ώστε το API και οι εικόνες της να μοιράζονται μία διεύθυνση IP. Χρησιμοποιήστε το για εφαρμογές των οποίων το περιεχόμενο δεν φορτώνει μέσω του VPN</string>
+    <string name="pinned">Καρφιτσωμένο</string>
     <string name="plan">Πρόγραμμα</string>
     <string name="please_try_again">Παρακαλώ δοκιμάστε ξανά.</string>
     <string name="please_wait">Περιμένετε λίγα λεπτά και προσπαθήστε ξανά.</string>
     <string name="points_breakdown">Ανάλυση πόντων</string>
+    <string name="post_quantum_encryption">Μετακβαντική κρυπτογράφηση</string>
+    <string name="post_quantum_encryption_fallback_note">Εφεδρική λειτουργία ενεργή (προσωρινά)</string>
+    <string name="post_quantum_identity">Μετακβαντική ταυτότητα</string>
+    <string name="post_quantum_identity_explanation">Το κλειδί ταυτότητάς σας αποθηκεύεται τοπικά σε αυτή τη συσκευή. Αν το κλειδί κάποιου κόμβου εμφανίζεται διαφορετικό από το τοπικά αποθηκευμένο κλειδί του, σημαίνει ότι δεν μπορείτε να εμπιστευτείτε τον διαχειριστή του δικτύου.</string>
     <string name="private_network">Ιδιωτικό δίκτυο</string>
     <string name="processing_payment">Επεξεργασία πληρωμής</string>
     <string name="profile">Προφίλ</string>
     <string name="promoted_locations">Προωθούμενες τοποθεσίες</string>
     <string name="provide_mode">Λειτουργία παροχής</string>
+    <string name="provider_connected_duration_hours">%1$d ώ. %2$d λ.</string>
+    <string name="provider_connected_duration_minutes">%1$d λ.</string>
+    <string name="provider_connected_duration_seconds">%1$d δ.</string>
     <string name="provider_contracts">Συμβόλαια παρόχου</string>
+    <string name="provider_identities">Ταυτότητες παρόχων</string>
+    <string name="provider_location_unknown">Άγνωστη τοποθεσία</string>
+    <string name="provider_locations_empty">Δεν υπάρχουν συνδεδεμένοι πάροχοι</string>
+    <string name="provider_locations_title">Τοποθεσίες παρόχων</string>
     <string name="provider_statistics">Στατιστικά παρόχου</string>
     <string name="providing_disabled">Η παροχή είναι απενεργοποιημένη</string>
     <string name="ready_to_connect">Έτοιμο για σύνδεση</string>
@@ -313,14 +355,16 @@
     <string name="refer_friends_detail">Περισσότερες συνδέσεις βοηθούν την κοινότητά μας να παραμένει ανώνυμη (και σας βοηθούν να κερδίσετε χρήματα!)</string>
     <string name="refer_friends_header">Προσκαλέστε φίλους</string>
     <string name="refer_friends_increase_free_data">Προτείνετε μερικούς φίλους και δείτε τα δωρεάν δεδομένα σας να αυξάνονται.</string>
-    <string name="refer_friends_perks">Παίρνεις +%1$s GiB/μήνα για πάντα</string>
-    <string name="refer_friends_they_get_data">Ο φίλος σου παίρνει +%1$s GiB/μήνα για πάντα</string>
+    <string name="refer_friends_perks">Παίρνεις +%1$s GiB/ημέρα για πάντα</string>
+    <string name="refer_friends_they_get_data">Ο φίλος σου παίρνει +%1$s GiB/ημέρα για πάντα</string>
     <string name="referral">Παραπομπή</string>
-    <string name="referral_bonus">+%1$d GiB/μήνα</string>
+    <string name="referral_bonus">+%1$d GiB/ημέρα</string>
     <string name="referral_bonus_applied">Εφαρμόστηκε μπόνους παραπομπής</string>
     <string name="referral_code">Κωδικός παραπομπής</string>
     <string name="referral_code_capped">Αυτός ο κωδικός έχει εξαντληθεί</string>
     <string name="referral_network">Δίκτυο παραπομπών</string>
+    <string name="referral_royal_welcome">Βασιλικό καλωσόρισμα!</string>
+    <string name="referral_royal_welcome_detail">Η παραπομπή επιβεβαιώθηκε — εσύ και ο φίλος σου παίρνετε από +%1$d GiB/ημέρα δωρεάν δεδομένα, για πάντα.</string>
     <string name="referral_royalty">Είστε αστέρι στις παραπομπές!</string>
     <string name="referral_share_message">Έλα μαζί μου στο URnetwork! Κατέβασε την εφαρμογή και βάλε τον κωδικό παραπομπής %1$s στην εγγραφή σου.</string>
     <string name="regions">Περιοχές</string>
@@ -354,6 +398,7 @@
     <string name="see_world_content">Δείτε όλο\nτο περιεχόμενο\nτου κόσμου</string>
     <string name="see_world_content_description">Δείτε όλο το περιεχόμενο του κόσμου με το URnetwork</string>
     <string name="seeker_token_verified">Το διακριτικό Seeker επαληθεύτηκε!</string>
+    <string name="select_location_provider_content_description">Υδρόγειος: επιλογή τοποθεσίας παρόχου</string>
     <string name="send">Αποστολή</string>
     <string name="send_feedback">Στείλτε μας τα σχόλιά σας απευθείας ή μπείτε στο %1$s μας για άμεση υποστήριξη.</string>
     <string name="send_product_updates">Στείλτε μου ενημερώσεις προϊόντων</string>
@@ -390,9 +435,13 @@
     <string name="supporter">Pro</string>
     <string name="switch_account">Αλλαγή λογαριασμού</string>
     <string name="switch_account_details">Θέλετε να αποσυνδεθείτε από το %1$s και να αλλάξετε λογαριασμούς;</string>
+    <string name="sync_device_location_with_oldest_provider">Συγχρονισμός τοποθεσίας συσκευής με τον παλαιότερο συνδεδεμένο πάροχο</string>
+    <string name="sync_device_location_with_provider">Συγχρονισμός τοποθεσίας συσκευής με τον πάροχο</string>
     <string name="tap_to_connect">Πατήστε για σύνδεση</string>
     <string name="tap_to_refetch">Πατήστε για να προσπαθήσετε να εντοπίσετε την τοποθεσία.</string>
     <string name="this_region">Αυτή η περιοχή</string>
+    <string name="tile_status_connected">Συνδεδεμένο</string>
+    <string name="tile_status_disconnected">Αποσυνδεδεμένο</string>
     <string name="title_login">Σύνδεση</string>
     <string name="top_matches">Κορυφαίες αντιστοιχίες</string>
     <string name="total_account_points">Σύνολο πόντων λογαριασμού</string>
@@ -421,6 +470,7 @@
     <string name="upgrade_now">Αναβάθμιση τώρα</string>
     <string name="upgrade_subscription">Αναβάθμιση Συνδρομής</string>
     <string name="urnetwork_intro_description">Το URnetwork είναι το πιο τοπικό και πιο ιδιωτικό δίκτυο στον πλανήτη.</string>
+    <string name="use_most_stable_provider">Χρησιμοποιεί τον πιο σταθερό πάροχο</string>
     <string name="use_recommended_settings">Χρήση προτεινόμενων ρυθμίσεων</string>
     <string name="used_data_key">Χρησιμοποιημένα</string>
     <string name="user_auth_label">Email ή τηλέφωνο</string>
@@ -431,6 +481,7 @@
     <string name="verify_seeker_token_btn">Επαληθεύστε το Seeker Pre-Order Token</string>
     <string name="verify_send_error">Σφάλμα</string>
     <string name="version_info">Πληροφορίες έκδοσης και κατασκευής</string>
+    <string name="via_exit">μέσω %1$s</string>
     <string name="wallet">Πορτοφόλι</string>
     <string name="wallet_address">Διεύθυνση πορτοφολιού</string>
     <string name="wallet_address_label">Διεύθυνση πορτοφολιού</string>
@@ -463,6 +514,14 @@
         <item quantity="one">%1$d host</item>
         <item quantity="other">%1$d hosts</item>
     </plurals>
+    <plurals name="ip_count">
+        <item quantity="one">%1$d IP</item>
+        <item quantity="other">%1$d IP</item>
+    </plurals>
+    <plurals name="network_peer_count">
+        <item quantity="one">Έχετε %1$d ακόμη συσκευή σε σύνδεση</item>
+        <item quantity="other">Έχετε %1$d ακόμη συσκευές σε σύνδεση</item>
+    </plurals>
     <plurals name="new_items_count">
         <item quantity="one">%1$d νέο</item>
         <item quantity="other">%1$d νέα</item>
@@ -474,6 +533,18 @@
     <plurals name="provider_count">
         <item quantity="one">%1$d πάροχος</item>
         <item quantity="other">%1$d πάροχοι</item>
+    </plurals>
+    <plurals name="referral_celebration_detail">
+        <item quantity="one">Ένας φίλος μόλις μπήκε στο URnetwork με τον κωδικό σου. Κερδίζετε και οι δύο +%2$d GiB δωρεάν δεδομένα την ημέρα — για πάντα.</item>
+        <item quantity="other">%1$d φίλοι μόλις μπήκαν στο URnetwork με τον κωδικό σου. Ο καθένας σού αποφέρει +%2$d GiB δωρεάν δεδομένα την ημέρα — για πάντα.</item>
+    </plurals>
+    <plurals name="referral_crowned_congrats">
+        <item quantity="one">Ένας φίλος μπήκε — κερδίζεις +%2$d GiB/ημέρα, για πάντα.</item>
+        <item quantity="other">%1$d φίλοι μπήκαν — κερδίζεις +%2$d GiB/ημέρα, για πάντα.</item>
+    </plurals>
+    <plurals name="referral_toast_joined">
+        <item quantity="one">Ένας φίλος μπήκε με τον κωδικό σου! +%2$d GiB/ημέρα, για πάντα.</item>
+        <item quantity="other">%1$d φίλοι μπήκαν με τον κωδικό σου! +%2$d GiB/ημέρα ο καθένας, για πάντα.</item>
     </plurals>
     <plurals name="split_rule_count">
         <item quantity="one">%1$d κανόνας διαχωρισμού</item>

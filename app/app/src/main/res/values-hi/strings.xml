@@ -20,11 +20,13 @@
     <string name="api_error_contact">यदि समस्या बनी रहती है, तो %1$s पर हमसे संपर्क करें या सीधे समर्थन के लिए हमारे %2$s से जुड़ें।</string>
     <string name="app_excluded_toast">%1$s VPN को बायपास करेगा</string>
     <string name="app_included_toast">%1$s VPN से रूट होगा</string>
+    <string name="app_pinned_toast">%1$s एक ही प्रदाता का उपयोग करेगा</string>
     <string name="app_split_active_exclude">एक्सक्लूड चालू — बाहर रखे गए ऐप्स VPN को बायपास करते हैं</string>
     <string name="app_split_active_include">इनक्लूड चालू — केवल शामिल ऐप्स ही VPN का उपयोग करते हैं</string>
     <string name="app_split_active_none">कोई ऐप स्प्लिट नहीं — सभी ऐप्स VPN का उपयोग करते हैं</string>
     <string name="app_split_precedence_note">शामिल ऐप्स को प्राथमिकता मिलती है: यदि कोई भी ऐप शामिल है, तो केवल शामिल ऐप्स ही VPN का उपयोग करते हैं और बाहर रखने का कोई असर नहीं होता।</string>
     <string name="app_split_rules">ऐप स्प्लिट नियम</string>
+    <string name="app_split_starter">0 स्प्लिट ऐप्स</string>
     <string name="apply_bonus">बोनस लागू करें</string>
     <string name="apps">ऐप्स</string>
     <string name="are_you_sure_delete_account">क्या आप वाकई अपना अकाउंट डिलीट करना चाहते हैं?</string>
@@ -65,6 +67,7 @@
     <string name="change">बदलें</string>
     <string name="change_network_api">नेटवर्क API बदलें</string>
     <string name="change_network_api_title">नेटवर्क API बदलें</string>
+    <string name="change_network_name_hint">अपना नेटवर्क नाम बदलने के लिए संपादन आइकॉन पर टैप करें</string>
     <string name="change_password">पासवर्ड बदलें</string>
     <string name="check_internet">अपना इंटरनेट कनेक्शन जांचें</string>
     <string name="check_ip">मेरा IP जांचें</string>
@@ -77,6 +80,7 @@
     <string name="cities">शहर</string>
     <string name="claim">दावा करें</string>
     <string name="claim_multiplier">गुणक का दावा करें</string>
+    <string name="claim_network_name_hint">अपने-आप बने नाम की जगह लेने के लिए कस्टम नेटवर्क नाम चुनें</string>
     <string name="client_contracts">क्लाइंट कॉन्ट्रैक्ट</string>
     <string name="client_id_copied">क्लाइंट ID कॉपी किया गया</string>
     <string name="client_statistics">क्लाइंट आँकड़े</string>
@@ -102,6 +106,7 @@
     <string name="contract_stack_max">अधिकतम %1$s</string>
     <string name="contracts_appear_connected">कनेक्ट होने पर कॉन्ट्रैक्ट यहाँ दिखाई देंगे।</string>
     <string name="contracts_appear_providing">प्रदान करते समय कॉन्ट्रैक्ट यहाँ दिखाई देंगे।</string>
+    <string name="copied">कॉपी हो गया!</string>
     <string name="copy">कॉपी करें</string>
     <string name="copy_auth_code">ऑथ कोड कॉपी करें</string>
     <string name="countries">देश</string>
@@ -148,6 +153,7 @@
     <string name="earnings">आय</string>
     <string name="earnings_doubled">आप x2 अंक कमा रहे हैं</string>
     <string name="edit_device_name">डिवाइस का नाम संपादित करें</string>
+    <string name="edit_network_name">नेटवर्क का नाम संपादित करें</string>
     <string name="edit_profile">प्रोफ़ाइल संपादित करें</string>
     <string name="edit_referral_code">रेफरल कोड संपादित करें</string>
     <string name="edit_split_rule">स्प्लिट नियम संपादित करें</string>
@@ -179,6 +185,7 @@
     <string name="google_auth_btn_text">Google से लॉग इन करें</string>
     <string name="guest">अतिथि</string>
     <string name="how_are_we_doing">हम कैसा कर रहे हैं?</string>
+    <string name="identity_key_hash_copied">पहचान कुंजी का हैश कॉपी किया गया</string>
     <string name="ignore_battery_optimizations">बैटरी ऑप्टिमाइज़ेशन को अनदेखा करें</string>
     <string name="include_app">VPN से रूट करें</string>
     <string name="include_app_description">केवल शामिल ऐप्स ही टनल का उपयोग करते हैं।</string>
@@ -219,12 +226,31 @@
     <string name="make_default">डिफ़ॉल्ट बनाएं</string>
     <string name="manage_subscription">सदस्यता प्रबंधित करें</string>
     <string name="member">सदस्य</string>
+    <string name="mock_location_active">%1$s के साथ सिंक हो रहा है</string>
+    <string name="mock_location_disclosure_detectable">ऐप्लिकेशन पहचान सकते हैं कि स्थान नकली है। बैंकिंग, राइड-हेलिंग, डिलीवरी और कुछ गेम ऐप्लिकेशन इसके चालू रहने पर काम करने से मना कर सकते हैं।</string>
+    <string name="mock_location_disclosure_device_wide">इससे आपके डिवाइस के हर ऐप्लिकेशन को दिखने वाला स्थान बदल जाता है, सिर्फ़ URnetwork को नहीं।</string>
+    <string name="mock_location_disclosure_turn_off_first">डेवलपर विकल्प बंद करने, URnetwork का चयन हटाने या ऐप्लिकेशन अनइंस्टॉल करने से पहले इसे URnetwork में बंद करें — वरना आपके डिवाइस का स्थान रीस्टार्ट करने तक अटका रह सकता है।</string>
+    <string name="mock_location_error_cleanup_required">URnetwork नकली स्थान नहीं हटा सका। डेवलपर विकल्प में URnetwork को फिर से चुनें और इसे बंद करें, या अपना डिवाइस रीस्टार्ट करें।</string>
+    <string name="mock_location_guide_intro">चालू होने पर, इस डिवाइस के ऐप्लिकेशन आपके असली स्थान के बजाय उस प्रदाता का स्थान देखते हैं जिससे आप सबसे लंबे समय से कनेक्ट हैं।</string>
+    <string name="mock_location_guide_title">डिवाइस का स्थान सिंक करें</string>
+    <string name="mock_location_needs_setup">सेटअप ज़रूरी है</string>
+    <string name="mock_location_open_about_phone">“फ़ोन के बारे में जानकारी” खोलें</string>
+    <string name="mock_location_open_developer_options">डेवलपर विकल्प खोलें</string>
+    <string name="mock_location_open_location_settings">जगह की जानकारी की सेटिंग खोलें</string>
+    <string name="mock_location_ready">तैयार है। अपने डिवाइस का स्थान सबसे लंबे समय से कनेक्ट प्रदाता के साथ सिंक करने के लिए टॉगल चालू करें।</string>
+    <string name="mock_location_settings_row">डिवाइस स्थान सिंक</string>
+    <string name="mock_location_step_developer_options">डेवलपर विकल्प चालू करें: “फ़ोन के बारे में जानकारी” खोलें और “बिल्ड नंबर” पर सात बार टैप करें।</string>
+    <string name="mock_location_step_location_services">सिस्टम सेटिंग में “जगह की जानकारी” चालू करें ताकि ऐप्लिकेशन को स्थान मिल सके।</string>
+    <string name="mock_location_step_select_app">डेवलपर विकल्प में, “मॉक लोकेशन ऐप चुनें” पर टैप करें और URnetwork चुनें।</string>
+    <string name="mock_location_waiting_for_provider">प्रदाता के स्थान की प्रतीक्षा हो रही है</string>
+    <string name="multiple_ips">एकाधिक IP</string>
     <string name="multiplier">गुणक</string>
     <string name="name_label">नाम</string>
     <string name="name_placeholder">आपका नाम</string>
     <string name="need_more_data_faster">क्या आपको अधिक डेटा, तेज़ी से चाहिए?</string>
     <string name="net_points_earned">अर्जित शुद्ध अंक</string>
     <string name="net_provided">प्रदान किया गया नेट</string>
+    <string name="network">नेटवर्क</string>
     <string name="network_api_api_url_help">नेटवर्क डोमेन से प्राप्त करने के लिए खाली छोड़ें।</string>
     <string name="network_api_api_url_label">API URL (वैकल्पिक)</string>
     <string name="network_api_apply">नेटवर्क API लागू करें</string>
@@ -284,19 +310,35 @@
     <string name="payout_wallets">पेआउट वॉलेट</string>
     <string name="payouts">भुगतान</string>
     <string name="payouts_amount_threshold">भुगतान हर रविवार 00:00 UTC पर होते हैं, और न्यूनतम USDC सीमा पूरी करनी होती है।</string>
+    <string name="peer_count_one">1 पीयर</string>
+    <string name="peer_count_other">%d पीयर</string>
     <string name="pending_data_key">लंबित</string>
     <string name="pending_mb_provided">लंबित: %1$s एमबी प्रदान किए गए</string>
     <string name="pending_payout">लंबित भुगतान</string>
+    <string name="pin_app">एक प्रदाता पर पिन करें</string>
+    <string name="pin_app_description">इस ऐप के सभी कनेक्शन एक ही प्रदाता पर रखता है, ताकि इसका API और इमेज एक ही IP पता साझा करें। उन ऐप्स के लिए उपयोग करें जिनकी सामग्री VPN के ज़रिए लोड नहीं होती</string>
+    <string name="pinned">पिन किया गया</string>
     <string name="plan">योजना</string>
     <string name="please_try_again">कृपया पुनः प्रयास करें।</string>
     <string name="please_wait">कृपया कुछ मिनट प्रतीक्षा करें और पुनः प्रयास करें।</string>
     <string name="points_breakdown">अंक विवरण</string>
+    <string name="post_quantum_encryption">पोस्ट-क्वांटम एन्क्रिप्शन</string>
+    <string name="post_quantum_encryption_fallback_note">फ़ॉलबैक चालू (अस्थायी)</string>
+    <string name="post_quantum_identity">पोस्ट-क्वांटम पहचान</string>
+    <string name="post_quantum_identity_explanation">आपकी पहचान कुंजी इस डिवाइस पर स्थानीय रूप से संग्रहीत होती है। अगर किसी पीयर की कुंजी स्थानीय रूप से संग्रहीत कुंजी से अलग दिखती है, तो इसका मतलब है कि नेटवर्क ऑपरेटर पर भरोसा नहीं किया जा सकता।</string>
     <string name="private_network">निजी नेटवर्क</string>
     <string name="processing_payment">भुगतान संसाधित हो रहा है</string>
     <string name="profile">प्रोफ़ाइल</string>
     <string name="promoted_locations">प्रचारित स्थान</string>
     <string name="provide_mode">प्रदान मोड</string>
+    <string name="provider_connected_duration_hours">%1$d घं. %2$d मि.</string>
+    <string name="provider_connected_duration_minutes">%1$d मि.</string>
+    <string name="provider_connected_duration_seconds">%1$d से.</string>
     <string name="provider_contracts">प्रदाता कॉन्ट्रैक्ट</string>
+    <string name="provider_identities">प्रदाताओं की पहचान</string>
+    <string name="provider_location_unknown">स्थान अज्ञात</string>
+    <string name="provider_locations_empty">कोई प्रदाता कनेक्ट नहीं है</string>
+    <string name="provider_locations_title">प्रदाताओं के स्थान</string>
     <string name="provider_statistics">प्रदाता आँकड़े</string>
     <string name="providing_disabled">प्रदान करना बंद है</string>
     <string name="ready_to_connect">कनेक्ट करने के लिए तैयार</string>
@@ -313,14 +355,16 @@
     <string name="refer_friends_detail">अधिक कनेक्शन हमारे समुदाय को गुमनाम रहने में मदद करते हैं (और आपको पैसे कमाने में मदद करते हैं!)</string>
     <string name="refer_friends_header">दोस्तों को रेफ़र करें</string>
     <string name="refer_friends_increase_free_data">कुछ दोस्तों को रेफ़र करें और अपनी मुफ्त डेटा को बढ़ते हुए देखें।</string>
-    <string name="refer_friends_perks">आपको जीवनभर +%1$s GiB/महीना मिलेगा</string>
-    <string name="refer_friends_they_get_data">आपके दोस्त को जीवनभर +%1$s GiB/महीना मिलेगा</string>
+    <string name="refer_friends_perks">आपको जीवनभर +%1$s GiB/दिन मिलेगा</string>
+    <string name="refer_friends_they_get_data">आपके दोस्त को जीवनभर +%1$s GiB/दिन मिलेगा</string>
     <string name="referral">रेफ़रल</string>
-    <string name="referral_bonus">+%1$d GiB/महीना</string>
+    <string name="referral_bonus">+%1$d GiB/दिन</string>
     <string name="referral_bonus_applied">रेफरल बोनस लागू किया गया</string>
     <string name="referral_code">रेफरल कोड</string>
     <string name="referral_code_capped">यह कोड पहले ही उपयोग हो चुका है</string>
     <string name="referral_network">रेफ़रल नेटवर्क</string>
+    <string name="referral_royal_welcome">शाही स्वागत है!</string>
+    <string name="referral_royal_welcome_detail">रेफ़रल की पुष्टि हो गई — आपको और आपके दोस्त, दोनों को जीवनभर +%1$d GiB/दिन मुफ़्त डेटा मिलेगा।</string>
     <string name="referral_royalty">आप तो रेफ़रल के सुपरस्टार हैं!</string>
     <string name="referral_share_message">URnetwork पर मेरे साथ जुड़ें! ऐप डाउनलोड करें और साइन अप करते समय रेफ़रल कोड %1$s डालें।</string>
     <string name="regions">क्षेत्र</string>
@@ -354,6 +398,7 @@
     <string name="see_world_content">दुनिया की सभी\nसामग्री देखें</string>
     <string name="see_world_content_description">URnetwork के साथ दुनिया की सभी सामग्री देखें</string>
     <string name="seeker_token_verified">Seeker टोकन सत्यापित हुआ!</string>
+    <string name="select_location_provider_content_description">ग्लोब: प्रदाता का स्थान चुनें</string>
     <string name="send">भेजें</string>
     <string name="send_feedback">हमें सीधे अपनी प्रतिक्रिया भेजें या सीधे समर्थन के लिए हमारे %1$s से जुड़ें।</string>
     <string name="send_product_updates">मुझे उत्पाद अपडेट भेजें</string>
@@ -390,9 +435,13 @@
     <string name="supporter">Pro</string>
     <string name="switch_account">खाता बदलें</string>
     <string name="switch_account_details">क्या आप %1$s से डिस्कनेक्ट करना और खाते बदलना चाहते हैं?</string>
+    <string name="sync_device_location_with_oldest_provider">डिवाइस का स्थान सबसे लंबे समय से कनेक्ट प्रदाता के साथ सिंक करें</string>
+    <string name="sync_device_location_with_provider">डिवाइस का स्थान प्रदाता के साथ सिंक करें</string>
     <string name="tap_to_connect">कनेक्ट करने के लिए टैप करें</string>
     <string name="tap_to_refetch">स्थान लाने के लिए टैप करें.</string>
     <string name="this_region">इस क्षेत्र</string>
+    <string name="tile_status_connected">कनेक्टेड</string>
+    <string name="tile_status_disconnected">डिस्कनेक्टेड</string>
     <string name="title_login">लॉग इन करें</string>
     <string name="top_matches">सबसे अच्छे मिलान</string>
     <string name="total_account_points">कुल खाता अंक</string>
@@ -421,6 +470,7 @@
     <string name="upgrade_now">अभी अपग्रेड करें</string>
     <string name="upgrade_subscription">सदस्यता अपग्रेड करें</string>
     <string name="urnetwork_intro_description">URnetwork ग्रह का सबसे स्थानीय और सबसे निजी नेटवर्क है।</string>
+    <string name="use_most_stable_provider">सबसे स्थिर प्रदाता का उपयोग करता है</string>
     <string name="use_recommended_settings">अनुशंसित सेटिंग्स का उपयोग करें</string>
     <string name="used_data_key">उपयोग किया गया</string>
     <string name="user_auth_label">ईमेल या फ़ोन</string>
@@ -431,6 +481,7 @@
     <string name="verify_seeker_token_btn">सीकर प्री-ऑर्डर टोकन सत्यापित करें</string>
     <string name="verify_send_error">त्रुटि</string>
     <string name="version_info">संस्करण और बिल्ड जानकारी</string>
+    <string name="via_exit">%1$s के ज़रिए</string>
     <string name="wallet">वॉलेट</string>
     <string name="wallet_address">वॉलेट पता</string>
     <string name="wallet_address_label">वॉलेट पता</string>
@@ -463,6 +514,14 @@
         <item quantity="one">%1$d होस्ट</item>
         <item quantity="other">%1$d होस्ट</item>
     </plurals>
+    <plurals name="ip_count">
+        <item quantity="one">%1$d IP</item>
+        <item quantity="other">%1$d IP</item>
+    </plurals>
+    <plurals name="network_peer_count">
+        <item quantity="one">आपका %1$d अन्य डिवाइस ऑनलाइन है</item>
+        <item quantity="other">आपके %1$d अन्य डिवाइस ऑनलाइन हैं</item>
+    </plurals>
     <plurals name="new_items_count">
         <item quantity="one">%1$d नया</item>
         <item quantity="other">%1$d नए</item>
@@ -474,6 +533,18 @@
     <plurals name="provider_count">
         <item quantity="one">%1$d प्रदाता</item>
         <item quantity="other">%1$d प्रदाता</item>
+    </plurals>
+    <plurals name="referral_celebration_detail">
+        <item quantity="one">आपके कोड से एक दोस्त अभी URnetwork से जुड़ा। आप दोनों को जीवनभर हर दिन +%2$d GiB मुफ़्त डेटा मिलेगा।</item>
+        <item quantity="other">आपके कोड से %1$d दोस्त अभी URnetwork से जुड़े। हर दोस्त से आपको जीवनभर हर दिन +%2$d GiB मुफ़्त डेटा मिलेगा।</item>
+    </plurals>
+    <plurals name="referral_crowned_congrats">
+        <item quantity="one">एक दोस्त जुड़ चुका है — आप जीवनभर +%2$d GiB/दिन कमा रहे हैं।</item>
+        <item quantity="other">%1$d दोस्त जुड़ चुके हैं — आप जीवनभर +%2$d GiB/दिन कमा रहे हैं।</item>
+    </plurals>
+    <plurals name="referral_toast_joined">
+        <item quantity="one">आपके कोड से एक दोस्त जुड़ा! जीवनभर +%2$d GiB/दिन।</item>
+        <item quantity="other">आपके कोड से %1$d दोस्त जुड़े! हर एक से जीवनभर +%2$d GiB/दिन।</item>
     </plurals>
     <plurals name="split_rule_count">
         <item quantity="one">%1$d स्प्लिट नियम</item>

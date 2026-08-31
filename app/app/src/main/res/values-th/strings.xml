@@ -20,11 +20,13 @@
     <string name="api_error_contact">หากปัญหายังคงอยู่ กรุณาติดต่อเราที่ %1$s หรือเข้าร่วม %2$s ของเราเพื่อรับการสนับสนุนโดยตรง</string>
     <string name="app_excluded_toast">%1$s จะไม่ใช้ VPN</string>
     <string name="app_included_toast">%1$s จะใช้งานผ่าน VPN</string>
+    <string name="app_pinned_toast">%1$s จะใช้ผู้ให้บริการรายเดียว</string>
     <string name="app_split_active_exclude">โหมดยกเว้นทำงานอยู่ — แอปที่ยกเว้นจะไม่ใช้ VPN</string>
     <string name="app_split_active_include">โหมดรวมไว้ทำงานอยู่ — เฉพาะแอปที่รวมไว้เท่านั้นที่ใช้ VPN</string>
     <string name="app_split_active_none">ไม่มีการแยกแอป — ทุกแอปใช้ VPN</string>
     <string name="app_split_precedence_note">แอปที่รวมไว้จะมาก่อนเสมอ: หากมีแอปใดถูกรวมไว้ จะมีเฉพาะแอปที่รวมไว้เท่านั้นที่ใช้ VPN และการยกเว้นจะไม่มีผล</string>
     <string name="app_split_rules">กฎแยกเส้นทางแอป</string>
+    <string name="app_split_starter">แอปที่แยกเส้นทาง 0 แอป</string>
     <string name="apply_bonus">รับโบนัส</string>
     <string name="apps">แอป</string>
     <string name="are_you_sure_delete_account">คุณยืนยันที่จะลบบัญชีของคุณหรือไม่?</string>
@@ -65,6 +67,7 @@
     <string name="change">เปลี่ยน</string>
     <string name="change_network_api">เปลี่ยน API เครือข่าย</string>
     <string name="change_network_api_title">เปลี่ยน API เครือข่าย</string>
+    <string name="change_network_name_hint">แตะไอคอนแก้ไขเพื่อเปลี่ยนชื่อเครือข่ายของคุณ</string>
     <string name="change_password">เปลี่ยนรหัสผ่าน</string>
     <string name="check_internet">เช็คการเชื่อมต่ออินเทอร์เน็ตของคุณ</string>
     <string name="check_ip">ตรวจสอบ IP ของฉัน</string>
@@ -77,6 +80,7 @@
     <string name="cities">เมือง</string>
     <string name="claim">รับ</string>
     <string name="claim_multiplier">รับสิทธิ์ตัวคูณ</string>
+    <string name="claim_network_name_hint">รับชื่อเครือข่ายที่กำหนดเองเพื่อแทนที่ชื่อที่สร้างขึ้นอัตโนมัติ</string>
     <string name="client_contracts">สัญญาไคลเอ็นต์</string>
     <string name="client_id_copied">คัดลอก ID ไคลเอ็นต์แล้ว</string>
     <string name="client_statistics">สถิติไคลเอ็นต์</string>
@@ -102,6 +106,7 @@
     <string name="contract_stack_max">สูงสุด %1$s</string>
     <string name="contracts_appear_connected">สัญญาจะแสดงที่นี่ขณะเชื่อมต่อ</string>
     <string name="contracts_appear_providing">สัญญาจะแสดงที่นี่ขณะให้บริการ</string>
+    <string name="copied">คัดลอกแล้ว!</string>
     <string name="copy">คัดลอก</string>
     <string name="copy_auth_code">คัดลอกรหัสยืนยัน</string>
     <string name="countries">ประเทศ</string>
@@ -148,6 +153,7 @@
     <string name="earnings">การสร้างรายได้</string>
     <string name="earnings_doubled">ตอนนี้คุณกำลังคะแนนแบบ x2</string>
     <string name="edit_device_name">แก้ไขชื่ออุปกรณ์</string>
+    <string name="edit_network_name">แก้ไขชื่อเครือข่าย</string>
     <string name="edit_profile">แก้ไขโปรไฟล์</string>
     <string name="edit_referral_code">แก้ไขรหัสแนะนำ</string>
     <string name="edit_split_rule">แก้ไขกฎแยกเส้นทาง</string>
@@ -179,6 +185,7 @@
     <string name="google_auth_btn_text">เข้าสู่ระบบด้วยบัญชี Google</string>
     <string name="guest">ผู้เยี่ยมชม</string>
     <string name="how_are_we_doing">ใช้งานเป็นยังไงบ้าง?</string>
+    <string name="identity_key_hash_copied">คัดลอกแฮชของคีย์ระบุตัวตนแล้ว</string>
     <string name="ignore_battery_optimizations">ไม่สนใจการเพิ่มประสิทธิภาพแบตเตอรี่</string>
     <string name="include_app">ส่งผ่าน VPN</string>
     <string name="include_app_description">เฉพาะแอปที่รวมไว้เท่านั้นที่ใช้อุโมงค์</string>
@@ -219,12 +226,31 @@
     <string name="make_default">ตั้งเป็นกระเป๋ารับยอด</string>
     <string name="manage_subscription">จัดการระบบรายเดือน</string>
     <string name="member">รูปแบบสมาชิก</string>
+    <string name="mock_location_active">กำลังซิงค์กับ %1$s</string>
+    <string name="mock_location_disclosure_detectable">แอปสามารถรู้ได้ว่าตำแหน่งเป็นตำแหน่งจำลอง แอปธนาคาร เรียกรถ ส่งของ และเกมบางแอปอาจไม่ยอมทำงานขณะที่เปิดใช้อยู่</string>
+    <string name="mock_location_disclosure_device_wide">การตั้งค่านี้จะเปลี่ยนตำแหน่งที่รายงานให้ทุกแอปในอุปกรณ์ของคุณ ไม่ใช่เฉพาะ URnetwork</string>
+    <string name="mock_location_disclosure_turn_off_first">ปิดฟีเจอร์นี้ใน URnetwork ก่อนที่จะปิดตัวเลือกสำหรับนักพัฒนาแอป ยกเลิกการเลือก URnetwork หรือถอนการติดตั้งแอป มิฉะนั้นตำแหน่งอุปกรณ์ของคุณอาจค้างอยู่จนกว่าจะรีสตาร์ท</string>
+    <string name="mock_location_error_cleanup_required">URnetwork ไม่สามารถลบตำแหน่งจำลองได้ เลือก URnetwork อีกครั้งในตัวเลือกสำหรับนักพัฒนาแอปแล้วปิดฟีเจอร์นี้ หรือรีสตาร์ทอุปกรณ์ของคุณ</string>
+    <string name="mock_location_guide_intro">เมื่อเปิดใช้ แอปในอุปกรณ์นี้จะเห็นตำแหน่งของผู้ให้บริการที่คุณเชื่อมต่อนานที่สุดแทนตำแหน่งจริงของคุณ</string>
+    <string name="mock_location_guide_title">ซิงค์ตำแหน่งอุปกรณ์</string>
+    <string name="mock_location_needs_setup">ต้องตั้งค่าก่อน</string>
+    <string name="mock_location_open_about_phone">เปิด “เกี่ยวกับโทรศัพท์”</string>
+    <string name="mock_location_open_developer_options">เปิดตัวเลือกสำหรับนักพัฒนาแอป</string>
+    <string name="mock_location_open_location_settings">เปิดการตั้งค่าตำแหน่ง</string>
+    <string name="mock_location_ready">พร้อมแล้ว เปิดสวิตช์เพื่อซิงค์ตำแหน่งอุปกรณ์ของคุณกับผู้ให้บริการที่เชื่อมต่อนานที่สุด</string>
+    <string name="mock_location_settings_row">การซิงค์ตำแหน่งอุปกรณ์</string>
+    <string name="mock_location_step_developer_options">เปิดตัวเลือกสำหรับนักพัฒนาแอป: เปิด “เกี่ยวกับโทรศัพท์” แล้วแตะ “หมายเลขบิลด์” เจ็ดครั้ง</string>
+    <string name="mock_location_step_location_services">เปิด “ตำแหน่ง” ในการตั้งค่าระบบเพื่อให้แอปรับตำแหน่งได้</string>
+    <string name="mock_location_step_select_app">ในตัวเลือกสำหรับนักพัฒนาแอป ให้แตะ “เลือกแอปจำลองตำแหน่ง” แล้วเลือก URnetwork</string>
+    <string name="mock_location_waiting_for_provider">กำลังรอตำแหน่งผู้ให้บริการ</string>
+    <string name="multiple_ips">หลาย IP</string>
     <string name="multiplier">ตัวคูณ</string>
     <string name="name_label">ชื่อ</string>
     <string name="name_placeholder">ชื่อของคุณ</string>
     <string name="need_more_data_faster">ต้องการดาต้าที่เยอะขึ้น และเร็วขึ้นไหม?</string>
     <string name="net_points_earned">คะแนนที่ได้รับ</string>
     <string name="net_provided">แบนด์วิธที่ให้บริการแล้ว</string>
+    <string name="network">เครือข่าย</string>
     <string name="network_api_api_url_help">เว้นว่างไว้เพื่อให้ได้มาจากโดเมนเครือข่าย</string>
     <string name="network_api_api_url_label">URL ของ API (ไม่บังคับ)</string>
     <string name="network_api_apply">ใช้ API เครือข่าย</string>
@@ -284,19 +310,35 @@
     <string name="payout_wallets">กระเป๋ารับยอดจ่าย</string>
     <string name="payouts">การจ่าย</string>
     <string name="payouts_amount_threshold">การจ่ายเงินจะเกิดขึ้นทุกวันอาทิตย์ เวลา 00:00 UTC และต้องถึงขั้นต่ำขั้นต่ำของ USDC</string>
+    <string name="peer_count_one">1 เพียร์</string>
+    <string name="peer_count_other">%d เพียร์</string>
     <string name="pending_data_key">รอดำเนินการ</string>
     <string name="pending_mb_provided">รอดำเนินการ: ให้บริการ %1$s MB</string>
     <string name="pending_payout">ยอดที่รอจ่าย</string>
+    <string name="pin_app">ปักหมุดกับผู้ให้บริการรายเดียว</string>
+    <string name="pin_app_description">เก็บการเชื่อมต่อทั้งหมดของแอปนี้ไว้กับผู้ให้บริการรายเดียว เพื่อให้ API และรูปภาพใช้ที่อยู่ IP เดียวกัน ใช้กับแอปที่เนื้อหาโหลดไม่ขึ้นเมื่อผ่าน VPN</string>
+    <string name="pinned">ปักหมุดแล้ว</string>
     <string name="plan">แพ็กเกจ</string>
     <string name="please_try_again">กรุณาลองใหม่อีกครั้ง</string>
     <string name="please_wait">โปรดรอสักครู่ แล้วลองใหม่อีกครั้ง</string>
     <string name="points_breakdown">รายละเอียดคะแนน</string>
+    <string name="post_quantum_encryption">การเข้ารหัสแบบโพสต์ควอนตัม</string>
+    <string name="post_quantum_encryption_fallback_note">เปิดใช้โหมดสำรอง (ชั่วคราว)</string>
+    <string name="post_quantum_identity">ข้อมูลระบุตัวตนแบบโพสต์ควอนตัม</string>
+    <string name="post_quantum_identity_explanation">คีย์ระบุตัวตนของคุณถูกเก็บไว้ในเครื่องนี้ หากคีย์ของเพียร์ใดแตกต่างจากคีย์ที่เก็บไว้ในเครื่อง แสดงว่าผู้ดำเนินการเครือข่ายไม่น่าเชื่อถือ</string>
     <string name="private_network">เครือข่ายส่วนตัว</string>
     <string name="processing_payment">กำลังดำเนินการชำระเงิน</string>
     <string name="profile">โปรไฟล์</string>
     <string name="promoted_locations">พื้นที่ที่ได้รับการโปรโมท</string>
     <string name="provide_mode">โหมดการให้บริการ</string>
+    <string name="provider_connected_duration_hours">%1$d ชม. %2$d นาที</string>
+    <string name="provider_connected_duration_minutes">%1$d นาที</string>
+    <string name="provider_connected_duration_seconds">%1$d วิ</string>
     <string name="provider_contracts">สัญญาผู้ให้บริการ</string>
+    <string name="provider_identities">ข้อมูลระบุตัวตนของผู้ให้บริการ</string>
+    <string name="provider_location_unknown">ไม่ทราบตำแหน่ง</string>
+    <string name="provider_locations_empty">ไม่มีผู้ให้บริการที่เชื่อมต่ออยู่</string>
+    <string name="provider_locations_title">ตำแหน่งผู้ให้บริการ</string>
     <string name="provider_statistics">สถิติผู้ให้บริการ</string>
     <string name="providing_disabled">การให้บริการถูกปิดอยู่</string>
     <string name="ready_to_connect">พร้อมเชื่อมต่อ</string>
@@ -313,14 +355,16 @@
     <string name="refer_friends_detail">การเชื่อมต่อที่เยอะขึ้น จะช่วยขับเคลื่อนชุมชนของพวกเราให้มีความเป็นส่วนตัวมากขึ้น (และยังทำให้คุณมีรายได้ด้วย!)</string>
     <string name="refer_friends_header">แนะนำเพื่อน</string>
     <string name="refer_friends_increase_free_data">แนะนำเพื่อนสักสองสามคนแล้วดูว่าข้อมูลฟรีของคุณเพิ่มขึ้นอย่างไร</string>
-    <string name="refer_friends_perks">คุณได้รับ +%1$s GiB/เดือนตลอดชีวิต</string>
-    <string name="refer_friends_they_get_data">เพื่อนของคุณได้รับ +%1$s GiB/เดือนตลอดชีวิต</string>
+    <string name="refer_friends_perks">คุณได้รับ +%1$s GiB/วันตลอดชีวิต</string>
+    <string name="refer_friends_they_get_data">เพื่อนของคุณได้รับ +%1$s GiB/วันตลอดชีวิต</string>
     <string name="referral">การแนะนำเชิญชวน</string>
-    <string name="referral_bonus">+%1$d GiB/เดือน</string>
+    <string name="referral_bonus">+%1$d GiB/วัน</string>
     <string name="referral_bonus_applied">โบนัสจากการแนะนำใช้งานเรียบร้อย</string>
     <string name="referral_code">รหัสการแนะนำ</string>
     <string name="referral_code_capped">โค้ดนี้ถูกใช้หมดแล้ว</string>
     <string name="referral_network">แนะนำเครือข่าย</string>
+    <string name="referral_royal_welcome">การต้อนรับระดับราชวงศ์!</string>
+    <string name="referral_royal_welcome_detail">ยืนยันการแนะนำแล้ว — คุณและเพื่อนจะได้รับข้อมูลฟรีคนละ +%1$d GiB/วัน ตลอดชีวิต</string>
     <string name="referral_royalty">คุณคือสุดยอดนักแนะนำ!</string>
     <string name="referral_share_message">มาร่วม URnetwork กับฉันสิ! ดาวน์โหลดแอปแล้วกรอกรหัสแนะนำ %1$s ตอนสมัคร</string>
     <string name="regions">ภูมิภาค</string>
@@ -354,6 +398,7 @@
     <string name="see_world_content">เข้าถึงทุกคอนเทนต์\nจากทั่วทุกมุมโลก</string>
     <string name="see_world_content_description">เข้าถึงทุกคอนเทนต์จากทั่วโลกด้วย URnetwork</string>
     <string name="seeker_token_verified">ยืนยัน Seeker Token สำเร็จ</string>
+    <string name="select_location_provider_content_description">ลูกโลก: เลือกตำแหน่งผู้ให้บริการ</string>
     <string name="send">ส่ง</string>
     <string name="send_feedback">ส่งความเห็นของคุณตรงๆมาหาเรา หรือเข้าร่วมกลุ่ม %1$s เพื่อรับการช่วยเหลือของเราโดยตรง</string>
     <string name="send_product_updates">ส่งข้อมูลการอัพเดตผลิตภัณฑ์มาที่ฉัน</string>
@@ -390,9 +435,13 @@
     <string name="supporter">Pro</string>
     <string name="switch_account">สลับบัญชี</string>
     <string name="switch_account_details">คุณต้องการยกเลิกเชื่อมต่อกับ %1$s และสลับบัญชีหรือไม่?</string>
+    <string name="sync_device_location_with_oldest_provider">ซิงค์ตำแหน่งอุปกรณ์กับผู้ให้บริการที่เชื่อมต่อนานที่สุด</string>
+    <string name="sync_device_location_with_provider">ซิงค์ตำแหน่งอุปกรณ์กับผู้ให้บริการ</string>
     <string name="tap_to_connect">แตะเพื่อเชื่อมต่อ</string>
     <string name="tap_to_refetch">แตะเพื่อลองใหม่อีกครั้ง</string>
     <string name="this_region">ภูมิภาคนี้</string>
+    <string name="tile_status_connected">เชื่อมต่อแล้ว</string>
+    <string name="tile_status_disconnected">ตัดการเชื่อมต่อแล้ว</string>
     <string name="title_login">เข้าสู่ระบบ</string>
     <string name="top_matches">คำค้นที่ใกล้เคียง</string>
     <string name="total_account_points">ยอดคะแนนบัญชี</string>
@@ -421,6 +470,7 @@
     <string name="upgrade_now">อัพเกรดเดี๋ยวนี้</string>
     <string name="upgrade_subscription">อัพเกรดเป็นสมัครรายเดือน</string>
     <string name="urnetwork_intro_description">URnetwork เป็นเครือข่ายที่มีความเป็นท้องถิ่นและเป็นส่วนตัวมากที่สุดในโลก</string>
+    <string name="use_most_stable_provider">ใช้ผู้ให้บริการที่เสถียรที่สุด</string>
     <string name="use_recommended_settings">ใช้การตั้งค่าที่แนะนำ</string>
     <string name="used_data_key">ใช้แล้ว</string>
     <string name="user_auth_label">อีเมล หรือ เบอร์โทรศัพท์</string>
@@ -431,6 +481,7 @@
     <string name="verify_seeker_token_btn">ยืนยัน Seeker Pre-Order Token</string>
     <string name="verify_send_error">ข้อผิดพลาด</string>
     <string name="version_info">เวอร์ชั่นและข้อมูล build</string>
+    <string name="via_exit">ผ่าน %1$s</string>
     <string name="wallet">กระเป๋า</string>
     <string name="wallet_address">ที่อยู่กระเป๋าเงิน</string>
     <string name="wallet_address_label">ที่อยู่กระเป๋าเงิน</string>
@@ -458,6 +509,12 @@
     <plurals name="host_count">
         <item quantity="other">โฮสต์ %1$d รายการ</item>
     </plurals>
+    <plurals name="ip_count">
+        <item quantity="other">%1$d IP</item>
+    </plurals>
+    <plurals name="network_peer_count">
+        <item quantity="other">คุณมีอุปกรณ์อื่นออนไลน์อยู่ %1$d เครื่อง</item>
+    </plurals>
     <plurals name="new_items_count">
         <item quantity="other">ใหม่ %1$d รายการ</item>
     </plurals>
@@ -466,6 +523,15 @@
     </plurals>
     <plurals name="provider_count">
         <item quantity="other">%1$d ผู้ให้บริการ</item>
+    </plurals>
+    <plurals name="referral_celebration_detail">
+        <item quantity="other">เพื่อน %1$d คนเพิ่งเข้าร่วม URnetwork ด้วยโค้ดของคุณ แต่ละคนทำให้คุณได้รับข้อมูลฟรี +%2$d GiB ต่อวัน — ตลอดชีวิต</item>
+    </plurals>
+    <plurals name="referral_crowned_congrats">
+        <item quantity="other">เพื่อน %1$d คนเข้าร่วมแล้ว — คุณได้รับ +%2$d GiB/วัน ตลอดชีวิต</item>
+    </plurals>
+    <plurals name="referral_toast_joined">
+        <item quantity="other">เพื่อน %1$d คนเข้าร่วมด้วยโค้ดของคุณ! +%2$d GiB/วันต่อคน ตลอดชีวิต</item>
     </plurals>
     <plurals name="split_rule_count">
         <item quantity="other">กฎแยกเส้นทาง %1$d ข้อ</item>

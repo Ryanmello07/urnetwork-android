@@ -5,9 +5,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bringyour.network.DeviceManager
+import com.bringyour.network.ForegroundDeviceControllerOwner
 import com.bringyour.network.ui.components.renderIdenticon
 import com.bringyour.sdk.DeviceLocal
 import com.bringyour.sdk.PostQuantumIdentityViewController
@@ -54,6 +59,9 @@ class ProviderIdentityRowUi(
     val identicon: ImageBitmap?,
     // panel-deck size raster
     val identiconSmall: ImageBitmap?,
+    // badge-size raster, rendered next to the client id in provider
+    // locations to mark a provider with a verified e2e session
+    val identiconBadge: ImageBitmap? = null,
 ) {
     // the identicons derive from the public key, which the hash captures, and
     // are cached per (key hash, size) -- so value equality is the ids and the hash
@@ -76,11 +84,15 @@ class ProviderIdentityRowUi(
 @HiltViewModel
 class PostQuantumIdentityViewModel @Inject constructor(
     private val deviceManager: DeviceManager,
-) : ViewModel() {
+) : ViewModel(), DefaultLifecycleObserver {
 
     companion object {
         // identicon display dp sizes; rasters render at 2x (the canonical
         // convention shared with every platform)
+        // the provider-locations trailing badge next to the 11.sp client id:
+        // large enough to read as the peer's identicon, small enough to sit
+        // inline with a single text line
+        const val BADGE_IDENTICON_SIZE = 16
         const val DECK_IDENTICON_SIZE = 28
         const val ROW_IDENTICON_SIZE = 40
         // the panel's own-identity identicon: 2x a list row
@@ -90,8 +102,15 @@ class PostQuantumIdentityViewModel @Inject constructor(
     }
 
     private var removeDeviceChangeListener: (() -> Unit)? = null
+    private var viewControllerDevice: DeviceLocal? = null
     private var postQuantumIdentityVc: PostQuantumIdentityViewController? = null
     private val subs = mutableListOf<Sub>()
+    private val processLifecycle = ProcessLifecycleOwner.get().lifecycle
+    private val controllerOwner =
+        ForegroundDeviceControllerOwner<DeviceLocal, PostQuantumIdentityViewController>(
+            open = { openPostQuantumIdentityViewController(it) },
+            close = { device, vc -> closePostQuantumIdentityViewController(device, vc) },
+        )
 
     // identicon raster cache, keyed by (key hash, dp size)
     private val identiconCache = mutableMapOf<String, ImageBitmap>()
@@ -106,6 +125,10 @@ class PostQuantumIdentityViewModel @Inject constructor(
         private set
 
     init {
+        processLifecycle.addObserver(this)
+        controllerOwner.setForeground(
+            processLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        )
         // the device is (re)created asynchronously (login, network change) —
         // wire per device, every time, never once at init
         removeDeviceChangeListener = deviceManager.addDeviceChangeListener { device ->
@@ -115,20 +138,26 @@ class PostQuantumIdentityViewModel @Inject constructor(
         }
     }
 
+    override fun onStart(owner: LifecycleOwner) {
+        controllerOwner.setForeground(true)
+    }
+
+    override fun onStop(owner: LifecycleOwner) {
+        controllerOwner.setForeground(false)
+    }
+
     private fun setupDevice(device: DeviceLocal?) {
-        subs.forEach { it.close() }
-        subs.clear()
-        postQuantumIdentityVc?.close()
-        postQuantumIdentityVc = null
         ownIdentity = null
         providerIdentities = listOf()
         identiconCache.clear()
+        controllerOwner.setDevice(device)
+    }
 
-        if (device == null) {
-            return
-        }
-
+    private fun openPostQuantumIdentityViewController(
+        device: DeviceLocal
+    ): PostQuantumIdentityViewController {
         val vc = device.openPostQuantumIdentityViewController()
+        viewControllerDevice = device
         postQuantumIdentityVc = vc
         subs.add(vc.addPostQuantumIdentityListener {
             // sdk thread -> main; re-read on every providerIdentitiesChanged
@@ -139,6 +168,21 @@ class PostQuantumIdentityViewModel @Inject constructor(
         // start attaches the device listener and seeds it with the current state
         vc.start()
         update()
+        return vc
+    }
+
+    private fun closePostQuantumIdentityViewController(
+        device: DeviceLocal,
+        vc: PostQuantumIdentityViewController,
+    ) {
+        subs.forEach { it.close() }
+        subs.clear()
+        vc.stop()
+        device.closeViewController(vc)
+        if (postQuantumIdentityVc === vc) {
+            postQuantumIdentityVc = null
+            viewControllerDevice = null
+        }
     }
 
     /**
@@ -159,7 +203,7 @@ class PostQuantumIdentityViewModel @Inject constructor(
         val key = vc.publicIdentityKey
         ownIdentity = if (key != null && !hash.isNullOrEmpty()) {
             ProviderIdentityRowUi(
-                clientId = deviceManager.device?.clientId?.idStr ?: "",
+                clientId = viewControllerDevice?.clientId?.idStr ?: "",
                 publicKeyHash = hash,
                 publicKey = key,
                 identicon = identicon(key, hash, PANEL_IDENTICON_SIZE),
@@ -185,6 +229,7 @@ class PostQuantumIdentityViewModel @Inject constructor(
                         publicKey = identityKey,
                         identicon = identicon(identityKey, keyHash, ROW_IDENTICON_SIZE),
                         identiconSmall = identicon(identityKey, keyHash, DECK_IDENTICON_SIZE),
+                        identiconBadge = identicon(identityKey, keyHash, BADGE_IDENTICON_SIZE),
                     )
                 )
             }
@@ -193,12 +238,10 @@ class PostQuantumIdentityViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        super.onCleared()
         removeDeviceChangeListener?.invoke()
         removeDeviceChangeListener = null
-        subs.forEach { it.close() }
-        subs.clear()
-        postQuantumIdentityVc?.close()
-        postQuantumIdentityVc = null
+        processLifecycle.removeObserver(this)
+        controllerOwner.close()
+        super.onCleared()
     }
 }
