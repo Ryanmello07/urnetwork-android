@@ -125,6 +125,83 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
 
     Spacer(modifier = Modifier.height(16.dp))
 
+    // A diagnostics export is most needed exactly when the connection is
+    // broken or the user is signed out -- i.e. exactly when `connected`
+    // (reliability != null, which requires a live device) is false. This
+    // section must therefore render above the !connected guard below, not be
+    // gated on the healthy connection it exists to help diagnose the absence
+    // of. exportDiagnostics already tolerates a null device on its own
+    // (deviceManager.device?.let { ... }), which is what makes this safe.
+    URTextInputLabel(text = stringResource(id = R.string.dev_section_diagnostics))
+
+    val context = LocalContext.current
+    val shareBundle: (java.io.File) -> Unit = { file ->
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.dev_export_share)))
+    }
+
+    // cacheDir/share is already declared to the FileProvider as "share"
+    // (res/xml/file_paths.xml), so a bundle written there is shareable with no
+    // manifest change.
+    val shareDir = java.io.File(context.cacheDir, "share").apply { mkdirs() }
+
+    DeveloperAction(label = stringResource(id = R.string.dev_export_all_logs)) {
+        developerViewModel.exportDiagnostics(shareDir, redact = false, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
+            file?.let(shareBundle)
+        }
+    }
+
+    DeveloperAction(label = stringResource(id = R.string.dev_export_redacted_logs)) {
+        developerViewModel.exportDiagnostics(shareDir, redact = true, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
+            file?.let(shareBundle)
+        }
+    }
+
+    var showPicker by remember { mutableStateOf(false) }
+
+    DeveloperAction(label = stringResource(id = R.string.dev_choose_logs)) {
+        developerViewModel.refreshInventory()
+        showPicker = !showPicker
+    }
+
+    if (showPicker) {
+        developerViewModel.inventory.forEach { info ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { developerViewModel.toggleLogSelection(info.name) }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    logFileRowLabel(info.source, info.severity, info.byteCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (developerViewModel.selectedLogNames.contains(info.name)) BlueMedium else TextMuted,
+                )
+            }
+        }
+
+        DeveloperAction(label = stringResource(id = R.string.dev_export_selected)) {
+            developerViewModel.exportDiagnostics(
+                shareDir,
+                redact = false,
+                selected = developerViewModel.selectedLogNames.toList(),
+                nowMillis = System.currentTimeMillis(),
+            ) { file ->
+                file?.let(shareBundle)
+            }
+        }
+    }
+
+    developerViewModel.lastExport?.let { lastExport ->
+        Text(lastExport, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+    }
+
     if (!developerViewModel.connected) {
         Text(
             stringResource(id = R.string.developer_disconnected),
@@ -640,76 +717,6 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     // by querying a public resolver THROUGH the provider channel being probed
     // -- no OS resolver, no tun resolver settings, no [::1]:53 fallback -- so
     // its results are about the provider, not the harness.
-
-    URTextInputLabel(text = stringResource(id = R.string.dev_section_diagnostics))
-
-    val context = LocalContext.current
-    val shareBundle: (java.io.File) -> Unit = { file ->
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/zip"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(intent, context.getString(R.string.dev_export_share)))
-    }
-
-    // cacheDir/share is already declared to the FileProvider as "share"
-    // (res/xml/file_paths.xml), so a bundle written there is shareable with no
-    // manifest change.
-    val shareDir = java.io.File(context.cacheDir, "share").apply { mkdirs() }
-
-    DeveloperAction(label = stringResource(id = R.string.dev_export_all_logs)) {
-        developerViewModel.exportDiagnostics(shareDir, redact = false, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
-            file?.let(shareBundle)
-        }
-    }
-
-    DeveloperAction(label = stringResource(id = R.string.dev_export_redacted_logs)) {
-        developerViewModel.exportDiagnostics(shareDir, redact = true, selected = emptyList(), nowMillis = System.currentTimeMillis()) { file ->
-            file?.let(shareBundle)
-        }
-    }
-
-    var showPicker by remember { mutableStateOf(false) }
-
-    DeveloperAction(label = stringResource(id = R.string.dev_choose_logs)) {
-        developerViewModel.refreshInventory()
-        showPicker = !showPicker
-    }
-
-    if (showPicker) {
-        developerViewModel.inventory.forEach { info ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { developerViewModel.toggleLogSelection(info.name) }
-                    .padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    logFileRowLabel(info.source, info.severity, info.byteCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (developerViewModel.selectedLogNames.contains(info.name)) BlueMedium else TextMuted,
-                )
-            }
-        }
-
-        DeveloperAction(label = stringResource(id = R.string.dev_export_selected)) {
-            developerViewModel.exportDiagnostics(
-                shareDir,
-                redact = false,
-                selected = developerViewModel.selectedLogNames.toList(),
-                nowMillis = System.currentTimeMillis(),
-            ) { file ->
-                file?.let(shareBundle)
-            }
-        }
-    }
-
-    developerViewModel.lastExport?.let { lastExport ->
-        Text(lastExport, style = MaterialTheme.typography.bodySmall, color = TextMuted)
-    }
 
     Spacer(modifier = Modifier.height(32.dp))
 
