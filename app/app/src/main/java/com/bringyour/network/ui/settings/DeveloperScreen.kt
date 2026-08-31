@@ -34,17 +34,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.bringyour.network.R
+import com.bringyour.network.utils.formatByteCountCompact
 import com.bringyour.network.ui.components.URSwitch
 import com.bringyour.network.ui.components.URTextInputLabel
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.MainTintedBackgroundBase
+import com.bringyour.network.ui.theme.RedDark
+import com.bringyour.network.ui.theme.TextDanger
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.bringyour.sdk.Exit
@@ -133,6 +137,44 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     // of. exportDiagnostics already tolerates a null device on its own
     // (deviceManager.device?.let { ... }), which is what makes this safe.
     URTextInputLabel(text = stringResource(id = R.string.dev_section_diagnostics))
+
+    // ABOVE the export rows on purpose: the order of operations is set the
+    // level, reproduce the fault, then export. A verbosity control placed
+    // under the export actions is found only after the capture it was supposed
+    // to widen, and the bundle it produced is the useless one -- close to half
+    // the log statements in `connect` (roughly 290 of some 700), every
+    // contract, transport and window line among them, sit behind V(1)/V(2) and
+    // are simply not written at level 0.
+    DeveloperVerbositySetting(
+        level = developerViewModel.logVerbosity,
+        onSelect = developerViewModel.setLogVerbosity,
+    )
+
+    // Persistent, not a one-shot toast: it has to be on screen at the moment
+    // the user reaches for "Export all logs (raw)", which can be many minutes
+    // after the level was raised. This is the difference between a bundle that
+    // is safe to attach to a support thread and one carrying every site the
+    // user visited while reproducing.
+    if (logVerbosityRecordsDestinations(developerViewModel.logVerbosity)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .background(RedDark, RoundedCornerShape(8.dp))
+                .padding(12.dp),
+        ) {
+            Text(
+                stringResource(id = R.string.dev_log_verbosity_warning_title),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextDanger,
+            )
+            Text(
+                stringResource(id = R.string.dev_log_verbosity_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+            )
+        }
+    }
 
     val context = LocalContext.current
     val shareBundle: (java.io.File) -> Unit = { file ->
@@ -267,7 +309,33 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     }
 
     developerViewModel.lastExport?.let { lastExport ->
-        Text(lastExport, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        // Resolved here rather than in the viewmodel because this is where a
+        // <plurals> can be read: "Exported 1 log files" was a count formatted
+        // into a fixed English phrase, and a selective export of one file is
+        // the common case that produced it.
+        val failure = lastExport.failure
+        Text(
+            if (failure != null) {
+                stringResource(id = R.string.dev_export_failed, failure)
+            } else {
+                pluralStringResource(
+                    id = R.plurals.dev_export_summary,
+                    count = lastExport.fileCount,
+                    lastExport.fileCount,
+                    formatByteCountCompact(lastExport.byteCount),
+                )
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+
+        lastExport.missingSources.forEach { missing ->
+            Text(
+                stringResource(id = R.string.dev_export_not_included, missing),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
     }
 
     if (!developerViewModel.connected) {
@@ -793,6 +861,85 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     }
 
     Spacer(modifier = Modifier.height(32.dp))
+}
+
+/**
+ * The glog verbosity of the process that writes the logs, cycling
+ * Default -> Verbose -> Trace on tap.
+ *
+ * The value shown is the one the DEVICE reports, never the one last asked for.
+ * A set can be clamped by the sdk, refused outright by a hosted device, or
+ * declined by an older device peer over the rpc, and none of those throw --
+ * so a level that failed to apply has to be visible here rather than assumed,
+ * or the user reproduces a fault believing they are capturing V(1) contract
+ * accounting and exports a bundle that has none.
+ *
+ * "Unavailable" is not the same as level 0: it means there is no device to ask
+ * yet, so the row is inert rather than reporting a default that is not in
+ * force.
+ */
+@Composable
+private fun DeveloperVerbositySetting(
+    level: Long?,
+    onSelect: (Long) -> Unit,
+) {
+    val named = logVerbosityLevel(level)
+    val name = when (named) {
+        LogVerbosityLevel.DEFAULT -> R.string.dev_log_verbosity_default
+        LogVerbosityLevel.VERBOSE -> R.string.dev_log_verbosity_verbose
+        LogVerbosityLevel.TRACE -> R.string.dev_log_verbosity_trace
+        null -> R.string.dev_log_verbosity_unavailable
+    }
+    // the detail line names what THIS level buys, so the cost of the next step
+    // is read before it is taken rather than discovered in the bundle
+    val detail = when (named) {
+        LogVerbosityLevel.DEFAULT -> R.string.dev_log_verbosity_default_detail
+        LogVerbosityLevel.VERBOSE -> R.string.dev_log_verbosity_verbose_detail
+        LogVerbosityLevel.TRACE -> R.string.dev_log_verbosity_trace_detail
+        null -> R.string.dev_log_verbosity_unavailable_detail
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = level != null) {
+                onSelect(nextLogVerbosity(level ?: LOG_VERBOSITY_DEFAULT))
+            }
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(0.72f)) {
+            Text(
+                stringResource(id = R.string.dev_log_verbosity),
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White,
+            )
+            Text(
+                stringResource(id = detail),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        Text(
+            // the number as well as the name -- it is what the sdk reports and
+            // what a support thread compares against the bundle's manifest,
+            // and it is the only place a level outside the sdk's range shows
+            if (level == null) {
+                stringResource(id = name)
+            } else {
+                logVerbosityValueLabel(level, stringResource(id = name))
+            },
+            style = MaterialTheme.typography.bodyLarge,
+            // a level that records real destinations is not an ordinary
+            // setting value, and must not read as one
+            color = when {
+                level == null -> TextMuted
+                logVerbosityRecordsDestinations(level) -> TextDanger
+                else -> BlueMedium
+            },
+        )
+    }
 }
 
 /**

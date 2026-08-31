@@ -142,6 +142,49 @@ class DiagnosticExportTest {
     }
 
     @Test
+    fun theSummaryCarriesTheCountAsANumberSoItCanBePluralised() {
+        // "Exported 1 log files" -- the count was formatted into a fixed
+        // English phrase in the viewmodel, where no <plurals> can be resolved,
+        // and a count already inside a string cannot be pluralised afterwards.
+        // The fix is that the summary stays numeric all the way to the screen,
+        // which is what R.plurals.dev_export_summary selects on. A file count
+        // of exactly 1 is the common case: it is what a selective export of
+        // one log produces.
+        val one = DiagnosticExportSummary(fileCount = 1, byteCount = 2048L, missingSources = listOf())
+        assertEquals(1, one.fileCount)
+        assertEquals(2048L, one.byteCount)
+        assertNull("a successful export has no failure reason", one.failure)
+        assertTrue(one.missingSources.isEmpty())
+    }
+
+    @Test
+    fun anUnreadableSourceSurvivesIntoTheSummaryRatherThanBeingFlattenedIntoIt() {
+        // each missing source is rendered as its own line by the screen, so it
+        // stays a list here -- goal 5 requires the reason to reach the user,
+        // and a pre-joined string cannot be re-styled or re-localised
+        val summary = DiagnosticExportSummary(
+            fileCount = 3,
+            byteCount = 4096L,
+            missingSources = listOf("app: no log directory on disk", "logcat.txt: logcat unavailable"),
+        )
+        assertEquals(2, summary.missingSources.size)
+        assertEquals("app: no log directory on disk", summary.missingSources[0])
+    }
+
+    @Test
+    fun anExportThatWroteNothingReportsWhyAndClaimsNoFiles() {
+        val failed = DiagnosticExportSummary.failed("permission denied")
+        assertEquals("permission denied", failed.failure)
+        // never "Exported 0 log files" alongside a failure: the count is not a
+        // result when there is no bundle
+        assertEquals(0, failed.fileCount)
+        assertEquals(0L, failed.byteCount)
+        assertTrue(failed.missingSources.isEmpty())
+        // an sdk exception with no message must still say something
+        assertNotNull(DiagnosticExportSummary.failed(null).failure)
+    }
+
+    @Test
     fun theMissingSourceReasonCarriesNoFilesystemPath() {
         // the reason is copied verbatim into README.txt, the one bundle entry
         // the sdk writes WITHOUT the redaction transform
