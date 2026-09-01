@@ -5,11 +5,13 @@ import java.io.File
 /**
  * Where each process writes its logs.
  *
- * Android is single-process (no `android:process` in the manifest), so "app"
- * is the only source that ever appears here -- but the per-process layout is
- * what the exporter enumerates, and keeping it identical to iOS's
- * `DiagnosticsLogLocation.appProcessName` means one sdk call shape and one
- * bundle shape across both platforms.
+ * The sdk prunes per directory -- `clearOldLogs` keeps the 4 newest files in
+ * whichever directory glog is pointed at -- so processes that share one
+ * directory delete each other's history. Android is single-process (no
+ * `android:process` in the manifest), so "app" is the only subdirectory that
+ * ever appears here; the layout still matches iOS, which really does have two
+ * writers (the app and the network extension), so both platforms make the
+ * same sdk call and lay their logs out the same way.
  */
 const val APP_LOG_PROCESS_NAME = "app"
 
@@ -32,18 +34,19 @@ fun isGlogFileName(name: String): Boolean =
  *
  * Builds before the per-process root wrote glog files directly into
  * `filesDir`. Retention only ever prunes the directory glog is currently
- * pointed at (`clearOldLogs`, sdk/sdk.go, called from `SetLogDir`), so once
- * the root moves those files are never touched again: up to four files of up
- * to 16MB each stranded in `filesDir` forever on every upgrading install.
- * They are also invisible to the exporter, which walks only the
- * SUBDIRECTORIES of the log root -- so a user who upgrades and then exports
- * to report an incident that predates the upgrade gets none of the logs that
- * recorded it, which is exactly what goal 1 promises them.
+ * pointed at (`clearOldLogs`, sdk/sdk.go), so once the root moves those files
+ * are never touched again: up to four files of up to 16MB each stranded in
+ * `filesDir` forever on every upgrading install.
+ * They are also unreachable evidence. Every reader of the logs resolves them
+ * through `Sdk.getLogDir()` -- the feedback screen's share and export buttons
+ * do today -- and that now names `<filesDir>/logs/<process>`, so a user who
+ * upgrades and then reports an incident that predates the upgrade attaches
+ * none of the logs that recorded it.
  *
- * Moving rather than deleting keeps those logs exportable, and doing it
- * BEFORE `SetLogDirForProcess` hands the merged set to the same retention
- * pass -- which keeps the four newest and drops the rest -- so this bounds
- * the storage rather than doubling it.
+ * Moving rather than deleting keeps those logs reachable, and doing it BEFORE
+ * `Sdk.setLogDirForProcess` hands the merged set to that same retention pass
+ * -- which keeps the four newest and drops the rest -- so this bounds the
+ * storage rather than doubling it.
  */
 fun migrateLegacyLogFiles(filesDir: File, processLogDir: File): Int {
     val legacy = filesDir.listFiles()?.filter { it.isFile && isGlogFileName(it.name) } ?: return 0

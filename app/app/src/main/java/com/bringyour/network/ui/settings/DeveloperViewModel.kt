@@ -73,12 +73,11 @@ class DeveloperViewModel @Inject constructor(
      * no device to ask (signed out, or before one has been created).
      *
      * Read back from the device rather than remembered from the last tap. The
-     * level is process-global state behind a glog flag, and on ios it is set in
-     * the network extension over the rpc, so a set can be refused (a hosted
-     * device) or fail to cross (an older device peer) with nothing thrown here.
-     * Showing the value the user asked for would then claim a capture is
-     * running verbose when it is still at 0 -- and the bundle exported from it
-     * would be the empty one this whole feature exists to prevent.
+     * level is process-global state behind a glog flag, so a set can be
+     * clamped by the sdk or refused outright (a hosted device) with nothing
+     * thrown here. Showing the value the user asked for would then claim a
+     * capture is running verbose while it is still at 0 -- and the bundle
+     * exported from it would be the empty one this control exists to prevent.
      */
     var logVerbosity by mutableStateOf<Long?>(null)
         private set
@@ -93,10 +92,10 @@ class DeveloperViewModel @Inject constructor(
      * Sources the exporter will not be able to read, as "<source>: <reason>",
      * refreshed off the main thread whenever the inventory is.
      *
-     * The spec requires the export ui to show "any unavailable source with its
-     * reason" BEFORE the user commits to an export, not only afterwards in the
-     * summary -- learning that the logs were unreachable after zipping them is
-     * not the degradation promise, it is a report of it.
+     * The export ui shows any unavailable source with its reason BEFORE the
+     * user commits to an export, not only afterwards in the summary --
+     * learning that the logs were unreachable after zipping them is not
+     * graceful degradation, it is a report of it.
      */
     var unavailableSources by mutableStateOf<List<String>>(listOf())
         private set
@@ -110,8 +109,7 @@ class DeveloperViewModel @Inject constructor(
      * second os.Create truncates the zip the first is still streaming into --
      * the share sheet then hands support a corrupt archive. (2) Feedback: a
      * full export takes many seconds, and with nothing on screen to show for
-     * the tap, tapping again is the expected user response. Mirrors iOS's
-     * `DeveloperView.isExporting`.
+     * the tap, tapping again is the expected user response.
      */
     var exporting by mutableStateOf(false)
         private set
@@ -151,14 +149,14 @@ class DeveloperViewModel @Inject constructor(
      * after it.
      *
      * The logcat dump is a blocking external-process spawn, and the bundle
-     * write walks the full on-disk log inventory and zips it (with a
-     * per-line HMAC redaction pass when redact is set). Both are blocking
-     * I/O; run on the caller's thread they would block Compose's
-     * click-dispatch (the main thread) for however long that inventory takes,
-     * risking an ANR past Android's ~5s input-dispatch watchdog on any
-     * nontrivial log volume -- exactly the volume a diagnostics export exists
-     * to handle. So the work happens on Dispatchers.IO and the result comes
-     * back as state rather than a return value.
+     * write walks the full on-disk log inventory and zips it (with a per-line
+     * redaction pass when redact is set). Both are blocking i/o; run on the
+     * caller's thread they would block Compose's click dispatch -- the main
+     * thread -- for however long that inventory takes, risking an ANR past
+     * Android's ~5s input-dispatch watchdog on any nontrivial log volume,
+     * exactly the volume a diagnostics export exists to handle. So the work
+     * happens on Dispatchers.IO and the result comes back as state rather than
+     * a return value.
      *
      * A tap arriving while [exporting] is already true is dropped: see that
      * field for why a second concurrent export corrupts the first one's zip.
@@ -196,8 +194,7 @@ class DeveloperViewModel @Inject constructor(
      * dump and a manifest carrying client_id and instance_id in the clear --
      * under a label promising a narrow subset. The row is disabled in that
      * state as well; this is the second guard, so no future caller can
-     * reintroduce the hazard. iOS guards it in the same two places
-     * (DiagnosticExportService.canExportSelection).
+     * reintroduce the hazard.
      */
     fun exportSelectedDiagnostics(destDir: File, nowMillis: Long) {
         val selected = selectedLogNames.toList()
@@ -242,11 +239,11 @@ class DeveloperViewModel @Inject constructor(
 
             deviceManager.device?.let { options.setManifestJson(it.diagnosticManifestJson()) }
 
-            // Goal 5: a source that cannot be read is RECORDED as missing, not
-            // silently omitted. The sdk cannot do this for us -- LogInventory
-            // swallows directory-read failures and ExportDiagnosticBundle only
-            // ever learns about per-FILE open/stat errors -- so without this an
-            // unreadable filesDir/logs yields a bundle with zero log entries,
+            // A source that cannot be read is RECORDED as missing, not silently
+            // omitted. The sdk cannot do this for us -- LogInventory swallows
+            // directory-read failures and ExportDiagnosticBundle only ever
+            // learns about per-FILE open/stat errors -- so without this an
+            // unreadable log directory yields a bundle with zero log entries,
             // an empty "NOT INCLUDED" section and "Exported 0 log files", and
             // the support engineer is told nothing about why.
             unavailableLogSources().forEach { (source, reason) ->
@@ -338,11 +335,10 @@ class DeveloperViewModel @Inject constructor(
      * thread.
      *
      * Sdk.logInventory() is an os.ReadDir of the root plus every process
-     * directory, with an Info() per entry, all across the gomobile bridge --
-     * it was being called straight from a Compose click handler. The rows it
-     * returns are Go proxies too, so every source/severity/byteCount read in
-     * the picker was another JNI hop, repeated per row per recomposition.
-     * Snapshotting into plain kotlin values here removes both.
+     * directory, with an Info() per entry, all across the gomobile bridge. The
+     * rows it returns are Go proxies too, so every source/severity/byteCount
+     * read in the picker would be another JNI hop, repeated per row per
+     * recomposition. Snapshotting into plain kotlin values here removes both.
      */
     fun refreshDiagnostics() {
         if (refreshingDiagnostics) {
@@ -389,20 +385,17 @@ class DeveloperViewModel @Inject constructor(
      * logs worth raising it for.
      *
      * Always through the DEVICE, never Sdk.setLogVerbosity: that one reaches
-     * only the calling process, and on ios `connect` -- the contract
-     * accounting, the transport internals, the window diagnostics -- runs in
-     * the network extension, a separate process with its own glog state. The
-     * app process is not where any of it is written. Device.SetLogVerbosity
-     * sets both, carrying the level over the rpc (or queueing it for the next
-     * sync when the tunnel is down, which is the usual case here: the level is
-     * raised BEFORE connecting to reproduce). Android runs a DeviceLocal in
-     * one process, so this is the same trap FlushGlog hit and the same fix --
-     * going through the device is what keeps the two platforms honest.
+     * only the calling process, and the transport internals, contract
+     * accounting and window diagnostics are written by the process the device
+     * runs in. Device.SetLogVerbosity is the one that reaches it -- on android
+     * the DeviceLocal in this process, and on the other platform binding the
+     * same call carries the level across to the extension the transport runs
+     * in. Going through the device is what keeps the two honest.
      *
      * The level is then READ BACK from the device rather than assumed. The sdk
-     * clamps out of range values, a hosted device refuses the call outright,
-     * and an older device peer can decline the rpc method -- none of which
-     * throws. Reading back is what makes a set that did not take visible.
+     * clamps out-of-range values and a hosted device refuses the call
+     * outright, neither of which throws. Reading back is what makes a set that
+     * did not take visible.
      */
     val setLogVerbosity: (Long) -> Unit = { level ->
         val device = deviceManager.device
@@ -422,9 +415,11 @@ class DeveloperViewModel @Inject constructor(
         val device = deviceManager.device
 
         // Polled with the rest of the readout rather than cached from the last
-        // tap: the flag lives in the device's process, and another process (or
-        // the restore a device runs at construction) can move it under us. A
-        // stale "Verbose" here is the one lie this control cannot afford.
+        // tap: the flag lives in the device's process and the restore a device
+        // runs at construction can move it under us. A stale "Verbose" here is
+        // the one lie this control cannot afford. Read BEFORE the null guard
+        // below, so signing out clears the level to "Unavailable" instead of
+        // leaving the last device's reading on screen.
         logVerbosity = device?.getLogVerbosity()
 
         if (device == null) {
@@ -987,13 +982,13 @@ private data class DiagnosticExportOutcome(val file: File?, val summary: Diagnos
 /**
  * What an export produced, carried as numbers.
  *
- * The count is deliberately NOT formatted here. The summary used to be built
- * as `"Exported ${result.fileCount} log files"`, which reads "Exported 1 log
- * files" for the single-file case that a selective export produces most often.
- * Only a `<plurals>` resource can pick the right form, only a composable can
- * resolve one, and a count already baked into a string cannot be pluralised
- * afterwards -- so the count travels as an Int and
- * `R.plurals.dev_export_summary` selects on it at the point of display.
+ * The count is deliberately NOT formatted here. Built as
+ * `"Exported ${result.fileCount} log files"` it reads "Exported 1 log files"
+ * for the single-file case that a selective export produces most often. Only a
+ * `<plurals>` resource can pick the right form, only a composable can resolve
+ * one, and a count already baked into a string cannot be pluralised afterwards
+ * -- so the count travels as an Int and `R.plurals.dev_export_summary` selects
+ * on it at the point of display.
  */
 data class DiagnosticExportSummary(
     val fileCount: Int,
@@ -1014,14 +1009,15 @@ data class DiagnosticExportSummary(
 }
 
 /**
- * The three glog levels the sdk defines (`Sdk.LogVerbosityDefault`, `Trace`,
- * `Detail`), as the java `long` gobind binds a Go `int` to.
+ * The three glog levels the sdk defines (`Sdk.LogVerbosityDefault`,
+ * `LogVerbosityVerbose`, `LogVerbosityTrace`), as the java `long` gobind binds
+ * a Go `int` to.
  *
  * Named for what each one BUYS, because the whole point of the control is that
  * the interesting logging is off by default: `connect` gates its contract
  * accounting, transport internals and window diagnostics behind V(1) and V(2),
- * so at level 0 a bundle from a live connected session contains only rpc
- * chatter and nothing about contracts or transports at all.
+ * so at level 0 a bundle from a live connected session carries rpc chatter and
+ * nothing about contracts or transports at all.
  */
 const val LOG_VERBOSITY_DEFAULT = 0L
 
@@ -1043,26 +1039,29 @@ val LOG_VERBOSITY_PRESETS = listOf(
  *
  * A level that is not one of the presets lands on the FIRST one, matching the
  * other stepper rows on this screen. That is reachable in practice: the sdk
- * reports whatever the `-v` flag says, including a value an embedder set on
- * the command line above the sdk's own range, and stepping from an unknown
- * value has to go somewhere predictable.
+ * reports whatever the `-v` flag says, including a value set past the sdk's
+ * own range by other means, and stepping from an unknown value has to go
+ * somewhere predictable rather than throw out of a click handler.
  */
 fun nextLogVerbosity(level: Long): Long {
     val index = LOG_VERBOSITY_PRESETS.indexOf(level)
     return LOG_VERBOSITY_PRESETS[(index + 1) % LOG_VERBOSITY_PRESETS.size]
 }
 
-/** The three levels this control offers, plus "no device to ask" as null. */
+/** The three levels this control offers; "no device to ask" is null. */
 enum class LogVerbosityLevel { DEFAULT, VERBOSE, TRACE }
 
 /**
  * Which level a raw verbosity is displayed as, or null when there is no device
  * to read one from.
  *
+ * "No device" and "level 0" are different claims, and reporting the second for
+ * the first is exactly the silent assumption this control exists to avoid.
+ *
  * Out-of-range values are folded toward the nearest level rather than dropped:
- * `GetLogVerbosity` reports the flag itself, so a -v of 5 set some other way
- * is a real possibility, and at 5 every V(2) statement fires -- calling that
- * anything but Trace would understate what the logs now contain.
+ * GetLogVerbosity reports the flag itself, so a -v of 5 is a real
+ * possibility, and at 5 every V(2) statement fires -- calling that anything
+ * but Trace would understate what the logs now contain.
  */
 fun logVerbosityLevel(level: Long?): LogVerbosityLevel? {
     if (level == null) {
@@ -1080,10 +1079,10 @@ fun logVerbosityLevel(level: Long?): LogVerbosityLevel? {
  * name of the level it maps to -- "1 · Verbose".
  *
  * Both, because they answer different questions. The name says what the row
- * means; the number is what the sdk reports, what a support thread can compare
+ * means; the number is what the sdk reports, what a support thread compares
  * against a bundle's manifest, and the only place a level outside the sdk's
  * range would ever be visible -- a -v of 7 reads "7 · Trace" rather than
- * being quietly redrawn as 2. Matches iOS's LogVerbosity.valueLabel.
+ * being quietly redrawn as 2.
  */
 fun logVerbosityValueLabel(level: Long, name: String): String = "$level · $name"
 
@@ -1092,8 +1091,8 @@ fun logVerbosityValueLabel(level: Long, name: String): String = "$level · $name
  * ports of real traffic into the logs, which is what the persistent warning on
  * the screen is for.
  *
- * Keyed off the level READ BACK from the device, so it is never shown for a
- * raise that did not actually take, and never hidden for one that did.
+ * Keyed off the level READ BACK from the device, so the warning is never shown
+ * for a raise that did not actually take, and never hidden for one that did.
  */
 fun logVerbosityRecordsDestinations(level: Long?): Boolean =
     when (logVerbosityLevel(level)) {
@@ -1188,7 +1187,7 @@ fun readAtMost(reader: java.io.Reader, maxChars: Int): String {
  * unguarded empty selection produces a complete RAW bundle -- every severity,
  * every rotation, the logcat dump and a manifest carrying client_id and
  * instance_id in the clear -- from a control whose label promises a narrow
- * subset. Mirrors iOS's DiagnosticExportService.canExportSelection.
+ * subset.
  */
 fun canExportSelection(selected: Collection<String>): Boolean = selected.isNotEmpty()
 
@@ -1198,8 +1197,8 @@ fun canExportSelection(selected: Collection<String>): Boolean = selected.isNotEm
  *
  * The sdk reports per-file failures but swallows directory-read failures
  * entirely, so this is the only place an unreadable log directory can be
- * noticed on android -- and goal 5 requires such a source to be recorded as
- * missing rather than silently omitted.
+ * noticed on android -- and such a source has to be recorded as missing rather
+ * than silently omitted.
  *
  * Deliberately path-free: the reason is copied verbatim into the bundle's
  * README "NOT INCLUDED" list, which the sdk writes without the redaction
@@ -1221,10 +1220,10 @@ fun logSourceUnavailableReason(logRoot: String, source: String): String? {
 /**
  * What the export would contain, shown before the user commits to it: a
  * bundle is up to 4x16MB per process, which is not a thing to discover
- * afterwards. Mirrors iOS's DiagnosticExportService.inventoryLabel.
+ * afterwards.
  *
  * Sizes go through the app's own formatByteCountCompact rather than
- * `byteCount / 1024`: that integer division rendered a freshly rotated
+ * `byteCount / 1024`: that integer division renders a freshly rotated
  * 400-byte log as "0 KiB", and in a picker "0" reads as "nothing in this
  * file" rather than as a rounding.
  */
@@ -1246,8 +1245,8 @@ fun selectionLabel(fileCount: Int, byteCount: Long): String {
 }
 
 /**
- * When a log was last written, UTC, or "" when unknown. The spec's picker rows
- * name severity, size AND modified time: which file covers the incident is a
+ * When a log was last written, UTC, or "" when unknown. The picker's rows name
+ * severity, size AND modified time: which file covers the incident is a
  * question about time, and the glog file name does not answer it legibly.
  */
 fun logFileModifiedLabel(modifiedMillis: Long): String {

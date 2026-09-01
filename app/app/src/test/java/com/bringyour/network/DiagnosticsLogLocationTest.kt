@@ -28,8 +28,8 @@ class DiagnosticsLogLocationTest {
     @Test
     fun theLogRootIsASubdirectoryOfFilesDirPerProcess() {
         assertEquals(File(filesDir, "logs"), logRootDir(filesDir))
-        // the source label in an exported bundle is this directory name, and it
-        // matches iOS's DiagnosticsLogLocation.appProcessName
+        // the directory name is the label for which process wrote a file, and
+        // it is the same one iOS uses for its app process
         assertEquals("app", APP_LOG_PROCESS_NAME)
     }
 

@@ -41,7 +41,6 @@ import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.bringyour.network.R
-import com.bringyour.network.utils.formatByteCountCompact
 import com.bringyour.network.ui.components.URSwitch
 import com.bringyour.network.ui.components.URTextInputLabel
 import com.bringyour.network.ui.theme.Black
@@ -51,8 +50,10 @@ import com.bringyour.network.ui.theme.RedDark
 import com.bringyour.network.ui.theme.TextDanger
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
+import com.bringyour.network.utils.formatByteCountCompact
 import com.bringyour.sdk.Exit
 import kotlinx.coroutines.delay
+import java.io.File
 import java.util.Locale
 
 /**
@@ -132,10 +133,10 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     // A diagnostics export is most needed exactly when the connection is
     // broken or the user is signed out -- i.e. exactly when `connected`
     // (reliability != null, which requires a live device) is false. This
-    // section must therefore render above the !connected guard below, not be
-    // gated on the healthy connection it exists to help diagnose the absence
-    // of. exportDiagnostics already tolerates a null device on its own
-    // (deviceManager.device?.let { ... }), which is what makes this safe.
+    // section therefore renders ABOVE the !connected guard below rather than
+    // being gated on the healthy connection it exists to help diagnose the
+    // absence of. The export tolerates a null device on its own
+    // (deviceManager.device?.let { ... }), which is what makes that safe.
     URTextInputLabel(text = stringResource(id = R.string.dev_section_diagnostics))
 
     // ABOVE the export rows on purpose: the order of operations is set the
@@ -152,9 +153,9 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
 
     // Persistent, not a one-shot toast: it has to be on screen at the moment
     // the user reaches for "Export all logs (raw)", which can be many minutes
-    // after the level was raised. This is the difference between a bundle that
-    // is safe to attach to a support thread and one carrying every site the
-    // user visited while reproducing.
+    // after the level was raised. This pairing is the point -- raising the
+    // verbosity is what makes the redaction stop being decorative, so the
+    // warning names the redacted export rather than just describing the risk.
     if (logVerbosityRecordsDestinations(developerViewModel.logVerbosity)) {
         Column(
             modifier = Modifier
@@ -177,14 +178,16 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     }
 
     val context = LocalContext.current
-    val shareBundle: (java.io.File) -> Unit = { file ->
+    val shareBundle: (File) -> Unit = { file ->
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "application/zip"
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, context.getString(R.string.dev_export_share)))
+        context.startActivity(
+            Intent.createChooser(intent, context.getString(R.string.dev_export_share)),
+        )
     }
 
     // cacheDir/share is already declared to the FileProvider as "share"
@@ -194,7 +197,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     // poll -- while the directory is created by the exporter itself, on
     // Dispatchers.IO: File.mkdirs() stats the path before it can return, which
     // is a disk hit the ui thread should never take.
-    val shareDir = remember(context) { java.io.File(context.cacheDir, "share") }
+    val shareDir = remember(context) { File(context.cacheDir, "share") }
 
     // The bundle comes back as state rather than through a completion lambda:
     // a lambda declared here captures this composition's Activity, so an
@@ -208,11 +211,11 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         }
     }
 
-    // The spec's ui section requires the total size before exporting and any
-    // unavailable source with its reason -- both BEFORE the user commits to a
-    // bundle of up to 4x16MB per process, not afterwards in the summary. The
-    // read is directory i/o plus a stat per file across the gomobile bridge,
-    // so it happens once on entry, off the main thread.
+    // The total size before exporting, and any unavailable source with its
+    // reason, are both shown BEFORE the user commits to a bundle of up to
+    // 4x16MB per process -- not afterwards in the summary. The read is
+    // directory i/o plus a stat per file across the gomobile bridge, so it
+    // happens once on entry, off the main thread.
     LaunchedEffect(Unit) {
         developerViewModel.refreshDiagnostics()
     }
@@ -233,7 +236,10 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         )
     }
 
-    DeveloperAction(label = stringResource(id = R.string.dev_export_all_logs), enabled = !exporting) {
+    DeveloperAction(
+        label = stringResource(id = R.string.dev_export_all_logs),
+        enabled = !exporting,
+    ) {
         developerViewModel.exportDiagnostics(
             shareDir,
             redact = false,
@@ -242,7 +248,10 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         )
     }
 
-    DeveloperAction(label = stringResource(id = R.string.dev_export_redacted_logs), enabled = !exporting) {
+    DeveloperAction(
+        label = stringResource(id = R.string.dev_export_redacted_logs),
+        enabled = !exporting,
+    ) {
         developerViewModel.exportDiagnostics(
             shareDir,
             redact = true,
@@ -273,7 +282,11 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
                 Text(
                     logFileRowLabel(info.source, info.severity, info.byteCount, info.modifiedMillis),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (developerViewModel.selectedLogNames.contains(info.name)) BlueMedium else TextMuted,
+                    color = if (developerViewModel.selectedLogNames.contains(info.name)) {
+                        BlueMedium
+                    } else {
+                        TextMuted
+                    },
                 )
             }
         }
@@ -291,7 +304,7 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
         // nothing checked, or while an export is already running: an empty
         // selection means "no filter" to the sdk, which would otherwise export
         // every log file unredacted, the opposite of what this row's label
-        // promises. iOS guards it in the same two places.
+        // promises.
         DeveloperAction(
             label = stringResource(id = R.string.dev_export_selected),
             enabled = !exporting && canExportSelection(developerViewModel.selectedLogNames),
@@ -310,9 +323,9 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
 
     developerViewModel.lastExport?.let { lastExport ->
         // Resolved here rather than in the viewmodel because this is where a
-        // <plurals> can be read: "Exported 1 log files" was a count formatted
+        // <plurals> can be read: "Exported 1 log files" is a count formatted
         // into a fixed English phrase, and a selective export of one file is
-        // the common case that produced it.
+        // the common case that produces it.
         val failure = lastExport.failure
         Text(
             if (failure != null) {
@@ -337,6 +350,8 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
             )
         }
     }
+
+    Spacer(modifier = Modifier.height(16.dp))
 
     if (!developerViewModel.connected) {
         Text(
@@ -854,8 +869,6 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
     // -- no OS resolver, no tun resolver settings, no [::1]:53 fallback -- so
     // its results are about the provider, not the harness.
 
-    Spacer(modifier = Modifier.height(32.dp))
-
     developerViewModel.lastAction?.let { lastAction ->
         Text(lastAction, style = MaterialTheme.typography.bodySmall, color = TextMuted)
     }
@@ -868,11 +881,10 @@ private fun DeveloperContent(developerViewModel: DeveloperViewModel) {
  * Default -> Verbose -> Trace on tap.
  *
  * The value shown is the one the DEVICE reports, never the one last asked for.
- * A set can be clamped by the sdk, refused outright by a hosted device, or
- * declined by an older device peer over the rpc, and none of those throw --
- * so a level that failed to apply has to be visible here rather than assumed,
- * or the user reproduces a fault believing they are capturing V(1) contract
- * accounting and exports a bundle that has none.
+ * A set can be clamped by the sdk or refused outright by a hosted device, and
+ * neither throws -- so a level that failed to apply has to be visible here
+ * rather than assumed, or the user reproduces a fault believing they are
+ * capturing V(1) contract accounting and exports a bundle that has none.
  *
  * "Unavailable" is not the same as level 0: it means there is no device to ask
  * yet, so the row is inert rather than reporting a default that is not in
@@ -902,6 +914,9 @@ private fun DeveloperVerbositySetting(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // inert with no device: there is nothing to set the level on, and
+            // a tap that appeared to work would leave the row claiming a level
+            // nothing is running at
             .clickable(enabled = level != null) {
                 onSelect(nextLogVerbosity(level ?: LOG_VERBOSITY_DEFAULT))
             }

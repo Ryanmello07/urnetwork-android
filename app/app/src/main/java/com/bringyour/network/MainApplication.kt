@@ -222,21 +222,23 @@ class MainApplication : Application() {
 
         // One subdirectory per writing process, under a shared root. Android is
         // single-process (no android:process in the manifest), so there is only
-        // ever "app" here -- but the layout is what the exporter enumerates, and
-        // it keeps the sdk call identical across platforms.
+        // ever "app" here -- but the sdk prunes per directory (it keeps the 4
+        // newest files in whichever one glog is pointed at), so the per-process
+        // layout is what stops two writers from deleting each other's history,
+        // and it keeps this call identical to the one iOS makes.
         val logRoot = logRootDir(applicationContext.filesDir)
         val processLogDir = File(logRoot, APP_LOG_PROCESS_NAME)
 
         // Pre-upgrade builds wrote glog files straight into filesDir. Nothing
-        // ever prunes or exports that directory again once the root moves, so
+        // ever prunes or reads that directory again once the root moves, so
         // the old files are both dead storage and unreachable evidence. Run the
-        // migration BEFORE pointing glog at the new directory: SetLogDir's
+        // migration BEFORE pointing glog at the new directory: the sdk's
         // retention pass then treats the migrated files as part of the app's
         // own history and keeps only the newest four of the merged set.
         val migratedLogCount = try {
             migrateLegacyLogFiles(applicationContext.filesDir, processLogDir)
-        } catch (t: Throwable) {
-            Log.e(TAG, "could not migrate pre-upgrade log files: ${t.message}", t)
+        } catch (e: Exception) {
+            Log.e(TAG, "could not migrate pre-upgrade log files: ${e.message}", e)
             0
         }
         if (0 < migratedLogCount) {
@@ -247,18 +249,20 @@ class MainApplication : Application() {
         // kotlin does not enforce checked exceptions -- so an unguarded call
         // compiles and then propagates out of Application.onCreate as an
         // unhandled crash on EVERY launch. The sdk's own contract is the
-        // opposite ("logging must never be what breaks a launch"), and the
-        // fallback meant to make the error unreachable cannot work here: it
-        // targets os.TempDir(), which on android is "/tmp" -- absent and not
-        // creatable inside the app sandbox -- so if filesDir/logs cannot be
-        // created (storage full, quota, EIO) the error really is returned.
+        // opposite ("logging must never be what breaks a launch"), but the
+        // fallback meant to make the error unreachable cannot do that here: it
+        // targets os.TempDir(), which on android resolves to /data/local/tmp
+        // (Go's own android case in os.tempDir, since app processes have no
+        // TMPDIR set) -- shell-owned and not writable by an app uid. So if
+        // <filesDir>/logs cannot be created (storage full, quota, EIO) the
+        // fallback fails too and the error really is returned.
         // Catching it turns an unbootable app back into a logging problem:
-        // glog keeps whatever destination it already had, and the exporter
-        // reports the source as missing rather than pretending it is there.
+        // glog keeps whatever destination it already had, and Sdk.getLogDir()
+        // keeps naming that destination for the feedback screen's log buttons.
         try {
             Sdk.setLogDirForProcess(logRoot.absolutePath, APP_LOG_PROCESS_NAME)
-        } catch (t: Throwable) {
-            Log.e(TAG, "could not point logging at $logRoot: ${t.message}", t)
+        } catch (e: Exception) {
+            Log.e(TAG, "could not point logging at $logRoot: ${e.message}", e)
         }
 
         val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager?

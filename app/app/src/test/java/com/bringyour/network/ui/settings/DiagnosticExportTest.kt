@@ -74,7 +74,7 @@ class DiagnosticExportTest {
         assertTrue("should name the source, was $label", label.contains("extension"))
         assertTrue("should name the severity, was $label", label.contains("ERROR"))
         assertTrue("should show the size, was $label", label.contains("2.00 KiB"))
-        // the spec's picker rows carry modified time: which file covers the
+        // the picker's rows carry modified time: which file covers the
         // incident is a question about time
         assertTrue("should show when it was written, was $label", label.contains("2026-01-01 00:00Z"))
     }
@@ -87,7 +87,7 @@ class DiagnosticExportTest {
 
     @Test
     fun sizesNeverRenderAFileAsEmptyWhenItIsNot() {
-        // `byteCount / 1024` rendered a freshly rotated log as "0 KiB", which in
+        // `byteCount / 1024` renders a freshly rotated log as "0 KiB", which in
         // a picker reads as "nothing in this file" rather than as a rounding.
         // The app's own formatter is what the rest of the ui already uses.
         assertEquals("app · INFO · 400 B", logFileRowLabel("app", "INFO", 400L))
@@ -118,8 +118,8 @@ class DiagnosticExportTest {
     @Test
     fun anUnreadableLogSourceIsReportedRatherThanSilentlyOmitted() {
         // the sdk swallows directory-read failures entirely, so this predicate
-        // is the only place android can notice one -- goal 5 requires such a
-        // source to be recorded as missing
+        // is the only place android can notice one -- such a source has to be
+        // recorded as missing
         assertNotNull(logSourceUnavailableReason("", "app"))
 
         val root = Files.createTempDirectory("logroot").toFile()
@@ -143,13 +143,13 @@ class DiagnosticExportTest {
 
     @Test
     fun theSummaryCarriesTheCountAsANumberSoItCanBePluralised() {
-        // "Exported 1 log files" -- the count was formatted into a fixed
-        // English phrase in the viewmodel, where no <plurals> can be resolved,
-        // and a count already inside a string cannot be pluralised afterwards.
-        // The fix is that the summary stays numeric all the way to the screen,
-        // which is what R.plurals.dev_export_summary selects on. A file count
-        // of exactly 1 is the common case: it is what a selective export of
-        // one log produces.
+        // "Exported 1 log files" -- a count formatted into a fixed English
+        // phrase in the viewmodel, where no <plurals> can be resolved, and a
+        // count already inside a string cannot be pluralised afterwards. So
+        // the summary stays numeric all the way to the screen, which is what
+        // R.plurals.dev_export_summary selects on. A file count of exactly 1
+        // is the common case: it is what a selective export of one log
+        // produces.
         val one = DiagnosticExportSummary(fileCount = 1, byteCount = 2048L, missingSources = listOf())
         assertEquals(1, one.fileCount)
         assertEquals(2048L, one.byteCount)
@@ -160,8 +160,8 @@ class DiagnosticExportTest {
     @Test
     fun anUnreadableSourceSurvivesIntoTheSummaryRatherThanBeingFlattenedIntoIt() {
         // each missing source is rendered as its own line by the screen, so it
-        // stays a list here -- goal 5 requires the reason to reach the user,
-        // and a pre-joined string cannot be re-styled or re-localised
+        // stays a list here -- the reason has to reach the user, and a
+        // pre-joined string cannot be re-styled or re-localised
         val summary = DiagnosticExportSummary(
             fileCount = 3,
             byteCount = 4096L,

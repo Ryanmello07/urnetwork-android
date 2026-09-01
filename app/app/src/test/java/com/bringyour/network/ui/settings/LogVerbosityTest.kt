@@ -18,7 +18,7 @@ class LogVerbosityTest {
 
     @Test
     fun theLevelsAreTheThreeTheSdkDefines() {
-        // Sdk.LogVerbosityDefault / Trace / Detail. Not an arbitrary list:
+        // Sdk.LogVerbosityDefault / Verbose / Trace. Not an arbitrary list:
         // `connect` gates its diagnostics at V(1) and V(2) only, so anything
         // above 2 is volume with nothing new to show, and the sdk clamps it
         assertEquals(listOf(0L, 1L, 2L), LOG_VERBOSITY_PRESETS)
@@ -39,9 +39,9 @@ class LogVerbosityTest {
     @Test
     fun steppingFromAnUnknownLevelLandsOnDefault() {
         // GetLogVerbosity reports the -v flag itself, not a clamped shadow
-        // copy, so a level outside the sdk's range is reachable when an
-        // embedder set one another way. Stepping from it has to go somewhere
-        // predictable rather than throw out of a click handler.
+        // copy, so a level outside the sdk's range is reachable when one was
+        // set another way. Stepping from it has to go somewhere predictable
+        // rather than throw out of a click handler.
         assertEquals(LOG_VERBOSITY_DEFAULT, nextLogVerbosity(7L))
         assertEquals(LOG_VERBOSITY_DEFAULT, nextLogVerbosity(-3L))
     }
@@ -74,10 +74,9 @@ class LogVerbosityTest {
         assertEquals("0 · Default", logVerbosityValueLabel(LOG_VERBOSITY_DEFAULT, "Default"))
         assertEquals("1 · Verbose", logVerbosityValueLabel(LOG_VERBOSITY_VERBOSE, "Verbose"))
         assertEquals("2 · Trace", logVerbosityValueLabel(LOG_VERBOSITY_TRACE, "Trace"))
-        // a level an embedder set past the sdk's range is reported as the
-        // number it actually is rather than quietly redrawn as 2 -- this row
-        // is the only place the discrepancy could show. Matches iOS's
-        // LogVerbosityTests.theValueLabelReportsTheLevelTheDeviceGave.
+        // a level set past the sdk's range is reported as the number it
+        // actually is rather than quietly redrawn as 2 -- this row is the only
+        // place the discrepancy could show
         assertEquals("7 · Trace", logVerbosityValueLabel(7L, "Trace"))
     }
 
