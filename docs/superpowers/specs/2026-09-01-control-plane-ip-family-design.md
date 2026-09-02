@@ -266,10 +266,31 @@ a user is in when they open the Developer menu to fix this very problem.
 
 Android is single-process, so the split does not arise there.
 
-**Stated limitation.** The runtime policy is process-global while `LocalState`
-is per-network-space. With two spaces configured, whichever constructs last
-wins the restore. On mobile one space is active at a time, so this is
-theoretical — but it is real.
+**Stated limitation, and a correction to it.** The runtime policy is
+process-global while `LocalState` is per-network-space.
+
+This section originally said that with two spaces configured "whichever
+constructs last wins the restore", and called that theoretical because one
+space is active at a time on mobile. **That was wrong**, and a reviewer caught
+it during implementation. The manager constructs *every* stored space before
+selecting the active one, so the last entry in the stored slice won — not the
+active space — and the restore re-fired on every `updateNetworkSpace`, which
+iOS calls at boot and on every custom-server import. On `beta/custom-server`,
+whose whole purpose is that a custom API host and the production host coexist,
+two configured spaces is the normal case rather than an edge case.
+
+The implemented behaviour is a `sync.Once`-guarded restore applied from the
+active space at manager load, from the first `SetActiveNetworkSpace` when an
+install has no readable index, and from `updateNetworkSpace` **only when no
+space is active at all**. That last case is not a loose end: the iOS network
+extension builds its own manager and never calls `SetActiveNetworkSpace`, so
+its active space is permanently nil and this is its only restore — regime 2 in
+the table above. Gating strictly on the active space would have left the
+extension dialing under Auto until the app's RPC reached it.
+
+What remains true is the narrower original point: the runtime policy is
+process-global, so the active space's persisted value is the one in force for
+the whole process.
 
 ### §4 Developer controls and the evidence trail
 
