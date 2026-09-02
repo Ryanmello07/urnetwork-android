@@ -1,7 +1,11 @@
 # Control-plane IPv4/IPv6 selection: reactive demotion and a developer force
 
 Date: 2026-09-01
-Status: design approved, not yet implemented
+Status: implemented on `beta/custom-server`, not yet pushed or upstreamed.
+  Implementation amended this document three times — the two-space restore limitation
+  (§3), the TLS-timeout out-of-scope entry, and the `sync.Once` description — each
+  because the code proved a claim here wrong. Those corrections are kept inline rather
+  than rewritten away, so the reasoning that failed is still readable.
 Repos touched: `connect`, `sdk`, `ios`, `android`
 
 ## Problem
