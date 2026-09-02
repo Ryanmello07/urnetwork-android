@@ -82,8 +82,52 @@ this work (§4), not a follow-up.
 - **Racing both families in the H3/QUIC dial.** A materially larger change to
   QUIC dialing, and unnecessary once H3 inherits H1's demotion (§2, site 3).
   Deliberately excluded, not overlooked.
-- **Shortening the 15 s TLS handshake timeout.** Considered and declined: it
-  would risk false-positive demotion for users on genuinely slow links.
+- **Shortening the 15 s TLS handshake timeout — declined, and then overtaken
+  by what implementation found.** The original ruling was that shortening
+  `TlsTimeout` would risk false-positive demotion for users on genuinely slow
+  links. That reasoning holds, and `TlsTimeout` is untouched at 15 s.
+
+  What the ruling missed is that with no bound at all the reactive demotion
+  **cannot fire on either production control path**. Both callers hand the
+  shared helper a deadline at or below `TlsTimeout`: on the API path
+  `http.Client.Timeout` is `RequestTimeout` (15 s, and it starts before the
+  dial); on the platform control websocket gorilla caps its dial context at
+  `HandshakeTimeout` (5 s). A handshake bounded only by `TlsTimeout` therefore
+  never reaches a timeout of its own — the caller's deadline always arrives
+  first, which the helper correctly refuses to read as evidence about a family,
+  and which leaves no budget to retry with either way. As specified here, the
+  mechanism this document exists for would never have engaged in production.
+
+  What shipped instead is a **floored** bound.
+  `ControlFamilyFirstHandshakeTimeout` (8 s) bounds the FIRST handshake of a
+  control dial, and only while the caller still has
+  `bound + ControlFamilyRetryReserve` (5 s) remaining when that handshake
+  starts. Below that threshold the first handshake keeps the caller's whole
+  budget and the helper behaves exactly as it did with no bound at all —
+  because a bound that produces a timeout with no room to retry is strictly
+  worse than none: it converts a request that would have kept waiting into one
+  that fails early and learns nothing. See `connect/control_family_dial.go`,
+  with both values as `ConnectSettings` fields in `connect/net.go`.
+
+  **A floor is not the thing that was declined.** The false-positive risk came
+  from tolerance that scales DOWN with the caller. An earlier attempt on this
+  branch did exactly that — it halved whatever the caller had left, which gave
+  the control websocket 2.5 s, a figure a congested mobile link reaches with a
+  pinned P-384 chain and nothing wrong, and it shrank hardest precisely where
+  the budget was already smallest. A fixed floor cannot behave that way, and
+  its size is derived rather than picked: gorilla wraps the *entire* websocket
+  dial — TCP connect, TLS handshake **and** HTTP upgrade — in
+  `HandshakeTimeout`'s 5 s, and every production control-websocket reconnect
+  completes all three inside it. 8 s for the handshake alone is 60 % more than
+  a whole successful control dial is allowed. A handshake past 8 s is one this
+  product already treats as failed everywhere else.
+
+  That same threshold is what keeps the bound off the control websocket: its
+  5 s is under 8 s + 5 s, so that path is never bounded and its handshake
+  tolerance is left exactly as it was. It needs no retry of its own — the
+  ledger is process-global (§1), so what the API path has the budget to learn
+  is already in force for the websocket, the H3/QUIC name path and the
+  extenders.
 - **`nettest`'s two existing call sites** (`net_http.go:1178-1179`, extender
   selection). Untouched.
 
@@ -279,14 +323,32 @@ iOS calls at boot and on every custom-server import. On `beta/custom-server`,
 whose whole purpose is that a custom API host and the production host coexist,
 two configured spaces is the normal case rather than an edge case.
 
-The implemented behaviour is a `sync.Once`-guarded restore applied from the
-active space at manager load, from the first `SetActiveNetworkSpace` when an
-install has no readable index, and from `updateNetworkSpace` **only when no
-space is active at all**. That last case is not a loose end: the iOS network
-extension builds its own manager and never calls `SetActiveNetworkSpace`, so
-its active space is permanently nil and this is its only restore — regime 2 in
-the table above. Gating strictly on the active space would have left the
-extension dialing under Auto until the app's RPC reached it.
+The implemented behaviour is a once-per-manager restore applied from the active
+space at manager load, from `SetActiveNetworkSpace` — which covers both a fresh
+install whose `.network_spaces` index is missing or unreadable and an
+in-session space switch — and from `updateNetworkSpace` **only when no space is
+active at all**. That last case is not a loose end: the iOS network extension
+builds its own manager and never calls `SetActiveNetworkSpace`, so its active
+space is permanently nil and this is its only restore — regime 2 in the table
+above. Gating strictly on the active space would have left the extension
+dialing under Auto until the app's RPC reached it.
+
+The guard is a mutex and a bool, **not** a `sync.Once`, and the difference is
+load-bearing rather than stylistic. A `sync.Once` is spent by being *entered*,
+so the first space the restore is offered would close it whether or not that
+space had anything to restore. With a custom API host configured alongside the
+production one — two spaces, the normal case on this branch — the bundled space
+with nothing persisted is routinely the first one offered, and it would leave
+the space that actually holds the user's force unable to restore it for the
+rest of the session. The bool is therefore set from what
+`NetworkSpace.restoreControlIpFamilyPolicy` reports, so the guard is spent only
+when a policy was **actually applied**. Once one has been, it is closed for
+good, which is the half this must not lose: `updateNetworkSpace` rebuilds a
+space on every launch and every custom-server import, and a second apply there
+would re-impose the persisted value over one an embedder had just set. The lock
+is its own rather than `stateLock`, because `load` and `updateNetworkSpace`
+both reach the restore while already holding `stateLock` and `sync.Mutex` is
+not reentrant.
 
 What remains true is the narrower original point: the runtime policy is
 process-global, so the active space's persisted value is the one in force for
