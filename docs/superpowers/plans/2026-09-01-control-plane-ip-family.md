@@ -44,9 +44,9 @@ The spec's §1 describes a `generation uint64` bumped on `NetworkChanged()` and 
 | File | Change |
 |---|---|
 | `net.go:59` | Delete `DisableIpv4`/`DisableIpv6`. |
-| `net.go:67` | `ConnectSettings.DialContext` calls the resolver. |
+| `net.go:67` | `ConnectSettings.DialContext` calls the resolver, then fires the `DialNetworkHook` test seam. `"fmt"` leaves the import block. |
 | `net_http.go:218-224` | Delete the fast-path branch. |
-| `net_http.go:1380-1389` | HTTP/2 health check; unguard the `HTTP2Config` block. |
+| `net_http.go:46,154,1380-1390` | HTTP/2 health check: `Http2SendPingTimeout`/`Http2PingTimeout` on `ClientStrategySettings`, their defaults, and unguarding the `HTTP2Config` block. |
 | `net_http.go:213` | `newNormalDialTlsContext` uses the retry helper. |
 | `egress_dial.go:193` | Family evidence line, ungated on mobile. |
 | `egress_dial.go:79` | `resolveEgressUDPAddr` honours policy and demotion. |
@@ -63,6 +63,8 @@ The spec's §1 describes a `generation uint64` bumped on `NetworkChanged()` and 
 | `device_local.go` | `DeviceLocal` implementation. |
 | `device_rpc.go` | `DeviceRemote` implementation, rpc handler, replay queue. |
 | `diagnostics_redact_test.go` | `family=4` survives redaction. |
+| `build/apple/URnetworkSdk.xcframework`, `build/apple/URnetworkExtensionSdk.xcframework` | Regenerated gomobile Apple binding (Task 12). Gitignored build artifacts, not committed. |
+| `build/android/URnetworkSdk.aar` | Regenerated gomobile Android binding (Task 12). Gitignored; CI builds it. |
 
 **`ios/` — new**
 
@@ -74,7 +76,7 @@ The spec's §1 describes a `generation uint64` bumped on `NetworkChanged()` and 
 
 **`ios/` — modified:** `.../Developer/DeveloperView.swift` (the row).
 
-**`android/` — modified:** `.../ui/settings/DeveloperScreen.kt` (row + composable), `.../ui/settings/DeveloperViewModel.kt` (property + setter), `app/app/src/main/res/values/strings.xml`. **New:** `app/app/src/test/java/com/bringyour/network/ui/settings/IpFamilyTest.kt`.
+**`android/` — modified:** `.../ui/settings/DeveloperViewModel.kt` (the `IP_FAMILY_*` constants and pure helpers at file scope beside `LOG_VERBOSITY_DEFAULT`/`nextLogVerbosity`, the `NetworkSpaceManagerProvider` injection, and the properties + setter), `.../ui/settings/DeveloperScreen.kt` (the row call site and the `DeveloperIpFamilySetting` composable — **no** vocabulary helpers here), `app/app/src/main/res/values/strings.xml`. **New:** `app/app/src/test/java/com/bringyour/network/ui/settings/IpFamilyTest.kt`.
 
 ---
 
@@ -310,13 +312,14 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
 ```
 
-(`fmt` is used by the wrapped-deadline case, `strings` by the evidence-line tests added in Task 6.)
+(`fmt` is used by the wrapped-deadline case. **No `"strings"` here** — nothing
+in this task's tests uses it, and Go rejects an unused import. Task 6 adds it
+when the evidence-line tests arrive.)
 
 // Only a post-connect TIMEOUT proves a path is blackholed. Everything else is
 // a server or configuration fault, and demoting a family for one would steer
@@ -369,6 +372,33 @@ func TestControlFamilyDemoteRefusedWhenOtherFamilyUnusable(t *testing.T) {
 	}
 	if network != "tcp" {
 		t.Fatalf("got %q, want tcp -- a refused demotion must not narrow", network)
+	}
+}
+
+// The POLICY accessor must never reflect a learned demotion. A ui row that
+// read back "Force IPv4" because the heuristic fired could not be set back to
+// Auto -- it would already appear not to be Auto. The demotion is visible
+// through controlFamilyStatus instead, which is what the ui shows beside the
+// policy. This is asserted HERE rather than in the sdk because
+// controlFamilyDemote is only reachable from this package.
+func TestControlIpFamilyPolicyIgnoresDemotion(t *testing.T) {
+	restore := swapControlFamilyProbe(func(int) bool { return true })
+	defer restore()
+	controlFamilyClear()
+	defer controlFamilyClear()
+	SetControlIpFamilyPolicy(IpFamilyAuto)
+	defer SetControlIpFamilyPolicy(IpFamilyAuto)
+
+	if !controlFamilyDemote(6) {
+		t.Fatal("expected the demotion to take")
+	}
+	if got := ControlIpFamilyPolicy(); got != IpFamilyAuto {
+		t.Fatalf("policy reads %d after a demotion, want IpFamilyAuto -- "+
+			"a demotion must never be reported as a policy the user set", got)
+	}
+	if controlFamilyStatus() == "" {
+		t.Fatal("expected a non-empty status while a demotion is live -- " +
+			"the ui has no other way to tell auto-with-a-demotion from plain auto")
 	}
 }
 
@@ -510,8 +540,8 @@ func (self *stubConn) RemoteAddr() net.Addr { return self.remote }
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd connect && go test -run 'TestIsPathTimeout|TestControlFamily|TestForceBeats|TestNetworkChangedClears|TestConnFamily' ./...`
-Expected: FAIL — `undefined: isPathTimeout`, `undefined: controlFamilyDemote`, `undefined: swapControlFamilyProbe`.
+Run: `cd connect && go test -run 'TestIsPathTimeout|TestControlFamily|TestControlIpFamily|TestForceBeats|TestNetworkChangedClears|TestConnFamily' ./...`
+Expected: FAIL — the package does not compile: `undefined: isPathTimeout`, `undefined: controlFamilyDemote`, `undefined: controlFamilyStatus`, `undefined: swapControlFamilyProbe`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -775,7 +805,7 @@ with:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd connect && go test -run 'TestControlDialNetwork|TestSetControlIpFamilyPolicyClamps|TestIsPathTimeout|TestControlFamily|TestForceBeats|TestNetworkChangedClears|TestConnFamily' ./... && go vet ./... && gofmt -l control_family.go control_family_test.go`
+Run: `cd connect && go test -run 'TestControlDialNetwork|TestSetControlIpFamilyPolicyClamps|TestIsPathTimeout|TestControlFamily|TestControlIpFamily|TestForceBeats|TestNetworkChangedClears|TestConnFamily' ./... && go vet ./... && gofmt -l control_family.go control_family_test.go`
 Expected: PASS, clean vet, no gofmt output.
 
 - [ ] **Step 5: Commit**
@@ -793,17 +823,37 @@ git commit -m "feat: reactive ip family demotion with backoff and an ipv6-only g
 The change that makes Tasks 1-2 take effect. Nothing above this line is observable without it.
 
 **Files:**
-- Modify: `connect/net.go:59` (delete fields), `connect/net.go:67` (use resolver)
-- Modify: `connect/net_http.go:218-224` (delete fast path)
-- Modify: `connect/net_http_seam_test.go`
+- Modify: `connect/net.go:59` (delete the two dead fields, add the `DialNetworkHook` seam), `connect/net.go:67` (use the resolver, fire the hook), and `connect/net.go`'s import block (drop `"fmt"`)
+- Modify: `connect/net_http.go:218-227` (delete fast path)
+- Modify: `connect/net_http_seam_test.go` (imports + the new test)
 
 **Interfaces:**
 - Consumes: `controlDialNetwork` (Task 1).
-- Produces: no new symbols. Removes `ConnectSettings.DisableIpv4` and `ConnectSettings.DisableIpv6`.
+- Produces: `ConnectSettings.DialNetworkHook func(network string, addr string)` — a test seam, described below. Removes `ConnectSettings.DisableIpv4` and `ConnectSettings.DisableIpv6`.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `connect/net_http_seam_test.go`:
+First extend `connect/net_http_seam_test.go`'s import block. It currently imports
+`sync/atomic` and no `time` at all, so `sync` and `time` must both be ADDED —
+`sync/atomic` does not provide `sync.Mutex`:
+
+```go
+import (
+	"context"
+	"crypto/tls"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+```
+
+Then append:
 
 ```go
 // The MOBILE configuration -- no proxy, no injected dial context -- is the one
@@ -812,9 +862,18 @@ Append to `connect/net_http_seam_test.go`:
 // were honored by the fragment and reorder dialers and ignored by the default
 // one, so the strategy raced a forced dialer against an unforced one.
 //
-// This test pins the mobile shape specifically. A family policy that is not
-// consulted here is a developer setting that reads back correctly and changes
-// nothing.
+// The hook is on ConnectSettings.DialContext -- the seam the family policy
+// lives on -- and records the network string AFTER controlDialNetwork has
+// resolved it. That placement is what makes this test FAIL on unfixed code:
+// with the fast path still present the mobile shape returns a raw tls.Dialer
+// and never calls DialContext at all, so the hook never fires and the test
+// fails on "the seam is still bypassed".
+//
+// A hook on the net.Dialer's Control callback could not do this. Control is
+// documented to receive an already-family-specific network ("tcp4"/"tcp6"),
+// never "tcp", so against an IPv4 literal it records "tcp4" whether or not the
+// bypass was ever closed -- a guard that passes on the unfixed code it exists
+// to catch.
 func TestNormalTlsDialHonorsFamilyPolicyWithNoInjectedDialContext(t *testing.T) {
 	SetControlIpFamilyPolicy(IpFamilyForce4)
 	defer SetControlIpFamilyPolicy(IpFamilyAuto)
@@ -824,9 +883,9 @@ func TestNormalTlsDialHonorsFamilyPolicyWithNoInjectedDialContext(t *testing.T) 
 		t.Fatal("the default settings are no longer the mobile shape this test pins")
 	}
 
-	var networks []string
 	var mutex sync.Mutex
-	settings.NetDialerHook = func(network string, addr string) {
+	var networks []string
+	settings.DialNetworkHook = func(network string, addr string) {
 		mutex.Lock()
 		defer mutex.Unlock()
 		networks = append(networks, network)
@@ -834,7 +893,7 @@ func TestNormalTlsDialHonorsFamilyPolicyWithNoInjectedDialContext(t *testing.T) 
 
 	dialTls := newNormalDialTlsContext(settings, clientHttpNextProtos)
 	// the address is never reached: 198.51.100.0/24 is TEST-NET-2 and the dial
-	// fails. What is under test is the NETWORK STRING the dialer was handed.
+	// fails. What is under test is the NETWORK STRING the seam resolved.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	conn, err := dialTls(ctx, "tcp", "198.51.100.1:443")
@@ -845,12 +904,10 @@ func TestNormalTlsDialHonorsFamilyPolicyWithNoInjectedDialContext(t *testing.T) 
 	mutex.Lock()
 	defer mutex.Unlock()
 	if len(networks) == 0 {
-		t.Fatal("the dialer was never called -- the seam is still bypassed")
+		t.Fatal("ConnectSettings.DialContext was never called -- the seam is still bypassed")
 	}
-	for _, network := range networks {
-		if network != "tcp4" {
-			t.Fatalf("dialed %q, want tcp4 under IpFamilyForce4", network)
-		}
+	if len(networks) != 1 || networks[0] != "tcp4" {
+		t.Fatalf("resolved %v, want exactly [tcp4] under IpFamilyForce4", networks)
 	}
 }
 ```
@@ -858,19 +915,38 @@ func TestNormalTlsDialHonorsFamilyPolicyWithNoInjectedDialContext(t *testing.T) 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd connect && go test -run TestNormalTlsDialHonorsFamilyPolicy ./...`
-Expected: FAIL — `settings.NetDialerHook undefined`, and once that exists, the dialer is handed `"tcp"` rather than `"tcp4"`.
+
+Expected: FAIL, in two stages, and both are worth seeing.
+
+1. The package does not compile: `settings.DialNetworkHook undefined (type *ClientStrategySettings has no field or method DialNetworkHook)`. `go test` reports this as `[build failed]` for the `connect` package and runs nothing.
+2. Add the field alone (Step 3(a)) and re-run: the test now compiles and fails at
+   `ConnectSettings.DialContext was never called -- the seam is still bypassed`,
+   because the mobile shape still shortcuts to a raw `tls.Dialer` in
+   `newNormalDialTlsContext`. That second failure is the bug this task exists to
+   remove — if it does not appear, the test is not pinning what it claims to.
 
 - [ ] **Step 3: Write minimal implementation**
 
 Three edits.
 
-**(a)** `connect/net.go` — delete the two dead fields at `:59`:
+**(a)** `connect/net.go` — in the `ConnectSettings` struct at `:59`, delete the two dead fields and add the test seam in their place, so the block reads:
 
 ```go
 	DialContextSettings *DialContextSettings
+
+	// DialNetworkHook, when set, is called at the top of DialContext with the
+	// network string this dial will actually use -- AFTER controlDialNetwork
+	// has resolved it -- and the address.
+	//
+	// Test seam only, and deliberately here rather than on the net.Dialer's
+	// Control callback: Control only ever sees an already-family-specific
+	// network string, so a hook there cannot distinguish a "tcp4" this seam
+	// resolved from a "tcp4" the caller asked for, and cannot observe that
+	// this seam was skipped entirely.
+	DialNetworkHook func(network string, addr string)
 ```
 
-(i.e. remove the `DisableIpv4 bool` and `DisableIpv6 bool` lines entirely).
+(i.e. remove the `DisableIpv4 bool` and `DisableIpv6 bool` lines entirely.)
 
 **(b)** `connect/net.go` — replace the opening of `ConnectSettings.DialContext`. Replace everything from `if self.DisableIpv4 && self.DisableIpv6 {` down to the closing brace of the `switch network {` block with:
 
@@ -879,7 +955,14 @@ Three edits.
 	if networkErr != nil {
 		return nil, networkErr
 	}
+	if hook := self.DialNetworkHook; hook != nil {
+		hook(network, addr)
+	}
 ```
+
+Then **REMOVE `"fmt"` from `net.go`'s import block.** All five of its uses are inside the switch just deleted, and Go rejects an unused import — `go build` fails before any test runs. Verify with `grep -n 'fmt\.' connect/net.go`, which must return nothing after the edit (it returns `:69, :80, :84, :94, :98` before it, every one of them a `fmt.Errorf` in the deleted block).
+
+Nothing new is imported. In particular **do not add `"syscall"`** — the hook is a plain function call on the settings struct and touches no raw connection.
 
 **(c)** `connect/net_http.go` — in `newNormalDialTlsContext`, delete the fast-path branch:
 
@@ -910,44 +993,6 @@ and add a comment in its place explaining why it is gone:
 	// the intended behavior, and it applies to every dial, not only forced
 	// ones.
 ```
-
-**(d)** `connect/net.go` — add the test hook to `ConnectSettings` (beside `DialContextSettings`) and call it in `NetDialer()`:
-
-```go
-	// NetDialerHook, when set, is called with the network and address of every
-	// dial the net dialer makes. Test seam only: it exists so a test can pin
-	// the NETWORK STRING a dial was handed without a network.
-	NetDialerHook func(network string, addr string)
-```
-
-and in `NetDialer()`, wrap the returned dialer's `Control`:
-
-```go
-func (self *ConnectSettings) NetDialer() *net.Dialer {
-	// ... existing comment ...
-	dialer := egressDialer(&net.Dialer{
-		Timeout:         self.ConnectTimeout,
-		KeepAlive:       self.KeepAliveTimeout,
-		KeepAliveConfig: self.KeepAliveConfig,
-		Resolver:        egressAwareResolver(self.Resolver),
-	})
-	if hook := self.NetDialerHook; hook != nil {
-		prev := dialer.Control
-		dialer.Control = func(network string, addr string, c syscall.RawConn) error {
-			hook(network, addr)
-			if prev != nil {
-				return prev(network, addr, c)
-			}
-			return nil
-		}
-	}
-	return dialer
-}
-```
-
-Add `"syscall"` to `net.go`'s imports.
-
-Note: `Control` receives the network as `"tcp4"`/`"tcp6"` (already resolved to a family by the time a socket is created), which is exactly what the test asserts.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1293,11 +1338,20 @@ git commit -m "feat: retry the other address family once on a post-connect timeo
 ## Task 5: HTTP/2 health check for pooled control-plane connections
 
 **Files:**
-- Modify: `connect/net_http.go:1380-1389`
+- Modify: `connect/net_http.go` — `ClientStrategySettings` (`:154` area, the two new fields), `DefaultClientStrategySettings()` (`:46` area, their defaults), and the `HTTP2Config` block at `:1380-1390`
+- Modify: `connect/net_http_seam_test.go`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: nothing. Behaviour change only.
+- Produces: `ClientStrategySettings.Http2SendPingTimeout` and `ClientStrategySettings.Http2PingTimeout`.
+
+`connect/CONSTANTAUDIT.md` opens with the house rule: *"tunable values live in
+settings structs, never package-level constants. A behavioral value — a
+timeout, interval, threshold, capacity, batch size — belongs on the relevant
+`*Settings` struct with its default in the `Default*Settings()` constructor."*
+Two health-check timeouts are exactly that, and the `Http2Max*` fields they sit
+beside already follow the rule, so they go on `ClientStrategySettings` rather
+than in as bare literals.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1330,11 +1384,23 @@ func TestHttpClientConfiguresHttp2HealthCheck(t *testing.T) {
 	if transport.HTTP2 == nil {
 		t.Fatal("no HTTP2Config: a pooled dead connection is never detected")
 	}
-	if transport.HTTP2.SendPingTimeout <= 0 {
-		t.Fatal("SendPingTimeout is zero, which disables the health check")
+	// asserted against the SETTINGS, not against bare literals: the durations
+	// are tunable fields, so a test that pinned 10s/5s directly would fail an
+	// embedder that legitimately tuned them, and would stop testing that the
+	// transport is wired to the settings at all
+	if settings.Http2SendPingTimeout <= 0 {
+		t.Fatal("the default Http2SendPingTimeout is zero, which disables the health check")
 	}
-	if transport.HTTP2.PingTimeout <= 0 {
-		t.Fatal("PingTimeout is zero")
+	if settings.Http2PingTimeout <= 0 {
+		t.Fatal("the default Http2PingTimeout is zero")
+	}
+	if transport.HTTP2.SendPingTimeout != settings.Http2SendPingTimeout {
+		t.Fatalf("SendPingTimeout is %s, want the settings value %s",
+			transport.HTTP2.SendPingTimeout, settings.Http2SendPingTimeout)
+	}
+	if transport.HTTP2.PingTimeout != settings.Http2PingTimeout {
+		t.Fatalf("PingTimeout is %s, want the settings value %s",
+			transport.HTTP2.PingTimeout, settings.Http2PingTimeout)
 	}
 }
 ```
@@ -1342,11 +1408,41 @@ func TestHttpClientConfiguresHttp2HealthCheck(t *testing.T) {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd connect && go test -run TestHttpClientConfiguresHttp2HealthCheck ./...`
-Expected: FAIL — `SendPingTimeout is zero, which disables the health check`.
+Expected: FAIL — the package does not compile: `settings.Http2SendPingTimeout undefined (type *ClientStrategySettings has no field or method Http2SendPingTimeout)`. Add the fields alone and the test then fails at `no HTTP2Config: a pooled dead connection is never detected`, because the config is still built only under the mobile memory guard.
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `connect/net_http.go`, move the `transport.HTTP2 = &http.HTTP2Config{...}` assignment out from under the mobile-memory guard so it is always built, keep the existing memory-budget fields under that guard, and add the two health-check fields unconditionally:
+Three edits in `connect/net_http.go`.
+
+**(a)** Add the two fields to `ClientStrategySettings`, immediately after the `Http2Max*` block (`:154-157`):
+
+```go
+	// HTTP/2 health check for POOLED control-plane connections. Go performs no
+	// health check at all when SendPingTimeout is zero (net/http.HTTP2Config:
+	// "If zero, no health check is performed"), so a connection that connected
+	// cleanly and later went dark stays in the idle pool and every later
+	// request multiplexed onto it hangs to the request timeout.
+	//
+	// Settings fields rather than package constants, per CONSTANTAUDIT.md:
+	// they are per-connection tunables and the settings struct that owns the
+	// transport reaches the use site directly.
+	Http2SendPingTimeout time.Duration
+	Http2PingTimeout     time.Duration
+```
+
+**(b)** Seed the defaults in `DefaultClientStrategySettings()` (`:46`), in the struct literal itself — **not** inside the `if 0 < MemoryBudget() && ...` mobile guard below it. The guard is about the mobile heap; a desktop build needs the health check just as much:
+
+```go
+		MinNextConnectDelay: 100 * time.Millisecond,
+		MaxNextConnectDelay: 1000 * time.Millisecond,
+
+		Http2SendPingTimeout: 10 * time.Second,
+		Http2PingTimeout:     5 * time.Second,
+
+		ConnectSettings: *DefaultConnectSettings(),
+```
+
+**(c)** Move the `transport.HTTP2 = &http.HTTP2Config{...}` assignment out from under the mobile-memory guard so it is always built, keep the existing memory-budget fields under that guard, and set the two health-check fields from the settings unconditionally.
 
 Replace the existing conditional block at `net_http.go:1380-1390`:
 
@@ -1381,8 +1477,8 @@ with:
 		// heap -- but it used to gate the whole config, so a desktop build had
 		// no HTTP2Config at all and therefore no health check either.
 		transport.HTTP2 = &http.HTTP2Config{
-			SendPingTimeout: 10 * time.Second,
-			PingTimeout:     5 * time.Second,
+			SendPingTimeout: self.settings.Http2SendPingTimeout,
+			PingTimeout:     self.settings.Http2PingTimeout,
 		}
 		if 0 < self.settings.Http2MaxDecoderHeaderTableSize ||
 			0 < self.settings.Http2MaxEncoderHeaderTableSize ||
@@ -1397,8 +1493,8 @@ with:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd connect && go build ./... && go vet ./... && go test -run 'TestHttpClient|TestNormalTlsDial|TestClientStrategy' ./...`
-Expected: PASS.
+Run: `cd connect && go build ./... && go vet ./... && go test -run 'TestHttpClient|TestNormalTlsDial|TestClientStrategy' ./... && gofmt -l net_http.go net_http_seam_test.go`
+Expected: PASS, no gofmt output.
 
 - [ ] **Step 5: Commit**
 
@@ -1424,6 +1520,8 @@ Without this, no bundle from an affected user can confirm or refute the diagnosi
 - Produces: `func controlDialFamilyLine(tag string, network string, addr string, conn net.Conn, err error) string` — the formatted line, returned rather than logged so it is testable.
 
 - [ ] **Step 1: Write the failing test**
+
+Add `"strings"` to `connect/control_family_test.go`'s import block — this is where the first `strings.Contains` lands, and Task 2 deliberately left it out.
 
 Append to `connect/control_family_test.go`:
 
@@ -1770,22 +1868,18 @@ func TestControlIpFamilyPolicyRoundTrips(t *testing.T) {
 		})
 	}
 }
-
-// The policy accessor must NEVER reflect a learned demotion. A ui row that
-// read back "Force IPv4" because the heuristic fired could not be set to Auto,
-// because it would already appear not to be Auto.
-func TestGetControlIpFamilyPolicyIgnoresDemotion(t *testing.T) {
-	defer SetControlIpFamilyPolicy(IpFamilyPolicyAuto)
-	SetControlIpFamilyPolicy(IpFamilyPolicyAuto)
-	if got := GetControlIpFamilyPolicy(); got != IpFamilyPolicyAuto {
-		t.Fatalf("got %d, want auto", got)
-	}
-}
 ```
+
+The "policy never reflects a demotion" property is **not** asserted here. The
+sdk exports no way to demote a family, so a test at this layer can only set
+Auto and read Auto back — it would assert nothing. It is asserted one layer
+down instead, in `connect`'s `TestControlIpFamilyPolicyIgnoresDemotion`
+(Task 2), where `controlFamilyDemote` is reachable and the property has real
+content.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd sdk && go test -run TestControlIpFamily .`
+Run: `cd sdk && go test -run 'ControlIpFamily' .`
 Expected: FAIL — `undefined: SetControlIpFamilyPolicy`.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -1863,8 +1957,10 @@ func clampIpFamilyPolicy(policy int) int {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd sdk && go build ./... && go vet ./... && go test -run TestControlIpFamily . && gofmt -l sdk.go control_ip_family_test.go`
-Expected: PASS, clean vet, no gofmt output.
+Run: `cd sdk && go build ./... && go vet ./... && go test -run 'ControlIpFamily' . && gofmt -l sdk.go control_ip_family_test.go`
+Expected: PASS, clean vet, no gofmt output. The regex is unanchored and
+deliberately drops the `Test` prefix, so it also matches the tests Tasks 9 and
+10 add whose names do not start `TestControlIpFamily`.
 
 - [ ] **Step 5: Verify the gomobile binding still generates**
 
@@ -1914,21 +2010,26 @@ func TestPolicyIsInForceAfterNetworkSpaceConstructionWithNoDevice(t *testing.T) 
 	defer SetControlIpFamilyPolicy(IpFamilyPolicyAuto)
 	SetControlIpFamilyPolicy(IpFamilyPolicyAuto)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	storagePath := t.TempDir()
-	localState := NewLocalState(storagePath)
+	localState := newLocalState(ctx, storagePath)
 	if err := localState.SetControlIpFamilyPolicy(IpFamilyPolicyForce4); err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	networkSpace := newNetworkSpace(
 		ctx,
+		*NewNetworkSpaceKey("example.test", "main"),
+		NetworkSpaceValues{
+			NetExposeServerIps:       true,
+			NetExposeServerHostNames: true,
+		},
 		storagePath,
-		NetworkSpaceKey{HostName: "example.test", EnvName: "main"},
-		&NetworkSpaceValues{},
 	)
-	defer networkSpace.Close()
+	defer networkSpace.close()
+	defer networkSpace.asyncLocalState.Close()
 
 	if got := GetControlIpFamilyPolicy(); got != IpFamilyPolicyForce4 {
 		t.Fatalf("policy is %d after constructing a network space, want force4 -- "+
@@ -1938,35 +2039,52 @@ func TestPolicyIsInForceAfterNetworkSpaceConstructionWithNoDevice(t *testing.T) 
 
 func TestNetworkSpaceSetControlIpFamilyPolicyPersists(t *testing.T) {
 	defer SetControlIpFamilyPolicy(IpFamilyPolicyAuto)
-	storagePath := t.TempDir()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	storagePath := t.TempDir()
 	networkSpace := newNetworkSpace(
 		ctx,
+		*NewNetworkSpaceKey("example.test", "main"),
+		NetworkSpaceValues{
+			NetExposeServerIps:       true,
+			NetExposeServerHostNames: true,
+		},
 		storagePath,
-		NetworkSpaceKey{HostName: "example.test", EnvName: "main"},
-		&NetworkSpaceValues{},
 	)
-	defer networkSpace.Close()
+	defer networkSpace.close()
+	defer networkSpace.asyncLocalState.Close()
 
 	networkSpace.SetControlIpFamilyPolicy(IpFamilyPolicyForce6)
+	// the PROCESS is set synchronously -- that half is not deferred
 	if got := GetControlIpFamilyPolicy(); got != IpFamilyPolicyForce6 {
 		t.Fatalf("process policy is %d, want force6", got)
 	}
 
-	got, ok := NewLocalState(storagePath).controlIpFamilyPolicyIfSet()
-	if !ok {
-		t.Fatal("nothing was persisted")
+	// the FILE is not. NetworkSpace.SetControlIpFamilyPolicy hands the write to
+	// asyncLocalState.serialAsync, which runs it on a worker goroutine, so
+	// reading the file on the next line races the write and fails most of the
+	// time. Poll, bounded -- the same shape as log_verbosity_test.go:556-565.
+	localState := newLocalState(ctx, storagePath)
+	persisted := false
+	for i := 0; i < 100; i += 1 {
+		if got, ok := localState.controlIpFamilyPolicyIfSet(); ok && got == IpFamilyPolicyForce6 {
+			persisted = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if got != IpFamilyPolicyForce6 {
-		t.Fatalf("persisted %d, want force6", got)
+	if !persisted {
+		t.Fatal("force6 was never persisted, so a relaunch comes back up under auto")
 	}
 }
 
 func TestUnsetPolicyDoesNotOverrideTheProcessValue(t *testing.T) {
 	defer SetControlIpFamilyPolicy(IpFamilyPolicyAuto)
-	localState := NewLocalState(t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	localState := newLocalState(ctx, t.TempDir())
 	if _, ok := localState.controlIpFamilyPolicyIfSet(); ok {
 		t.Fatal("a fresh local state reports a policy it was never given")
 	}
@@ -1980,7 +2098,16 @@ func TestUnsetPolicyDoesNotOverrideTheProcessValue(t *testing.T) {
 }
 ```
 
-Adjust the `newNetworkSpace` call signature to match the real one — read `sdk/network_space.go:140` for its exact parameters before writing the test, and use them verbatim.
+These are the real, unexported constructors — there is no exported
+`NewLocalState` and no exported `NetworkSpace.Close`:
+
+- `newLocalState(ctx context.Context, localStorageHome string) *LocalState` (`local_state.go:72`). It takes a context and creates `localStorageHome/.by`, which is the same directory `NewAsyncLocalState(storagePath)` derives, so a policy written through it is the one the network space's own local state reads back.
+- `newNetworkSpace(ctx context.Context, key NetworkSpaceKey, values NetworkSpaceValues, storagePath string) *NetworkSpace` (`network_space.go:138`) — key and values BY VALUE, `storagePath` LAST.
+- `networkSpace.close()`, lowercase (`network_space.go:447`).
+
+The call shape above is copied from `sdk/device_api_token_test.go:45-57`, including its `defer networkSpace.close()` / `defer networkSpace.asyncLocalState.Close()` pair. `*NewNetworkSpaceKey(host, env)` is how that file builds the key.
+
+The test file also needs `"context"` and `"time"` in its import block — Task 8 created it with `import "testing"` alone.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -2064,7 +2191,11 @@ func applyPersistedControlIpFamilyPolicy(localState *LocalState, log connect.Log
 }
 ```
 
-**(c)** `sdk/network_space.go` — in `newNetworkSpace`, after `asyncLocalState` is built and **before** `api := newApi(...)`:
+**(c)** `sdk/network_space.go` — in **`newNetworkSpaceWithConnectSettings`** (`:147`), after `asyncLocalState` is built and **before** `api := newApi(...)`.
+
+Not in `newNetworkSpace` (`:138`): that is a four-line delegator whose body is a single `return newNetworkSpaceWithConnectSettings(...)` call, and none of the identifiers this snippet uses — `asyncLocalState`, `clientStrategySettings` — exist in it.
+
+`NewPlatformNetworkSpace` (`:211`) also reaches this function, and passes `storagePath == ""`, which leaves `asyncLocalState` nil. The nil guard below is what covers that path; there is nothing extra to write for it.
 
 ```go
 	// before the api client is built, and therefore before any request can be
@@ -2100,7 +2231,7 @@ Read `DeviceRemote.persistLogVerbosity` (`device_rpc.go`, near `:5753`) and matc
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd sdk && go build ./... && go vet ./... && go test -run 'TestControlIpFamily|TestPolicyIsInForce|TestNetworkSpaceSetControlIpFamily|TestUnsetPolicy|TestLocalState' .`
+Run: `cd sdk && go build ./... && go vet ./... && go test -run 'ControlIpFamily|TestPolicyIsInForce|TestNetworkSpaceSetControlIpFamily|TestUnsetPolicy|TestLocalState' .`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -2142,16 +2273,24 @@ func TestDeviceRemoteQueuesThePolicyWhenTheTunnelIsDown(t *testing.T) {
 	if got := GetControlIpFamilyPolicy(); got != IpFamilyPolicyForce4 {
 		t.Fatalf("this process is at %d, want force4 -- the app process dials while the tunnel is down", got)
 	}
-	if !deviceRemote.state.ControlIpFamilyPolicy.IsSet() {
+	// FIELDS, not methods. deviceRemoteValue[T] (device_rpc.go:5806) is
+	//   struct { Value T; IsSet bool }
+	// with exactly one accessor, Get(defaultValue T) T -- so `.IsSet()` does
+	// not compile and `.Get()` is missing its argument. Read under stateLock,
+	// copying the pattern at log_verbosity_test.go:303-307 (and :243).
+	deviceRemote.stateLock.Lock()
+	queued := deviceRemote.state.ControlIpFamilyPolicy
+	deviceRemote.stateLock.Unlock()
+	if !queued.IsSet {
 		t.Fatal("the policy was not queued for replay")
 	}
-	if got := deviceRemote.state.ControlIpFamilyPolicy.Get(); got != IpFamilyPolicyForce4 {
-		t.Fatalf("queued %d, want force4", got)
+	if queued.Value != IpFamilyPolicyForce4 {
+		t.Fatalf("queued %d, want force4", queued.Value)
 	}
 }
 ```
 
-Build `newTestDeviceRemoteWithNoService` by copying the construction the existing `SetLogVerbosity` tests use — read `sdk/device_rpc_test.go` for the established helper and reuse it rather than inventing one. If the existing tests construct a `DeviceRemote` inline, extract that into a shared helper in this task.
+Build `newTestDeviceRemoteWithNoService` by copying the construction the existing `SetLogVerbosity` tests use — read `sdk/log_verbosity_test.go` (`TestDeviceRemoteLogVerbosityQueuedWhileDownCrossesOnConnect`, `:296` onwards) and `sdk/device_rpc_test.go` for the established helpers and reuse them rather than inventing one. If the existing tests construct a `DeviceRemote` inline, extract that into a shared helper in this task.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -2204,18 +2343,31 @@ Read `device_local.go:6567-6601` and match its guard, its logging and its `seria
 
 **(c)** `sdk/device_rpc.go` — `DeviceRemote.SetControlIpFamilyPolicy`, mirroring `SetLogVerbosity` at `:5706` line for line, with these substitutions: `SetLogVerbosity` → `SetControlIpFamilyPolicy`, `clampLogVerbosity` → `clampIpFamilyPolicy`, `self.state.LogVerbosity` → `self.state.ControlIpFamilyPolicy`, `"DeviceLocalRpc.SetLogVerbosity"` → `"DeviceLocalRpc.SetControlIpFamilyPolicy"`, and `persistLogVerbosity` → a `persistControlIpFamilyPolicy` written the same way.
 
-Add the queued field to the remote state struct beside `LogVerbosity`, and add the replay to the same sync path `LogVerbosity` uses — find it by grepping `state.LogVerbosity` and covering every site.
+Add the queued field to the remote state struct beside `LogVerbosity` (`device_rpc.go:5919`), and mirror `LogVerbosity` at **all six** of its replay sites. Do not go looking for them with `grep state.LogVerbosity` — two of them are written `self.LogVerbosity` and that grep silently misses both. Verify each line number yourself before editing; they are:
+
+| Site | What it does |
+|---|---|
+| `:521` | restore-at-construction seeds the queue from persisted state |
+| `:5743` | `Unset()` on a successful live rpc — nothing left to replay |
+| `:5748` | `Set(clamped)` when the rpc could not be made — queue it |
+| `:5993` | `DeviceRemoteState.Merge` — `self.LogVerbosity.Merge(update.LogVerbosity)` |
+| `:6036` | `DeviceRemoteState.hasPendingSyncState` — `self.LogVerbosity.IsSet ||` |
+| `:8576-8577` | the sync apply: `if state.X.IsSet && !hostedIncompatible { self.deviceLocal.SetX(state.X.Value) }` |
+
+`:6036` is the one to be careful about, and it is the one the grep misses. `hasPendingSyncState` is what marks the remote state dirty; a policy queued while the tunnel is down and NOT listed there never marks it dirty, so no resync ever fires and the queued value is never delivered to the device process. The iOS tunnel-down regime would silently keep dialing under the old policy while the developer menu read back the new one.
+
+**This task's own test would still pass with `:6036` omitted** — it asserts only that the value was queued, not that anything would ever send it. There is no safety net here; the six sites have to be checked by hand.
 
 Add the server handler beside the existing `DeviceLocalRpc.SetLogVerbosity`:
 
 ```go
-func (self *DeviceLocalRpc) SetControlIpFamilyPolicy(policy int, _ *RpcVoid) error {
+func (self *DeviceLocalRpc) SetControlIpFamilyPolicy(policy int, _ RpcVoid) error {
 	self.deviceLocal.SetControlIpFamilyPolicy(policy)
 	return nil
 }
 ```
 
-Match the exact handler signature the neighbouring `SetLogVerbosity` handler uses — read it rather than assuming, since the `net/rpc` argument shape is load-bearing.
+`RpcVoid` **by value, not `*RpcVoid`.** `type RpcVoid = *any` (`device_rpc.go:7556`) is already a pointer alias, so `*RpcVoid` is `**any` — which the client's call never matches. It compiles, and fails at RUNTIME, breaking the exact crossing this task exists to build. Every sibling agrees: `:9001`, `:10296`, `:10359` (`SetLogVerbosity`), `:10373`, `:10430`.
 
 **(d)** `sdk/device_rpc.go` — `DeviceRemote.GetControlIpFamilyPolicy` answers from this process, exactly as `GetLogVerbosity` does and for the same reason: both processes are set together, and it stays answerable while the tunnel is down.
 
@@ -2306,14 +2458,121 @@ git commit -m "test: pin that the family token survives log redaction"
 
 ---
 
-## Task 12: iOS pure vocabulary layer
+## Task 12: Rebuild the mobile SDK bindings
+
+No task above this line rebuilds the gomobile bindings, and every UI task below it consumes symbols that exist only once they are rebuilt.
+
+`ios/app/URnetworkSdk/Package.swift` declares a `binaryTarget` pointing at `../../../sdk/build/apple/URnetworkSdk.xcframework`, and nothing in the Xcode project regenerates it. Without this task, Task 13 fails at `cannot find 'SdkIpFamilyPolicyAuto' in scope` and Task 14 never links. On Android the same is true of `sdk/build/android/URnetworkSdk.aar`, which `android/app/app/build.gradle:502` pulls in with a `fileTree`.
+
+Three things make this easy to miss, and each is worth stating outright:
+
+- **`cd sdk/cgo && go run ./gen` is not this.** That regenerates the **C ABI** — `exports_gen.go`, `include/urnetwork_sdk.h/.hpp/.def` — for the desktop apps. It is what Tasks 8 and 10 run, it succeeds, and it touches neither the Apple xcframework nor the Android aar. A green `go run ./gen` says nothing about whether iOS or Android can see the new symbols.
+- **The binding on disk is ALREADY stale**, before this feature adds anything. `sdk/build/apple/URnetworkSdk.xcframework/ios-arm64/URnetworkSdk.framework/Headers/Sdk.objc.h:11172` declares `FOUNDATION_EXPORT const int64_t SdkLogVerbosityDetail`, a constant the Go source renamed to `LogVerbosityVerbose` earlier in this project (`sdk/sdk.go:297`). No Swift file references it by name, which is exactly why the drift went unnoticed. This rebuild repairs that too.
+- **The artifacts are gitignored, not checked in.** `sdk/.gitignore` lists `build/apple*`, `build/ios*` and `build/android*`. They persist in the working tree between sessions — which is what lets them drift silently — but there is nothing to commit here, and nothing should be `git add -f`'d.
+
+**Files:**
+- Regenerate: `sdk/build/apple/URnetworkSdk.xcframework`, `sdk/build/apple/URnetworkExtensionSdk.xcframework` (the Makefile also copies the pair to `sdk/build/ios`)
+- Regenerate: `sdk/build/android/URnetworkSdk.aar` and `URnetworkSdk-sources.jar`
+
+**Interfaces:**
+- Consumes: the exported `sdk` surface from Tasks 8-10.
+- Produces: no source. The Objective-C and Java bindings for `SetControlIpFamilyPolicy`, `GetControlIpFamilyPolicy`, `GetControlIpFamilyStatus`, `NetworkSpace.SetControlIpFamilyPolicy`, `Device.SetControlIpFamilyPolicy` / `GetControlIpFamilyPolicy`, and the `IpFamilyPolicyAuto`/`Force4`/`Force6` constants.
+
+- [ ] **Step 1: Install the pinned bind toolchain (once per machine)**
+
+```bash
+cd sdk/build && make init_tools
+```
+
+`init_tools` installs `gomobile` and `gobind` at the pinned `GOMOBILE_VERSION`, runs `gomobile init`, and installs `checksec`. It does not touch the Go caches.
+
+`sdk/build-ios.sh` is the all-in-one wrapper (`make -C build init build_ios`), but its `init` target additionally runs `go clean -cache && go clean -modcache`, which wipes the module cache for every Go project on the machine. Prefer `init_tools` + `build_apple` unless a clean-room build is actually wanted; `android/app/app/build.gradle`'s own `buildSdkAcceptance` task takes the same non-mutating route, for the same reason.
+
+- [ ] **Step 2: Rebuild the Apple binding**
+
+```bash
+cd sdk/build && make build_apple
+```
+
+`build_ios` is an alias for `build_apple`. It runs `gomobile bind` twice — once for `URnetworkSdk.xcframework` and once with `-tags ios_extension` for `URnetworkExtensionSdk.xcframework` — over `ios/arm64,iossimulator/arm64,macos/arm64,macos/amd64`, then runs `check_apple_size.sh` and swaps the result into `sdk/build/apple`. The recipe exports `GODEBUG=gotypesalias=0`, `GOEXPERIMENT=greenteagc`, `GOFIPS140=off` and `MACOSX_DEPLOYMENT_TARGET=13.5` itself. `WARP_VERSION` is unset for a local verification build, which only leaves the embedded version string empty.
+
+Expect this to take several minutes and to produce a large artifact. The build must exit 0.
+
+- [ ] **Step 3: Verify the regenerated Apple header — BEFORE any xcodebuild**
+
+```bash
+cd sdk
+for slice in ios-arm64 ios-arm64-simulator; do
+  echo "== $slice"
+  grep -c 'IpFamily' \
+    "build/apple/URnetworkSdk.xcframework/$slice/URnetworkSdk.framework/Headers/Sdk.objc.h"
+done
+grep -n 'FOUNDATION_EXPORT const int64_t SdkIpFamilyPolicy' \
+  build/apple/URnetworkSdk.xcframework/ios-arm64/URnetworkSdk.framework/Headers/Sdk.objc.h
+grep -n 'SdkLogVerbosityDetail\|SdkLogVerbosityVerbose' \
+  build/apple/URnetworkSdk.xcframework/ios-arm64/URnetworkSdk.framework/Headers/Sdk.objc.h
+```
+
+Expected:
+- every `IpFamily` count is **non-zero**,
+- three `FOUNDATION_EXPORT const int64_t SdkIpFamilyPolicyAuto/Force4/Force6` declarations,
+- `SdkLogVerbosityVerbose` present and `SdkLogVerbosityDetail` **gone** — the pre-existing drift is repaired.
+
+**If any `IpFamily` count is 0, or the `SdkIpFamilyPolicy` grep prints nothing, STOP.** The binding did not rebuild, and every `xcodebuild` after this point would be compiling against the old one — which is precisely the failure this task exists to prevent. Do not proceed to Task 13 or 14.
+
+Repeat the first grep against `build/apple/URnetworkExtensionSdk.xcframework` — the packet tunnel extension links that one, and it is built by a second `gomobile bind` invocation that can fail independently.
+
+- [ ] **Step 4: Rebuild the Android binding**
+
+```bash
+cd sdk/build
+export ANDROID_NDK_HOME=/path/to/ndk   # the recipe greps it for llvm-objcopy
+make build_android
+```
+
+Then verify the Java surface:
+
+```bash
+cd sdk/build/android
+rm -rf /tmp/urnetworksdk-sources && mkdir -p /tmp/urnetworksdk-sources
+unzip -q URnetworkSdk-sources.jar -d /tmp/urnetworksdk-sources
+grep -rn 'ControlIpFamily\|IP_FAMILY\|IpFamilyPolicy' /tmp/urnetworksdk-sources/com/bringyour/sdk/ | head -20
+```
+
+Expected: the static `Sdk.setControlIpFamilyPolicy` / `getControlIpFamilyPolicy` / `getControlIpFamilyStatus` methods, the three `IpFamilyPolicy*` constants, and the `setControlIpFamilyPolicy` methods on `DeviceLocal`, `DeviceRemote` and `NetworkSpace`. An empty grep means the aar is stale and Task 15 would compile against the old binding.
+
+Note for whoever runs the app build afterwards: **the gradle hook that would rebuild this automatically is commented out.** `android/app/app/build.gradle:478-482` has
+
+```groovy
+//    tasks.withType(JavaCompile).tap {
+//        configureEach {
+//            compileTask -> compileTask.dependsOn buildSdk
+//        }
+//    }
+```
+
+so a plain `./gradlew assemble` links whatever aar is already in `${bringyourHomeDir}/build/android` and will happily use a stale one. The `buildSdk` / `buildSdkAcceptance` tasks (`:456`, `:466`) have to be invoked explicitly, or `make build_android` run directly as above. `bringyourHomeDir` defaults to `${rootDir}/../../urnetwork-sdk` and is overridden by `BRINGYOUR_HOME`; point it at this `sdk` checkout.
+
+- [ ] **Step 5: Report what actually ran**
+
+The Android half of this task **cannot run on the development machine.** There is no JDK (`/usr/libexec/java_home` reports "Unable to locate a Java Runtime"), no Android SDK and no NDK (`ANDROID_NDK_HOME` is unset, and `make build_android` fails at its `test -n "$OBJCOPY"` gate without one). Say so plainly in the task report and do not claim a `gomobile bind` for Android that did not happen — upstream CI runs it, and that is this binding's first real build, exactly as for Task 15's unit test.
+
+The Apple half **does** run here and must actually be run: Tasks 13 and 14 depend on it and are verified with real `xcodebuild` exit codes.
+
+- [ ] **Step 6: Nothing to commit**
+
+`sdk/.gitignore` ignores `build/apple*`, `build/ios*` and `build/android*`, so `git status` in `sdk` is unchanged by this task. That is correct — do not force-add the artifacts. Record in the task report which bindings were rebuilt and the grep output that proves it.
+
+---
+
+## Task 13: iOS pure vocabulary layer
 
 **Files:**
 - Create: `ios/app/network/Main/Account/Settings/Developer/IpFamily.swift`
 - Create: `ios/app/networkTests/IpFamilyTests.swift`
 
 **Interfaces:**
-- Consumes: the SDK constants from Task 8.
+- Consumes: the SDK constants from Task 8, as bound into Swift by Task 12. Without that rebuild `SdkIpFamilyPolicyAuto` does not exist and this task cannot compile.
 - Produces: `enum IpFamily` with `clamp(_:)`, `name(_:)`, `detail(_:)`, `next(_:)`, `valueLabel(_:)`.
 
 - [ ] **Step 1: Write the failing test**
@@ -2473,7 +2732,14 @@ enum IpFamily {
 }
 ```
 
-Confirm the generated Swift constant names by grepping the generated header after Task 8's `go run ./gen` — they may be `SdkIpFamilyPolicyAuto` or a variant. Use whatever the binding actually emits.
+Confirm the generated Swift constant names against the header **Task 12 regenerated**:
+
+```bash
+grep -n 'SdkIpFamilyPolicy\|SdkGetControlIpFamily\|SdkSetControlIpFamily' \
+  sdk/build/apple/URnetworkSdk.xcframework/ios-arm64/URnetworkSdk.framework/Headers/Sdk.objc.h
+```
+
+Use whatever the binding actually emits. Do **not** look in `sdk/cgo/include/` — `go run ./gen` there produces the C ABI for the desktop apps, a completely different artifact that the iOS build never sees (see Task 12).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -2494,19 +2760,19 @@ git commit -m "feat: ios vocabulary for the control-plane ip family policy"
 
 ---
 
-## Task 13: iOS state holder and the developer row
+## Task 14: iOS state holder and the developer row
 
 **Files:**
 - Create: `ios/app/network/Main/Account/Settings/Developer/IpFamilyState.swift`
 - Modify: `ios/app/network/Main/Account/Settings/Developer/DeveloperView.swift`
 
 **Interfaces:**
-- Consumes: `IpFamily` (Task 12), the SDK surface (Tasks 8-10).
+- Consumes: `IpFamily` (Task 13), the SDK surface (Tasks 8-10), bound into Swift by Task 12.
 - Produces: `final class IpFamilyState: ObservableObject` with `shared`, `policy: Int`, `status: String`, `isApplying: Bool`, `refresh(device:)`, `cycle(device:networkSpace:)`.
 
 - [ ] **Step 1: Write the implementation**
 
-There is no pure logic left to test here — Task 12 holds it, and this class is I/O against the SDK. Create `IpFamilyState.swift`:
+There is no pure logic left to test here — Task 13 holds it, and this class is I/O against the SDK. Create `IpFamilyState.swift`:
 
 ```swift
 //
@@ -2520,10 +2786,13 @@ There is no pure logic left to test here — Task 12 holds it, and this class is
 //  device and goes inert when there is none. This setting has to work with no
 //  device and with the tunnel down, because those are the states a user is in
 //  when the api is unreachable -- which is the whole reason to reach for it.
-//  So the write goes to the device when there is one (on ios that is what
+//  So the write is a THREE-way fallback, the same one android's
+//  DeveloperViewModel uses: the device when there is one (on ios that is what
 //  carries the policy into the packet tunnel extension, the process that dials
-//  while the tunnel is up) and to the network space when there is not (which
-//  sets this process and records the choice for the next launch).
+//  while the tunnel is up); else the network space (which sets this process
+//  and records the choice for the next launch); else the process-global
+//  SdkSetControlIpFamilyPolicy, which records nothing but at least puts the
+//  choice in force for the session.
 //
 //  Held outside the view so an in-flight change is not abandoned by navigating
 //  away mid-rpc.
@@ -2566,10 +2835,22 @@ final class IpFamilyState: ObservableObject {
     /**
      * Advances to the next policy and republishes what the sdk then reports.
      *
-     * `networkSpace` is the fallback write path and is what makes this work
-     * signed out or with the tunnel down: it sets this process and persists
-     * the choice. With a device, the device call does both of those AND
-     * carries the policy across to the extension, so it is preferred.
+     * Three write paths, tried in order, matching android exactly:
+     *
+     * 1. the device, when there is one -- it sets this process, records the
+     *    choice, AND carries the policy across to the extension, so it is
+     *    always preferred;
+     * 2. `networkSpace`, which is what makes this work signed out or with the
+     *    tunnel down: it sets this process and persists the choice;
+     * 3. the process-global setter, when there is neither -- nothing records
+     *    it, but the session at least dials under what the row shows.
+     *
+     * `networkSpace` comes from `DeviceManager.networkSpace`
+     * (`DeviceManager.swift:60`), which is an independent `@Published`
+     * property and is NOT derived from `device`. Android's is
+     * (`DeviceManager.kt:55` is `device?.networkSpace`), which is why that
+     * platform fetches the space from `NetworkSpaceManagerProvider` instead.
+     * The two reach the same three-way behaviour by different routes.
      */
     @MainActor
     func cycle(device: SdkDeviceRemote?, networkSpace: SdkNetworkSpace?) async {
@@ -2627,7 +2908,7 @@ git commit -m "feat: ios developer control for the control-plane ip family polic
 
 ---
 
-## Task 14: Android developer row
+## Task 15: Android developer row
 
 **Files:**
 - Modify: `android/app/app/src/main/res/values/strings.xml`
@@ -2636,8 +2917,8 @@ git commit -m "feat: ios developer control for the control-plane ip family polic
 - Create: `android/app/app/src/test/java/com/bringyour/network/ui/settings/IpFamilyTest.kt`
 
 **Interfaces:**
-- Consumes: the SDK surface (Tasks 8-10).
-- Produces: `IpFamilyPolicy` enum helpers in `DeveloperScreen.kt` mirroring `logVerbosityLevel`/`nextLogVerbosity`.
+- Consumes: the SDK surface (Tasks 8-10), as bound into Java by Task 12.
+- Produces: the `IP_FAMILY_*` constants and `clampIpFamilyPolicy`/`nextIpFamilyPolicy`/`ipFamilyNameResource`/`ipFamilyDetailResource` in `DeveloperViewModel.kt`, mirroring `logVerbosityLevel`/`nextLogVerbosity`, which live there too.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2699,7 +2980,7 @@ There is no JDK, Android SDK or NDK on the development machine, so `./gradlew te
 <string name="dev_ip_family_force6_detail">Control-plane connections use IPv6 only. Turn this off if the app cannot reach the server.</string>
 ```
 
-**(b)** `DeveloperScreen.kt` — add the constants and pure helpers beside `logVerbosityLevel`/`nextLogVerbosity` (around `:880-920`), so the test can reach them:
+**(b)** `DeveloperViewModel.kt` — add the constants and pure helpers at file scope BELOW the class, beside `LOG_VERBOSITY_DEFAULT` (`:1022`) and `nextLogVerbosity` (`:1046`), which is where that file already keeps this exact kind of top-level helper. **Not `DeveloperScreen.kt`** — the composable goes there, the vocabulary does not:
 
 ```kotlin
 const val IP_FAMILY_AUTO = 0L
@@ -2741,7 +3022,30 @@ fun ipFamilyDetailResource(policy: Long, status: String): Int =
     }
 ```
 
-**(c)** `DeveloperViewModel.kt` — add the properties and the setter, mirroring `logVerbosity` at `:82`:
+**Add `import com.bringyour.network.R` to `DeveloperViewModel.kt`.** These two are the first `R.string` references in that file — every existing top-level helper there (`logVerbosityValueLabel`, `logVerbosityRecordsDestinations`, `logVerbosityLevel`) returns a `String` or an enum, so the import is not there yet. `DeveloperScreen.kt:43` already has it. Without it the file does not compile, and the failure would land on a machine with no gradle to catch it.
+
+**(c)** `DeveloperViewModel.kt` — inject `NetworkSpaceManagerProvider`, then add the properties and the setter.
+
+The injection is not optional. `DeviceManager.kt:55` is
+
+```kotlin
+val networkSpace get() = device?.networkSpace
+```
+
+so with no device there is no network space either: a "device else network space" fallback is DEAD in exactly the signed-out state this row exists to serve. The row would read back correctly and write nothing. `NetworkSpaceManagerProvider` (`com.bringyour.network.NetworkSpaceManagerProvider`) holds the space independently of any device, is `@Inject constructor()` and `@Singleton`, and is already injected by `AccountViewModel`, `LeaderboardViewModel`, `ProfileViewModel`, `CreateNetworkInstantViewModel` and `LoginCreateNetworkViewModel` — so this is the established pattern, not a new one.
+
+iOS is not symmetric here and needs no equivalent change: `DeviceManager.swift:60` holds `networkSpace` as its own `@Published` property, independent of `device`.
+
+```kotlin
+class DeveloperViewModel @Inject constructor(
+    private val deviceManager: DeviceManager,
+    private val networkSpaceManagerProvider: NetworkSpaceManagerProvider,
+) : ViewModel() {
+```
+
+(and add `import com.bringyour.network.NetworkSpaceManagerProvider` beside the existing `import com.bringyour.network.DeviceManager`).
+
+Then, mirroring `logVerbosity` at `:82`:
 
 ```kotlin
 /**
@@ -2758,11 +3062,51 @@ var ipFamilyPolicy by mutableStateOf(IP_FAMILY_AUTO)
 
 var ipFamilyStatus by mutableStateOf("")
     private set
+
+/**
+ * Applies a policy through the best write path available, and re-reads what
+ * the sdk then reports.
+ *
+ * THREE-way, not two. The device carries the policy furthest (on the other
+ * platform binding the same call reaches the packet tunnel extension), the
+ * network space sets this process AND records the choice for the next launch,
+ * and the process-global setter is the last resort that at least puts the
+ * choice in force for this session. Signed out there is no device and
+ * therefore -- see DeviceManager.networkSpace -- no space through the device
+ * either, which is why the space is fetched from the provider.
+ *
+ * Read back from the sdk rather than assumed: it clamps out-of-range values
+ * without throwing, so reading back is what makes a set that did not take
+ * visible.
+ */
+val setIpFamilyPolicy: (Long) -> Unit = { policy ->
+    val device = deviceManager.device
+    val networkSpace = networkSpaceManagerProvider.getNetworkSpace()
+    when {
+        device != null -> device.setControlIpFamilyPolicy(policy)
+        networkSpace != null -> networkSpace.setControlIpFamilyPolicy(policy)
+        else -> Sdk.setControlIpFamilyPolicy(policy)
+    }
+    ipFamilyPolicy = Sdk.getControlIpFamilyPolicy()
+    ipFamilyStatus = Sdk.getControlIpFamilyStatus()
+}
 ```
 
-with a `setIpFamilyPolicy` that writes through the device when there is one and through the network space otherwise, then re-reads both properties — mirroring `setLogVerbosity`'s off-main-thread discipline. Read `setLogVerbosity` in this file and match its coroutine dispatcher usage exactly.
+Shape note, because the plan previously got this wrong: **`setLogVerbosity` is not a coroutine.** There is no `viewModelScope.launch`, no `withContext`, no dispatcher anywhere in it. It is a plain synchronous lambda property, `DeveloperViewModel.kt:400-404`:
 
-**(d)** `DeveloperScreen.kt` — add the composable beside `DeveloperVerbositySetting` (`:892`):
+```kotlin
+    val setLogVerbosity: (Long) -> Unit = { level ->
+        val device = deviceManager.device
+        device?.setLogVerbosity(level)
+        logVerbosity = device?.getLogVerbosity()
+    }
+```
+
+Match that: a `val ...: (Long) -> Unit = { ... }` property invoked straight from the composable's click handler. Do not go looking for a dispatcher to copy — there is none.
+
+Also seed both properties in `refresh()` alongside the existing `logVerbosity` read, from `Sdk.getControlIpFamilyPolicy()` / `Sdk.getControlIpFamilyStatus()`, and **above** its null-device guard for the same reason the verbosity read is: the row is live with no device.
+
+**(d)** `DeveloperScreen.kt` — add the composable beside `DeveloperVerbositySetting` (`:894`). Only the composable lives here; the constants and helpers went into `DeveloperViewModel.kt` in (b), and Kotlin top-level declarations in the same package are visible without an import:
 
 ```kotlin
 /**
@@ -2825,7 +3169,7 @@ private fun DeveloperIpFamilySetting(
 }
 ```
 
-Then call it in the Diagnostics block immediately after `DeveloperVerbositySetting` (that block sits at `:128-203`, **before** the `if (!developerViewModel.connected) { ...; return }` guard at `:205` — keep it there, or the row vanishes in exactly the disconnected state it exists to rescue):
+Then call it in `DeveloperContent`'s Diagnostics block immediately after the `DeveloperVerbositySetting(...)` call at `:149-152`. That call site is **far above** the `if (!developerViewModel.connected) { ...; return }` guard at `:356` — keep it there, or the row vanishes in exactly the disconnected state it exists to rescue:
 
 ```kotlin
     DeveloperIpFamilySetting(
@@ -2876,20 +3220,22 @@ git commit -m "feat: android developer control for the control-plane ip family p
 
 ## Cross-platform parity check
 
-Run this after Task 14. Three cross-platform guards shipped on one platform and not the other earlier in this project — one of them became a Critical — so parity is an explicit deliverable, not an assumption.
+Run this after Task 15. Three cross-platform guards shipped on one platform and not the other earlier in this project — one of them became a Critical — so parity is an explicit deliverable, not an assumption.
 
 - [ ] Both platforms cycle in the same order: Automatic → Force IPv4 → Force IPv6 → Automatic.
 - [ ] Both rows are enabled with no device. (This is the one most likely to be copied wrong, because the neighbouring verbosity row does the opposite.)
 - [ ] Both detail lines report a learned demotion under Automatic and ignore it under a force.
 - [ ] Both read the policy back from the SDK rather than remembering the tap.
 - [ ] Both write through the device when one exists and the network space when it does not.
+- [ ] Both fall back to the process-global set — `SdkSetControlIpFamilyPolicy` on iOS, `Sdk.setControlIpFamilyPolicy` on Android — when there is neither a device nor a space. (Android reaches the space through `NetworkSpaceManagerProvider`, because `DeviceManager.networkSpace` there is `device?.networkSpace` and is null exactly when the device is; iOS reads it straight off `DeviceManager`, which holds it independently.)
 - [ ] The label wording matches between `IpFamily.name` and the `dev_ip_family_*` strings.
 
 ## Final verification
 
 - [ ] `cd connect && go build ./... && go vet ./... && go test ./...`
 - [ ] `cd sdk && go build ./... && go vet ./... && go test ./...`
-- [ ] `cd sdk/cgo && go run ./gen && git diff --exit-code cgo/include/` — headers already regenerated and committed
+- [ ] `cd sdk/cgo && go run ./gen && git diff --exit-code cgo/include/` — C-ABI headers already regenerated and committed (this is NOT the mobile binding; see Task 12)
+- [ ] `grep -c 'IpFamily' sdk/build/apple/URnetworkSdk.xcframework/ios-arm64/URnetworkSdk.framework/Headers/Sdk.objc.h` is non-zero, and `SdkLogVerbosityDetail` no longer appears there — the binding iOS actually links was rebuilt (Task 12)
 - [ ] iOS builds for device and simulator, `networkTests` pass, with real exit codes
-- [ ] Android: state plainly that gradle was not run and why
+- [ ] Android: state plainly that neither gradle nor the android `gomobile bind` was run, and why (no JDK, Android SDK or NDK on this machine)
 - [ ] `grep -rn "DisableIpv4\|DisableIpv6" connect sdk ios android` returns nothing
