@@ -7,6 +7,22 @@ import org.junit.Test
 class IpFamilyTest {
 
     @Test
+    fun theValuesAreTheOnesTheSdkDefines() {
+        // Sdk.IpFamilyPolicyAuto / Force4 / Force6 (sdk/sdk.go). Every other
+        // assertion here is expressed in terms of these constants, so without
+        // this one the whole file still passes with FORCE_4 and FORCE_6
+        // swapped -- the row would force the wrong family, and Automatic
+        // would be unreachable, with a green test suite. The literals are
+        // written out so a reviewer can diff them against the Go source.
+        //
+        // Literals rather than Sdk.IpFamilyPolicy*: this is a JVM unit test
+        // and touching the gomobile class would try to load gojni.
+        assertEquals(0L, IP_FAMILY_AUTO)
+        assertEquals(1L, IP_FAMILY_FORCE_4)
+        assertEquals(2L, IP_FAMILY_FORCE_6)
+    }
+
+    @Test
     fun clampsOutOfRangeToAuto() {
         assertEquals(IP_FAMILY_AUTO, clampIpFamilyPolicy(-1L))
         assertEquals(IP_FAMILY_AUTO, clampIpFamilyPolicy(7L))
