@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">場所は不明</string>
     <string name="provider_locations_empty">接続中のプロバイダーはありません</string>
     <string name="provider_locations_title">プロバイダーの場所</string>
+    <string name="provider_locations_unavailable">接続するまでプロバイダーの詳細は利用できません</string>
     <string name="provider_statistics">プロバイダー統計</string>
     <string name="providing_disabled">提供は無効です</string>
     <string name="ready_to_connect">接続準備完了</string>

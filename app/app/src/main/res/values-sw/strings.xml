@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">Mahali hapajulikani</string>
     <string name="provider_locations_empty">Hakuna watoa huduma waliounganishwa</string>
     <string name="provider_locations_title">Maeneo ya watoa huduma</string>
+    <string name="provider_locations_unavailable">Maelezo ya mtoa huduma hayapatikani hadi utakapounganishwa</string>
     <string name="provider_statistics">Takwimu za mtoa huduma</string>
     <string name="providing_disabled">Utoaji umezimwa</string>
     <string name="ready_to_connect">Tayari kuunganisha</string>

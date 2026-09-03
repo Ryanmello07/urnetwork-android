@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">स्थान अज्ञात</string>
     <string name="provider_locations_empty">कोई प्रदाता कनेक्ट नहीं है</string>
     <string name="provider_locations_title">प्रदाताओं के स्थान</string>
+    <string name="provider_locations_unavailable">कनेक्ट होने तक प्रदाता का विवरण उपलब्ध नहीं है</string>
     <string name="provider_statistics">प्रदाता आँकड़े</string>
     <string name="providing_disabled">प्रदान करना बंद है</string>
     <string name="ready_to_connect">कनेक्ट करने के लिए तैयार</string>

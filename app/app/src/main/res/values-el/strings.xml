@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">Άγνωστη τοποθεσία</string>
     <string name="provider_locations_empty">Δεν υπάρχουν συνδεδεμένοι πάροχοι</string>
     <string name="provider_locations_title">Τοποθεσίες παρόχων</string>
+    <string name="provider_locations_unavailable">Τα στοιχεία των παρόχων δεν είναι διαθέσιμα μέχρι τη σύνδεση</string>
     <string name="provider_statistics">Στατιστικά παρόχου</string>
     <string name="providing_disabled">Η παροχή είναι απενεργοποιημένη</string>
     <string name="ready_to_connect">Έτοιμο για σύνδεση</string>

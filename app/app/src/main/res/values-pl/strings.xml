@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">Lokalizacja nieznana</string>
     <string name="provider_locations_empty">Brak połączonych dostawców</string>
     <string name="provider_locations_title">Lokalizacje dostawców</string>
+    <string name="provider_locations_unavailable">Szczegóły dostawcy są niedostępne do czasu połączenia</string>
     <string name="provider_statistics">Statystyki dostawcy</string>
     <string name="providing_disabled">Udostępnianie jest wyłączone</string>
     <string name="ready_to_connect">Gotowy do połączenia</string>

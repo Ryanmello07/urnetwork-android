@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">Neznámá poloha</string>
     <string name="provider_locations_empty">Žádní připojení poskytovatelé</string>
     <string name="provider_locations_title">Lokality poskytovatelů</string>
+    <string name="provider_locations_unavailable">Údaje o poskytovateli nejsou k dispozici, dokud se nepřipojíte</string>
     <string name="provider_statistics">Statistiky poskytovatele</string>
     <string name="providing_disabled">Poskytování je vypnuté</string>
     <string name="ready_to_connect">Připraveno k připojení</string>

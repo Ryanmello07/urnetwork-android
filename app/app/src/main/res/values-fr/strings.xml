@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">Emplacement inconnu</string>
     <string name="provider_locations_empty">Aucun fournisseur connecté</string>
     <string name="provider_locations_title">Emplacements des fournisseurs</string>
+    <string name="provider_locations_unavailable">Les détails du fournisseur sont indisponibles jusqu\'à la connexion</string>
     <string name="provider_statistics">Statistiques fournisseur</string>
     <string name="providing_disabled">La fourniture est désactivée</string>
     <string name="ready_to_connect">Prêt à connecter</string>

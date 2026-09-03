@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">Locatie onbekend</string>
     <string name="provider_locations_empty">Geen providers verbonden</string>
     <string name="provider_locations_title">Providerlocaties</string>
+    <string name="provider_locations_unavailable">Providergegevens zijn niet beschikbaar tot er verbinding is</string>
     <string name="provider_statistics">Providerstatistieken</string>
     <string name="providing_disabled">Leveren is uitgeschakeld</string>
     <string name="ready_to_connect">Klaar om te verbinden</string>

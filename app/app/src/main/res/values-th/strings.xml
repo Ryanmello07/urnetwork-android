@@ -339,6 +339,7 @@
     <string name="provider_location_unknown">ไม่ทราบตำแหน่ง</string>
     <string name="provider_locations_empty">ไม่มีผู้ให้บริการที่เชื่อมต่ออยู่</string>
     <string name="provider_locations_title">ตำแหน่งผู้ให้บริการ</string>
+    <string name="provider_locations_unavailable">รายละเอียดผู้ให้บริการจะไม่แสดงจนกว่าจะเชื่อมต่อ</string>
     <string name="provider_statistics">สถิติผู้ให้บริการ</string>
     <string name="providing_disabled">การให้บริการถูกปิดอยู่</string>
     <string name="ready_to_connect">พร้อมเชื่อมต่อ</string>
