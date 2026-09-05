@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.stats
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -151,7 +152,7 @@ fun AppSplitRulesScreen(
                 ) {
 
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.tabletReadableColumn().fillMaxSize()
                     ) {
 
                         /**

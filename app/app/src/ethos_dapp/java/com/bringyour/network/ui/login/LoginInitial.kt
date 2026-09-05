@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -637,7 +638,7 @@ fun LoginInitialActions(
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = 512.dp),
+                .tabletForm(),
             horizontalAlignment = Alignment.Start
         ) {
 

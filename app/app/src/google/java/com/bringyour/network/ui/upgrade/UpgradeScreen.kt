@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.upgrade
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import com.bringyour.network.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Column
@@ -72,6 +73,7 @@ fun UpgradeScreen(
         Column(
             modifier = Modifier
                 .padding(padding)
+                .tabletReadableColumn()
                 .verticalScroll(rememberScrollState())
         ) {
             // The same plan picker onboarding shows: yearly is the highlighted

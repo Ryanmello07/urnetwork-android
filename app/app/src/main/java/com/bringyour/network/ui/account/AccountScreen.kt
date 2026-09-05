@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.account
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.app.Activity
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -129,6 +130,7 @@ fun AccountScreen(
 
                 Column(
                     modifier = Modifier
+                        .tabletReadableColumn()
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .background(Black)

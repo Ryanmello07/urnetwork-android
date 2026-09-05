@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import com.bringyour.network.ui.components.overlays.WelcomeAnimatedOverlayLogin
@@ -239,7 +240,7 @@ fun LoginPasswordForm(
 ) {
     Column(
         modifier = Modifier
-            .widthIn(max = 512.dp)
+            .tabletForm()
             .imePadding()
     ) {
         URTextInput(

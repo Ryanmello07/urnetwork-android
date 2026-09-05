@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.settings
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import com.bringyour.network.BuildConfig
 import android.app.Activity
 import android.content.Context
@@ -547,8 +548,9 @@ private fun SettingsScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
+                .tabletReadableColumn()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             Row(

@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import com.bringyour.network.ui.components.tabletReadableColumn
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,6 +62,9 @@ fun IntroductionTopBar(
     onBack: (() -> Unit)? = null,
     totalSteps: Int = INTRO_STEP_COUNT,
 ) {
+    // on tablets the bar spans the readable column, so back, the step bubbles and
+    // Skip align with the content below (mmm/DESIGNSTYLE.md "Tablet layouts")
+    Box(modifier = Modifier.tabletReadableColumn().fillMaxWidth()) {
     CenterAlignedTopAppBar(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -106,6 +111,7 @@ fun IntroductionTopBar(
             containerColor = Black
         ),
     )
+    }
 }
 
 /**

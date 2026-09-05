@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -243,7 +244,7 @@ fun LoginVerify(
                 Column(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .widthIn(max = 512.dp)
+                        .tabletForm()
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally

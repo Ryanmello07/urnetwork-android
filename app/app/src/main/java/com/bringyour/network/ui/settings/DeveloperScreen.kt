@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.settings
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -111,8 +112,9 @@ fun DeveloperScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .fillMaxSize()
                 .padding(innerPadding)
+                .tabletReadableColumn()
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {

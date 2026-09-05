@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.blocked_regions
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -158,7 +159,7 @@ fun BlockedRegionsScreen(
         if (blockedLocations.isEmpty()) {
 
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.tabletReadableColumn().fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {

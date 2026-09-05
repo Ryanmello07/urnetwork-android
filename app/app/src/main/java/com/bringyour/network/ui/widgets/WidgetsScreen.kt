@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.widgets
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -111,8 +112,9 @@ fun WidgetsScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .fillMaxSize()
                 .padding(innerPadding)
+                .tabletReadableColumn()
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {

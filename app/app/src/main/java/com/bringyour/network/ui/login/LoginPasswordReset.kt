@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import android.util.Patterns
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -144,7 +145,7 @@ fun LoginPasswordReset(
                 modifier = Modifier
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState())
-                    .widthIn(max = 512.dp)
+                    .tabletForm()
                     .padding(top = 16.dp, start = 16.dp, bottom = 124.dp, end = 16.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally

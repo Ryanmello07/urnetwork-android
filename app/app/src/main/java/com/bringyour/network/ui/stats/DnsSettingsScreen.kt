@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.stats
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -121,6 +122,7 @@ fun DnsSettingsScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
+                    .tabletReadableColumn()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
             ) {

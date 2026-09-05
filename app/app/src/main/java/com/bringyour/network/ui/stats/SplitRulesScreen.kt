@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.stats
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.icu.text.RelativeDateTimeFormatter
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
@@ -198,7 +199,7 @@ fun SplitRulesScreen(
         ) {
 
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.tabletReadableColumn().fillMaxSize(),
                 state = listState
             ) {
 

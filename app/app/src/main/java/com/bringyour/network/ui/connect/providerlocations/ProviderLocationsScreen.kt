@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.connect.providerlocations
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -190,6 +191,7 @@ fun ProviderLocationsScreen(
 
             LazyColumn(
                 modifier = Modifier
+                    .tabletReadableColumn()
                     .fillMaxWidth()
                     .weight(1f),
                 state = listState,

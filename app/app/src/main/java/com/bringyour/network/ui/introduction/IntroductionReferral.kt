@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -50,9 +51,10 @@ fun IntroductionReferral(
     ) { innerPadding ->
         Column(
             modifier = Modifier
+                .padding(innerPadding)
+                .tabletReadableColumn()
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(innerPadding)
                 .padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {

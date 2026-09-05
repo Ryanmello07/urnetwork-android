@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import android.util.Patterns
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -516,7 +517,7 @@ private fun NetworkCreateForm(
         Column(
             modifier = Modifier
                 .imePadding()
-                .widthIn(max = 512.dp)
+                .tabletForm()
         ) {
 
             if (params is LoginCreateNetworkParams.LoginCreateUserAuthParams) {

@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.BottomSheetScaffold
+import com.bringyour.network.ui.components.isTabletWidth
+import com.bringyour.network.ui.components.tabletDrawerWidth
+import com.bringyour.network.ui.components.TabletLayout
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetScaffoldState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SheetState
@@ -328,15 +332,30 @@ fun ConnectActionsSheetScaffold(
             }
     }
 
+    // tablet convention (mmm/DESIGNSTYLE.md "Tablet layouts"): the drawer wraps its
+    // content in a centered panel of the readable width, rounded on every corner and
+    // floating above the bar below it, instead of a full-width shelf; phones keep
+    // the edge-to-edge sheet
+    val floatingDrawer = isTabletWidth()
     Box(
         // reports the insets ancestors already consumed (the tab bar scaffold),
         // so the sheet geometry above only adds the unconsumed remainder
-        modifier = Modifier.onConsumedWindowInsetsChanged { consumedWindowInsets = it }
+        modifier = Modifier
+            .onConsumedWindowInsetsChanged { consumedWindowInsets = it }
+            .then(
+                if (floatingDrawer) Modifier.padding(bottom = TabletLayout.drawerFloatGap) else Modifier
+            )
     ) {
         BottomSheetScaffold(
             sheetPeekHeight = sheetPeekHeight,
             scaffoldState = scaffoldState,
             sheetContainerColor = SheetBlack,
+            sheetMaxWidth = if (floatingDrawer) tabletDrawerWidth() else BottomSheetDefaults.SheetMaxWidth,
+            sheetShape = if (floatingDrawer) {
+                RoundedCornerShape(TabletLayout.drawerCornerRadius)
+            } else {
+                BottomSheetDefaults.ExpandedShape
+            },
             sheetDragHandle = {
                 // Measure only the handle's local size. Moving the sheet does not
                 // change it.
