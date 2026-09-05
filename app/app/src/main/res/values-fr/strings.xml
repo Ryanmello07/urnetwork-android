@@ -184,7 +184,7 @@
     <string name="guest">Invité</string>
     <string name="how_are_we_doing">Comment allons-nous ?</string>
     <string name="i_ve_saved_my_seedphrase">J’ai enregistré ma phrase de récupération</string>
-    <string name="identity_key_hash_copied">Empreinte de la clé d\'identité copiée</string>
+    <string name="identity_key_hash_copied">Empreinte de la clé d\'identité du fournisseur copiée</string>
     <string name="ignore_battery_optimizations">Ignorer les optimisations de la batterie</string>
     <string name="in_guest_mode">Vous êtes en mode invité</string>
     <string name="include_app">Router via le VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Votre réseau apparaît comme Anonyme tant que cette option est désactivée.</string>
     <string name="post_quantum_encryption">Chiffrement post-quantique</string>
     <string name="post_quantum_encryption_fallback_note">Secours activé (temporaire)</string>
-    <string name="post_quantum_identity">Identité post-quantique</string>
-    <string name="post_quantum_identity_explanation">Votre clé d\'identité est stockée localement sur cet appareil. Si la clé d\'un pair diffère de sa clé stockée localement, cela signifie que l\'opérateur du réseau n\'est pas digne de confiance.</string>
+    <string name="post_quantum_identity">Identité post-quantique du fournisseur</string>
+    <string name="post_quantum_identity_explanation">Votre clé d\'identité de fournisseur est stockée localement sur cet appareil. Si la clé d\'un pair diffère de sa clé stockée localement, cela signifie que l\'opérateur du réseau n\'est pas digne de confiance.</string>
     <string name="private_network">Réseau privé</string>
     <string name="processing_payment">Traitement du paiement</string>
     <string name="profile">Profil</string>

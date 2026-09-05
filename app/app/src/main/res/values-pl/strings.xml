@@ -184,7 +184,7 @@
     <string name="guest">Gość</string>
     <string name="how_are_we_doing">Jak nam idzie?</string>
     <string name="i_ve_saved_my_seedphrase">Mam zapisaną frazę seed</string>
-    <string name="identity_key_hash_copied">Skopiowano skrót klucza tożsamości</string>
+    <string name="identity_key_hash_copied">Skopiowano skrót klucza tożsamości dostawcy</string>
     <string name="ignore_battery_optimizations">Ignoruj optymalizacje baterii</string>
     <string name="in_guest_mode">Jesteś w trybie gościa</string>
     <string name="include_app">Kieruj przez VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Twoja sieć jest wyświetlana jako Anonimowy, dopóki tego nie włączysz.</string>
     <string name="post_quantum_encryption">Szyfrowanie postkwantowe</string>
     <string name="post_quantum_encryption_fallback_note">Tryb awaryjny włączony (tymczasowo)</string>
-    <string name="post_quantum_identity">Tożsamość postkwantowa</string>
-    <string name="post_quantum_identity_explanation">Twój klucz tożsamości jest przechowywany lokalnie na tym urządzeniu. Jeśli klucz któregoś z węzłów różni się od jego klucza zapisanego lokalnie, oznacza to, że operatorowi sieci nie można ufać.</string>
+    <string name="post_quantum_identity">Postkwantowa tożsamość dostawcy</string>
+    <string name="post_quantum_identity_explanation">Twój klucz tożsamości dostawcy jest przechowywany lokalnie na tym urządzeniu. Jeśli klucz któregoś z węzłów różni się od jego klucza zapisanego lokalnie, oznacza to, że operatorowi sieci nie można ufać.</string>
     <string name="private_network">Sieć prywatna</string>
     <string name="processing_payment">Przetwarzanie płatności</string>
     <string name="profile">Profil</string>

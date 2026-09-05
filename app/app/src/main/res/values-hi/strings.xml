@@ -184,7 +184,7 @@
     <string name="guest">अतिथि</string>
     <string name="how_are_we_doing">हम कैसा कर रहे हैं?</string>
     <string name="i_ve_saved_my_seedphrase">मैंने अपना सीड फ़्रेज़ सहेज लिया</string>
-    <string name="identity_key_hash_copied">पहचान कुंजी का हैश कॉपी किया गया</string>
+    <string name="identity_key_hash_copied">प्रदाता पहचान कुंजी का हैश कॉपी किया गया</string>
     <string name="ignore_battery_optimizations">बैटरी ऑप्टिमाइज़ेशन को अनदेखा करें</string>
     <string name="in_guest_mode">आप गेस्ट मोड में हैं</string>
     <string name="include_app">VPN से रूट करें</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">जब तक आप इसे चालू नहीं करते, आपका नेटवर्क अनाम के रूप में दिखता है।</string>
     <string name="post_quantum_encryption">पोस्ट-क्वांटम एन्क्रिप्शन</string>
     <string name="post_quantum_encryption_fallback_note">फ़ॉलबैक चालू (अस्थायी)</string>
-    <string name="post_quantum_identity">पोस्ट-क्वांटम पहचान</string>
-    <string name="post_quantum_identity_explanation">आपकी पहचान कुंजी इस डिवाइस पर स्थानीय रूप से संग्रहीत होती है। अगर किसी पीयर की कुंजी स्थानीय रूप से संग्रहीत कुंजी से अलग दिखती है, तो इसका मतलब है कि नेटवर्क ऑपरेटर पर भरोसा नहीं किया जा सकता।</string>
+    <string name="post_quantum_identity">पोस्ट-क्वांटम प्रदाता पहचान</string>
+    <string name="post_quantum_identity_explanation">आपकी प्रदाता पहचान कुंजी इस डिवाइस पर स्थानीय रूप से संग्रहीत होती है। अगर किसी पीयर की कुंजी स्थानीय रूप से संग्रहीत कुंजी से अलग दिखती है, तो इसका मतलब है कि नेटवर्क ऑपरेटर पर भरोसा नहीं किया जा सकता।</string>
     <string name="private_network">निजी नेटवर्क</string>
     <string name="processing_payment">भुगतान संसाधित हो रहा है</string>
     <string name="profile">प्रोफ़ाइल</string>

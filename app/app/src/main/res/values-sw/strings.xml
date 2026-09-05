@@ -184,7 +184,7 @@
     <string name="guest">Mgeni</string>
     <string name="how_are_we_doing">Tunaendaje?</string>
     <string name="i_ve_saved_my_seedphrase">Nimehifadhi kifungu changu cha seed</string>
-    <string name="identity_key_hash_copied">Heshi ya ufunguo wa utambulisho imenakiliwa</string>
+    <string name="identity_key_hash_copied">Heshi ya ufunguo wa utambulisho wa mtoa huduma imenakiliwa</string>
     <string name="ignore_battery_optimizations">Puuzia uboreshaji wa betri</string>
     <string name="in_guest_mode">Uko katika hali ya mgeni</string>
     <string name="include_app">Pitisha kupitia VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Mtandao wako unaonekana kama Bila jina hadi uwashe hii.</string>
     <string name="post_quantum_encryption">Usimbaji fiche wa baada ya kwantamu</string>
     <string name="post_quantum_encryption_fallback_note">Mbadala umewashwa (kwa muda)</string>
-    <string name="post_quantum_identity">Utambulisho wa baada ya kwantamu</string>
-    <string name="post_quantum_identity_explanation">Ufunguo wako wa utambulisho huhifadhiwa ndani ya kifaa hiki. Ikiwa ufunguo wa mshirika yeyote unaonekana tofauti na ufunguo wake uliohifadhiwa ndani ya kifaa, inamaanisha mwendeshaji wa mtandao hawezi kuaminiwa.</string>
+    <string name="post_quantum_identity">Utambulisho wa mtoa huduma wa baada ya kwantamu</string>
+    <string name="post_quantum_identity_explanation">Ufunguo wako wa utambulisho wa mtoa huduma huhifadhiwa ndani ya kifaa hiki. Ikiwa ufunguo wa mshirika yeyote unaonekana tofauti na ufunguo wake uliohifadhiwa ndani ya kifaa, inamaanisha mwendeshaji wa mtandao hawezi kuaminiwa.</string>
     <string name="private_network">Mtandao wa kibinafsi</string>
     <string name="processing_payment">Inashughulikia malipo</string>
     <string name="profile">Wasifu</string>

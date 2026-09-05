@@ -184,7 +184,7 @@
     <string name="guest">Επισκέπτης</string>
     <string name="how_are_we_doing">Πώς τα πάμε;</string>
     <string name="i_ve_saved_my_seedphrase">Αποθήκευσα τη φράση ανάκτησης</string>
-    <string name="identity_key_hash_copied">Το hash του κλειδιού ταυτότητας αντιγράφηκε</string>
+    <string name="identity_key_hash_copied">Το hash του κλειδιού ταυτότητας παρόχου αντιγράφηκε</string>
     <string name="ignore_battery_optimizations">Παράβλεψη βελτιστοποιήσεων μπαταρίας</string>
     <string name="in_guest_mode">Είστε σε λειτουργία επισκέπτη</string>
     <string name="include_app">Δρομολόγηση μέσω VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Το δίκτυό σας εμφανίζεται ως Ανώνυμο μέχρι να το ενεργοποιήσετε.</string>
     <string name="post_quantum_encryption">Μετακβαντική κρυπτογράφηση</string>
     <string name="post_quantum_encryption_fallback_note">Εφεδρική λειτουργία ενεργή (προσωρινά)</string>
-    <string name="post_quantum_identity">Μετακβαντική ταυτότητα</string>
-    <string name="post_quantum_identity_explanation">Το κλειδί ταυτότητάς σας αποθηκεύεται τοπικά σε αυτή τη συσκευή. Αν το κλειδί κάποιου κόμβου εμφανίζεται διαφορετικό από το τοπικά αποθηκευμένο κλειδί του, σημαίνει ότι δεν μπορείτε να εμπιστευτείτε τον διαχειριστή του δικτύου.</string>
+    <string name="post_quantum_identity">Μετακβαντική ταυτότητα παρόχου</string>
+    <string name="post_quantum_identity_explanation">Το κλειδί ταυτότητας παρόχου σας αποθηκεύεται τοπικά σε αυτή τη συσκευή. Αν το κλειδί κάποιου κόμβου εμφανίζεται διαφορετικό από το τοπικά αποθηκευμένο κλειδί του, σημαίνει ότι δεν μπορείτε να εμπιστευτείτε τον διαχειριστή του δικτύου.</string>
     <string name="private_network">Ιδιωτικό δίκτυο</string>
     <string name="processing_payment">Επεξεργασία πληρωμής</string>
     <string name="profile">Προφίλ</string>

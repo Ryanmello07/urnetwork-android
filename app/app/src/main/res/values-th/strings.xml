@@ -184,7 +184,7 @@
     <string name="guest">ผู้เยี่ยมชม</string>
     <string name="how_are_we_doing">ใช้งานเป็นยังไงบ้าง?</string>
     <string name="i_ve_saved_my_seedphrase">ฉันบันทึกวลีกู้คืนแล้ว</string>
-    <string name="identity_key_hash_copied">คัดลอกแฮชของคีย์ระบุตัวตนแล้ว</string>
+    <string name="identity_key_hash_copied">คัดลอกแฮชของคีย์ระบุตัวตนผู้ให้บริการแล้ว</string>
     <string name="ignore_battery_optimizations">ไม่สนใจการเพิ่มประสิทธิภาพแบตเตอรี่</string>
     <string name="in_guest_mode">คุณกำลังใช้งานโหมดผู้เยี่ยมชม</string>
     <string name="include_app">ส่งผ่าน VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">เครือข่ายของคุณจะแสดงเป็นไม่ระบุชื่อจนกว่าคุณจะเปิดตัวเลือกนี้</string>
     <string name="post_quantum_encryption">การเข้ารหัสแบบโพสต์ควอนตัม</string>
     <string name="post_quantum_encryption_fallback_note">เปิดใช้โหมดสำรอง (ชั่วคราว)</string>
-    <string name="post_quantum_identity">ข้อมูลระบุตัวตนแบบโพสต์ควอนตัม</string>
-    <string name="post_quantum_identity_explanation">คีย์ระบุตัวตนของคุณถูกเก็บไว้ในเครื่องนี้ หากคีย์ของเพียร์ใดแตกต่างจากคีย์ที่เก็บไว้ในเครื่อง แสดงว่าผู้ดำเนินการเครือข่ายไม่น่าเชื่อถือ</string>
+    <string name="post_quantum_identity">ข้อมูลระบุตัวตนผู้ให้บริการแบบโพสต์ควอนตัม</string>
+    <string name="post_quantum_identity_explanation">คีย์ระบุตัวตนผู้ให้บริการของคุณถูกเก็บไว้ในเครื่องนี้ หากคีย์ของเพียร์ใดแตกต่างจากคีย์ที่เก็บไว้ในเครื่อง แสดงว่าผู้ดำเนินการเครือข่ายไม่น่าเชื่อถือ</string>
     <string name="private_network">เครือข่ายส่วนตัว</string>
     <string name="processing_payment">กำลังดำเนินการชำระเงิน</string>
     <string name="profile">โปรไฟล์</string>

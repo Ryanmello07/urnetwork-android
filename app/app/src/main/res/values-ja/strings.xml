@@ -184,7 +184,7 @@
     <string name="guest">ゲスト</string>
     <string name="how_are_we_doing">私たちの調子はどうですか？</string>
     <string name="i_ve_saved_my_seedphrase">シードフレーズを保存しました</string>
-    <string name="identity_key_hash_copied">IDキーのハッシュをコピーしました</string>
+    <string name="identity_key_hash_copied">プロバイダーIDキーのハッシュをコピーしました</string>
     <string name="ignore_battery_optimizations">バッテリー最適化を無視する</string>
     <string name="in_guest_mode">ゲストモードです</string>
     <string name="include_app">VPN経由でルーティング</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">オンにするまで、あなたのネットワークは匿名として表示されます。</string>
     <string name="post_quantum_encryption">ポスト量子暗号</string>
     <string name="post_quantum_encryption_fallback_note">フォールバック有効（一時的）</string>
-    <string name="post_quantum_identity">ポスト量子ID</string>
-    <string name="post_quantum_identity_explanation">あなたのIDキーはこのデバイスにローカル保存されます。いずれかのピアのキーがローカルに保存されたキーと異なって表示される場合、そのネットワーク運営者は信頼できません。</string>
+    <string name="post_quantum_identity">ポスト量子プロバイダーID</string>
+    <string name="post_quantum_identity_explanation">あなたのプロバイダーIDキーはこのデバイスにローカル保存されます。いずれかのピアのキーがローカルに保存されたキーと異なって表示される場合、そのネットワーク運営者は信頼できません。</string>
     <string name="private_network">プライベートネットワーク</string>
     <string name="processing_payment">支払いを処理中</string>
     <string name="profile">プロフィール</string>

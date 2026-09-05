@@ -184,7 +184,7 @@
     <string name="guest">Гость</string>
     <string name="how_are_we_doing">Как наши успехи?</string>
     <string name="i_ve_saved_my_seedphrase">Я сохранил сид-фразу</string>
-    <string name="identity_key_hash_copied">Хеш ключа идентификации скопирован</string>
+    <string name="identity_key_hash_copied">Хеш ключа идентификации провайдера скопирован</string>
     <string name="ignore_battery_optimizations">Игнорировать оптимизацию батареи</string>
     <string name="in_guest_mode">Вы в гостевом режиме</string>
     <string name="include_app">Направить через VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Ваша сеть отображается как Анонимно, пока вы не включите это.</string>
     <string name="post_quantum_encryption">Постквантовое шифрование</string>
     <string name="post_quantum_encryption_fallback_note">Резервный режим включён (временно)</string>
-    <string name="post_quantum_identity">Постквантовая идентификация</string>
-    <string name="post_quantum_identity_explanation">Ваш ключ идентификации хранится локально на этом устройстве. Если ключ какого-либо узла отличается от сохранённого локально, это значит, что оператору сети нельзя доверять.</string>
+    <string name="post_quantum_identity">Постквантовая идентификация провайдера</string>
+    <string name="post_quantum_identity_explanation">Ваш ключ идентификации провайдера хранится локально на этом устройстве. Если ключ какого-либо узла отличается от сохранённого локально, это значит, что оператору сети нельзя доверять.</string>
     <string name="private_network">Частная сеть</string>
     <string name="processing_payment">Обработка платежа</string>
     <string name="profile">Профиль</string>

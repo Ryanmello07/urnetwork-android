@@ -184,7 +184,7 @@
     <string name="guest">Convidado</string>
     <string name="how_are_we_doing">Como estamos a fazer?</string>
     <string name="i_ve_saved_my_seedphrase">Guardei a minha frase-semente</string>
-    <string name="identity_key_hash_copied">Hash da chave de identidade copiado</string>
+    <string name="identity_key_hash_copied">Hash da chave de identidade do fornecedor copiado</string>
     <string name="ignore_battery_optimizations">Ignorar otimizações da bateria</string>
     <string name="in_guest_mode">Você está no modo convidado</string>
     <string name="include_app">Encaminhar pela VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">A sua rede aparece como Anónimo até ativar esta opção.</string>
     <string name="post_quantum_encryption">Encriptação pós-quântica</string>
     <string name="post_quantum_encryption_fallback_note">Fallback ativado (temporário)</string>
-    <string name="post_quantum_identity">Identidade pós-quântica</string>
-    <string name="post_quantum_identity_explanation">A sua chave de identidade é guardada localmente neste dispositivo. Se a chave de algum par surgir diferente da chave guardada localmente, significa que não se pode confiar no operador da rede.</string>
+    <string name="post_quantum_identity">Identidade pós-quântica do fornecedor</string>
+    <string name="post_quantum_identity_explanation">A sua chave de identidade de fornecedor é guardada localmente neste dispositivo. Se a chave de algum par surgir diferente da chave guardada localmente, significa que não se pode confiar no operador da rede.</string>
     <string name="private_network">Rede privada</string>
     <string name="processing_payment">A processar pagamento</string>
     <string name="profile">Perfil</string>

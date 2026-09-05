@@ -184,7 +184,7 @@
     <string name="guest">访客</string>
     <string name="how_are_we_doing">我们做得怎么样？</string>
     <string name="i_ve_saved_my_seedphrase">我已保存助记词</string>
-    <string name="identity_key_hash_copied">身份密钥哈希已复制</string>
+    <string name="identity_key_hash_copied">提供商身份密钥哈希已复制</string>
     <string name="ignore_battery_optimizations">忽略电池优化</string>
     <string name="in_guest_mode">您处于访客模式</string>
     <string name="include_app">通过 VPN 路由</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">在你开启此项之前，你的网络显示为匿名。</string>
     <string name="post_quantum_encryption">后量子加密</string>
     <string name="post_quantum_encryption_fallback_note">已启用回退（临时）</string>
-    <string name="post_quantum_identity">后量子身份</string>
-    <string name="post_quantum_identity_explanation">你的身份密钥存储在本设备本地。如果某个对等节点的密钥与本地存储的密钥不一致，说明网络运营方不可信。</string>
+    <string name="post_quantum_identity">后量子提供商身份</string>
+    <string name="post_quantum_identity_explanation">你的提供商身份密钥存储在本设备本地。如果某个对等节点的密钥与本地存储的密钥不一致，说明网络运营方不可信。</string>
     <string name="private_network">私有网络</string>
     <string name="processing_payment">正在处理付款</string>
     <string name="profile">个人资料</string>

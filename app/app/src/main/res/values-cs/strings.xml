@@ -184,7 +184,7 @@
     <string name="guest">Host</string>
     <string name="how_are_we_doing">Jak se nám daří?</string>
     <string name="i_ve_saved_my_seedphrase">Seed frázi mám uloženou</string>
-    <string name="identity_key_hash_copied">Otisk identitního klíče zkopírován</string>
+    <string name="identity_key_hash_copied">Otisk identitního klíče poskytovatele zkopírován</string>
     <string name="ignore_battery_optimizations">Ignorovat optimalizace baterie</string>
     <string name="in_guest_mode">Jste v režimu pro hosty</string>
     <string name="include_app">Směrovat přes VPN</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Vaše síť se zobrazuje jako Anonymní, dokud to nezapnete.</string>
     <string name="post_quantum_encryption">Postkvantové šifrování</string>
     <string name="post_quantum_encryption_fallback_note">Záložní režim zapnut (dočasně)</string>
-    <string name="post_quantum_identity">Postkvantová identita</string>
-    <string name="post_quantum_identity_explanation">Váš identitní klíč je uložen lokálně v tomto zařízení. Pokud se klíč některého uzlu liší od jeho lokálně uloženého klíče, znamená to, že provozovateli sítě nelze důvěřovat.</string>
+    <string name="post_quantum_identity">Postkvantová identita poskytovatele</string>
+    <string name="post_quantum_identity_explanation">Váš identitní klíč poskytovatele je uložen lokálně v tomto zařízení. Pokud se klíč některého uzlu liší od jeho lokálně uloženého klíče, znamená to, že provozovateli sítě nelze důvěřovat.</string>
     <string name="private_network">Soukromá síť</string>
     <string name="processing_payment">Zpracovává se platba</string>
     <string name="profile">Profil</string>

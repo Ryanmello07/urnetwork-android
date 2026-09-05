@@ -184,7 +184,7 @@
     <string name="guest">Gast</string>
     <string name="how_are_we_doing">Wie geht es uns?</string>
     <string name="i_ve_saved_my_seedphrase">Ich habe meine Seedphrase gespeichert</string>
-    <string name="identity_key_hash_copied">Hash des Identitätsschlüssels kopiert</string>
+    <string name="identity_key_hash_copied">Hash des Anbieter-Identitätsschlüssels kopiert</string>
     <string name="ignore_battery_optimizations">Akku-Optimierungen ignorieren</string>
     <string name="in_guest_mode">Du befindest dich im Gastmodus</string>
     <string name="include_app">Über VPN leiten</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Dein Netzwerk erscheint als Anonym, bis du das einschaltest.</string>
     <string name="post_quantum_encryption">Post-Quanten-Verschlüsselung</string>
     <string name="post_quantum_encryption_fallback_note">Fallback aktiv (vorübergehend)</string>
-    <string name="post_quantum_identity">Post-Quanten-Identität</string>
-    <string name="post_quantum_identity_explanation">Dein Identitätsschlüssel wird lokal auf diesem Gerät gespeichert. Wenn der Schlüssel eines Peers von seinem lokal gespeicherten Schlüssel abweicht, bedeutet das, dass dem Netzwerkbetreiber nicht vertraut werden kann.</string>
+    <string name="post_quantum_identity">Post-Quanten-Anbieteridentität</string>
+    <string name="post_quantum_identity_explanation">Dein Anbieter-Identitätsschlüssel wird lokal auf diesem Gerät gespeichert. Wenn der Schlüssel eines Peers von seinem lokal gespeicherten Schlüssel abweicht, bedeutet das, dass dem Netzwerkbetreiber nicht vertraut werden kann.</string>
     <string name="private_network">Privates Netzwerk</string>
     <string name="processing_payment">Zahlung wird verarbeitet</string>
     <string name="profile">Profil</string>

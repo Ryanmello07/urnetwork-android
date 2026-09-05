@@ -184,7 +184,7 @@
     <string name="guest">게스트</string>
     <string name="how_are_we_doing">우리는 어떻게 하고 있나요?</string>
     <string name="i_ve_saved_my_seedphrase">시드 문구를 저장했습니다</string>
-    <string name="identity_key_hash_copied">신원 키 해시가 복사되었습니다</string>
+    <string name="identity_key_hash_copied">제공업체 신원 키 해시가 복사되었습니다</string>
     <string name="ignore_battery_optimizations">배터리 최적화 무시</string>
     <string name="in_guest_mode">게스트 모드입니다</string>
     <string name="include_app">VPN으로 라우팅</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">이 옵션을 켜기 전까지 내 네트워크는 익명으로 표시됩니다.</string>
     <string name="post_quantum_encryption">포스트 양자 암호화</string>
     <string name="post_quantum_encryption_fallback_note">폴백 사용 중 (임시)</string>
-    <string name="post_quantum_identity">포스트 양자 신원</string>
-    <string name="post_quantum_identity_explanation">신원 키는 이 기기에 로컬로 저장됩니다. 어떤 피어의 키가 로컬에 저장된 키와 다르게 표시되면 네트워크 운영자를 신뢰할 수 없다는 뜻입니다.</string>
+    <string name="post_quantum_identity">포스트 양자 제공업체 신원</string>
+    <string name="post_quantum_identity_explanation">제공업체 신원 키는 이 기기에 로컬로 저장됩니다. 어떤 피어의 키가 로컬에 저장된 키와 다르게 표시되면 네트워크 운영자를 신뢰할 수 없다는 뜻입니다.</string>
     <string name="private_network">프라이빗 네트워크</string>
     <string name="processing_payment">결제 처리 중</string>
     <string name="profile">프로필</string>

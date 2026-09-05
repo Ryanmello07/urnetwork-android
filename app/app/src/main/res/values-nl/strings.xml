@@ -184,7 +184,7 @@
     <string name="guest">Gast</string>
     <string name="how_are_we_doing">Hoe gaat het met ons?</string>
     <string name="i_ve_saved_my_seedphrase">Ik heb mijn seedphrase opgeslagen</string>
-    <string name="identity_key_hash_copied">Hash van identiteitssleutel gekopieerd</string>
+    <string name="identity_key_hash_copied">Hash van provider-identiteitssleutel gekopieerd</string>
     <string name="ignore_battery_optimizations">Batterijoptimalisaties negeren</string>
     <string name="in_guest_mode">Je bent in de gastmodus</string>
     <string name="include_app">Via VPN routeren</string>
@@ -319,8 +319,8 @@
     <string name="points_leaderboard_private_hint">Je netwerk wordt als Anoniem getoond totdat je dit aanzet.</string>
     <string name="post_quantum_encryption">Post-quantumversleuteling</string>
     <string name="post_quantum_encryption_fallback_note">Fallback ingeschakeld (tijdelijk)</string>
-    <string name="post_quantum_identity">Post-quantumidentiteit</string>
-    <string name="post_quantum_identity_explanation">Je identiteitssleutel wordt lokaal op dit apparaat opgeslagen. Als de sleutel van een peer afwijkt van de lokaal opgeslagen sleutel, betekent dit dat de netwerkbeheerder niet te vertrouwen is.</string>
+    <string name="post_quantum_identity">Post-quantum provideridentiteit</string>
+    <string name="post_quantum_identity_explanation">Je provider-identiteitssleutel wordt lokaal op dit apparaat opgeslagen. Als de sleutel van een peer afwijkt van de lokaal opgeslagen sleutel, betekent dit dat de netwerkbeheerder niet te vertrouwen is.</string>
     <string name="private_network">Privénetwerk</string>
     <string name="processing_payment">Betaling wordt verwerkt</string>
     <string name="profile">Profiel</string>
