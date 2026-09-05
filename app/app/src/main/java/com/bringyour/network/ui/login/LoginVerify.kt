@@ -173,6 +173,11 @@ fun LoginVerify(
                         verifyInProgress = false
 
                         verifyError = error
+                        if (error != null) {
+                            val visibility = loginRetryVisibility()
+                            isContentVisible = visibility.contentVisible
+                            welcomeOverlayVisible = visibility.welcomeOverlayVisible
+                        }
                     })
                 } else {
                     verifyError = verifyErrMsg

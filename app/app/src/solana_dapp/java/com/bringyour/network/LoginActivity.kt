@@ -32,7 +32,6 @@ import com.bringyour.network.ui.wallet.SnWalletConnectExtras
 import com.bringyour.network.ui.theme.URNetworkTheme
 import com.bringyour.sdk.AuthCodeLoginArgs
 import com.bringyour.sdk.AuthLoginArgs
-import com.bringyour.sdk.AuthNetworkClientArgs
 import com.bringyour.sdk.WalletAuthArgs
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import dagger.hilt.android.AndroidEntryPoint
@@ -570,24 +569,16 @@ class LoginActivity : AppCompatActivity() {
     fun authClientAndFinish(
         callback: (String?) -> Unit,
     ) {
-        val app = app ?: return
+        val app = app ?: run {
+            callback(getString(R.string.login_client_error))
+            return
+        }
 
-        val authArgs = AuthNetworkClientArgs()
-        authArgs.deviceDescription = app.deviceDescription
-        authArgs.deviceSpec = app.deviceSpec
-
-        app.api?.authNetworkClient(authArgs) { result, err ->
+        app.authenticateLoginClient { completion ->
             lifecycleScope.launch(Dispatchers.Main) {
-                if (err != null) {
-                    callback(err.message)
-                } else if (result.error != null) {
-                    callback(result.error.message)
-                } else if (result.byClientJwt.isNotEmpty()) {
-
-                    if (!app.loginClient(result.byClientJwt)) {
-                        callback(getString(R.string.login_client_error))
-                        return@launch
-                    }
+                if (completion is LoginClientCompletion.Failed) {
+                    callback(completion.message ?: getString(R.string.login_client_error))
+                } else {
 
                     val intent = Intent(this@LoginActivity, MainActivity::class.java)
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_TASK_ON_HOME)
@@ -614,8 +605,6 @@ class LoginActivity : AppCompatActivity() {
                     }
 
                     finish()
-                } else {
-                    callback(getString(R.string.login_client_error))
                 }
             }
         }

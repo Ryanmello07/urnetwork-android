@@ -274,10 +274,10 @@ jobs:
       # APKs, and it is the slowest step here -- it is the first thing to drop
       # if this job needs to get cheaper.
       #
-      # The other three flavors get compile*ReleaseKotlin rather than an
+      # The other two flavors get compile*ReleaseKotlin rather than an
       # assemble, for the signing reason at the top of this file. It is not a
       # token check: each flavor adds its own java srcDir (src/ungoogle,
-      # src/google, src/solana_dapp, src/ethos_dapp), so this is the only thing
+      # src/google and src/solana_dapp), so this is the only thing
       # that compiles those sources at all. build.sh uses the same
       # compileGithubReleaseKotlin idiom for the flavor it cannot assemble.
       - name: Build and test
@@ -288,8 +288,7 @@ jobs:
             :app:assembleGithubDebug \
             :app:compileGithubReleaseKotlin \
             :app:compilePlayReleaseKotlin \
-            :app:compileSolana_dappReleaseKotlin \
-            :app:compileEthos_dappReleaseKotlin
+            :app:compileSolana_dappReleaseKotlin
 
       - name: Upload the unit test report
         if: always()

@@ -3,6 +3,7 @@ package com.bringyour.network.acceptance
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.Bundle
@@ -16,6 +17,10 @@ internal data class EgressProbeResponse(
     val message: String,
     val sourceUid: Int,
 )
+
+@Suppress("DEPRECATION")
+internal fun Context.installedPackageUid(): Int =
+    packageManager.getApplicationInfo(packageName, 0).uid
 
 /** Runs the public-IP request in the test APK UID and receives its result over Binder. */
 internal object EgressProbeRequest {
@@ -81,8 +86,8 @@ internal object EgressProbeRequest {
             throw AssertionError("egress probe returned a stale or mismatched request nonce")
         }
 
-        val expectedSourceUid = testContext.applicationInfo.uid
-        val productUid = instrumentation.targetContext.applicationInfo.uid
+        val expectedSourceUid = testContext.installedPackageUid()
+        val productUid = instrumentation.targetContext.installedPackageUid()
         if (result.sourceUid != expectedSourceUid || result.sourceUid == productUid) {
             throw AssertionError(
                 "egress probe result came from uid ${result.sourceUid}; " +

@@ -11,6 +11,61 @@ import com.bringyour.sdk.Sub
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class DeviceInitFailure {
+    MISSING_NETWORK_SPACE,
+    MISSING_LOCAL_STATE,
+    MISSING_INSTANCE_ID,
+    DEVICE_LOCAL_CREATION_FAILED,
+    DEVICE_LOCAL_CONFIGURATION_FAILED,
+}
+
+sealed class DeviceInitResult {
+    object Ready : DeviceInitResult()
+    data class Failed(val failure: DeviceInitFailure) : DeviceInitResult()
+}
+
+internal sealed class DeviceCreationResult<out T> {
+    data class Created<T>(val value: T) : DeviceCreationResult<T>()
+    data class Failed(val failure: DeviceInitFailure) : DeviceCreationResult<Nothing>()
+}
+
+internal sealed class DeviceConfigurationResult<out T> {
+    data class Configured<T>(val value: T) : DeviceConfigurationResult<T>()
+    data class Failed(val failure: DeviceInitFailure) : DeviceConfigurationResult<Nothing>()
+}
+
+/** Tries a stored identity once, then clears it before one default-key fallback. */
+internal fun <T, K> createDeviceWithStoredKey(
+    storedKey: K?,
+    clearStoredKey: () -> Unit,
+    create: (K?) -> T?,
+): DeviceCreationResult<T> {
+    if (storedKey == null) {
+        return runCatching { create(null) }.getOrNull()?.let { DeviceCreationResult.Created(it) }
+            ?: DeviceCreationResult.Failed(DeviceInitFailure.DEVICE_LOCAL_CREATION_FAILED)
+    }
+
+    runCatching { create(storedKey) }.getOrNull()?.let {
+        return DeviceCreationResult.Created(it)
+    }
+    if (runCatching(clearStoredKey).isFailure) {
+        return DeviceCreationResult.Failed(DeviceInitFailure.DEVICE_LOCAL_CONFIGURATION_FAILED)
+    }
+    return runCatching { create(null) }.getOrNull()?.let { DeviceCreationResult.Created(it) }
+        ?: DeviceCreationResult.Failed(DeviceInitFailure.DEVICE_LOCAL_CREATION_FAILED)
+}
+
+/** Converts configuration exceptions into one typed boundary and always closes partial state. */
+internal fun <T> configureCreatedDevice(
+    configure: () -> T,
+    closePartialState: () -> Unit,
+): DeviceConfigurationResult<T> = try {
+    DeviceConfigurationResult.Configured(configure())
+} catch (_: Throwable) {
+    runCatching(closePartialState)
+    DeviceConfigurationResult.Failed(DeviceInitFailure.DEVICE_LOCAL_CONFIGURATION_FAILED)
+}
+
 @Singleton
 class DeviceManager @Inject constructor(
     private val jwtManager: JwtManager
@@ -146,18 +201,18 @@ class DeviceManager @Inject constructor(
         byClientJwt: String,
         deviceDescription: String,
         deviceSpec: String
-    ): Boolean {
+    ): DeviceInitResult {
         if (networkSpace == null) {
             clearDevice()
-            return false
+            return DeviceInitResult.Failed(DeviceInitFailure.MISSING_NETWORK_SPACE)
         }
         val localState = networkSpace.asyncLocalState.localState ?: run {
             clearDevice()
-            return false
+            return DeviceInitResult.Failed(DeviceInitFailure.MISSING_LOCAL_STATE)
         }
         val instanceId = localState.instanceId ?: run {
             clearDevice()
-            return false
+            return DeviceInitResult.Failed(DeviceInitFailure.MISSING_INSTANCE_ID)
         }
         val routeLocal = localState.routeLocal
         val connectLocation = localState.connectLocation
@@ -179,106 +234,123 @@ class DeviceManager @Inject constructor(
 
         val provideSecretKeys = localState.provideSecretKeys
         val keyMaterial = localState.deviceLocalKeyMaterial
-        val newDevice = if (keyMaterial == null) {
-            createDeviceLocalWithDefaults(
-                networkSpace = networkSpace,
-                byClientJwt = byClientJwt,
-                deviceDescription = deviceDescription,
-                deviceSpec = deviceSpec,
-                instanceId = instanceId
-            )
-        } else {
-            runCatching {
-                Sdk.newDeviceLocalWithMemoryTarget(
-                    networkSpace,
-                    byClientJwt,
-                    deviceDescription,
-                    deviceSpec,
-                    getAppVersion(),
-                    instanceId,
-                    false,
-                    keyMaterial,
-                    // per-device memory target (split dns 2 : client 14 :
-                    // provider 4); the process pools are sized by setMemoryLimit
-                    DEVICE_MEMORY_TARGET_BYTE_COUNT
-                )
-            }.getOrNull() ?: run {
-                localState.deviceLocalKeyMaterial = null
-                createDeviceLocalWithDefaults(
-                    networkSpace = networkSpace,
-                    byClientJwt = byClientJwt,
-                    deviceDescription = deviceDescription,
-                    deviceSpec = deviceSpec,
-                    instanceId = instanceId
-                )
+        val creation = createDeviceWithStoredKey(
+            storedKey = keyMaterial,
+            clearStoredKey = { localState.deviceLocalKeyMaterial = null },
+            create = { retainedKeyMaterial ->
+                if (retainedKeyMaterial == null) {
+                    createDeviceLocalWithDefaults(
+                        networkSpace = networkSpace,
+                        byClientJwt = byClientJwt,
+                        deviceDescription = deviceDescription,
+                        deviceSpec = deviceSpec,
+                        instanceId = instanceId,
+                    )
+                } else {
+                    Sdk.newDeviceLocalWithMemoryTarget(
+                        networkSpace,
+                        byClientJwt,
+                        deviceDescription,
+                        deviceSpec,
+                        getAppVersion(),
+                        instanceId,
+                        false,
+                        retainedKeyMaterial,
+                        // per-device memory target (split dns 2 : client 14 :
+                        // provider 4); the process pools are sized by setMemoryLimit
+                        DEVICE_MEMORY_TARGET_BYTE_COUNT,
+                    )
+                }
+            },
+        )
+        val newDevice = when (creation) {
+            is DeviceCreationResult.Created -> creation.value
+            is DeviceCreationResult.Failed -> {
+                clearDevice()
+                return DeviceInitResult.Failed(creation.failure)
             }
-        } ?: run {
-            clearDevice()
-            return false
         }
 
-        val notifyDeviceChanged = synchronized(deviceLock) {
-            closeDeviceSubscriptionsLocked()
-            device?.close()
-            device = newDevice
+        val configuration = configureCreatedDevice(
+            configure = {
+                synchronized(deviceLock) {
+                    closeDeviceSubscriptionsLocked()
+                    device?.close()
+                    device = newDevice
 
-            persistDeviceLocalKeyMaterial(localState, newDevice)
+                    persistDeviceLocalKeyMaterial(localState, newDevice)
 
-            provideSecretKeysSub = newDevice.addProvideSecretKeysListener {
-                runCatching {
-                    localState.provideSecretKeys = it
+                    provideSecretKeysSub = newDevice.addProvideSecretKeysListener {
+                        runCatching {
+                            localState.provideSecretKeys = it
+                        }
+                        persistDeviceLocalKeyMaterial(localState, newDevice)
+                    }
+
+                    provideSecretKeys?.let {
+                        newDevice.loadProvideSecretKeys(it)
+                    } ?: run {
+                        newDevice.initProvideSecretKeys()
+                    }
+
+                    newDevice.providePaused = true
+                    newDevice.routeLocal = routeLocal
+                    newDevice.provideMode = provideMode
+                    newDevice.connectLocation = connectLocation
+                    newDevice.defaultLocation = defaultLocation
+                    newDevice.canShowRatingDialog = canShowRatingDialog
+                    newDevice.provideControlMode = ProvideControlMode.toString(provideControlMode)
+                    newDevice.vpnInterfaceWhileOffline = vpnInterfaceWhileOffline
+                    newDevice.canRefer = canRefer
+                    newDevice.allowForeground = allowForeground
+                    newDevice.provideNetworkMode = ProvideNetworkMode.toString(provideNetworkMode)
+                    newDevice.canPromptIntroFunnel = canPromptIntroFunnel
+                    newDevice.performanceProfile = performanceProfile
+
+                    addLocalStateChangeSubscriptionsLocked(localState, newDevice)
+
+                    /**
+                     * set initial jwt on device creation
+                     */
+                    runCatching {
+                        localState.parseByJwt()
+                    }.getOrNull()?.let { byJwt ->
+                        jwtManager.updateJwt(byJwt)
+                    } ?: jwtManager.clearJwt()
+
+                    jwtRefreshSub = newDevice.addJwtRefreshListener { _ ->
+
+                        val localState = newDevice.networkSpace?.asyncLocalState?.localState
+                            ?: return@addJwtRefreshListener
+                        runCatching {
+                            localState.parseByJwt()
+                        }.getOrNull()?.let { byJwt ->
+                            jwtManager.updateJwt(byJwt)
+                        } ?: jwtManager.clearJwt()
+                    }
+
+                    authLogoutSub = newDevice.addAuthLogoutListener {
+                        onAuthLogout?.invoke()
+                    }
+                    deviceChanges.prepareUpdate(newDevice)
                 }
-                persistDeviceLocalKeyMaterial(localState, newDevice)
-            }
-
-            provideSecretKeys?.let {
-                newDevice.loadProvideSecretKeys(it)
-            } ?: run {
-                newDevice.initProvideSecretKeys()
-            }
-
-            newDevice.providePaused = true
-            newDevice.routeLocal = routeLocal
-            newDevice.provideMode = provideMode
-            newDevice.connectLocation = connectLocation
-            newDevice.defaultLocation = defaultLocation
-            newDevice.canShowRatingDialog = canShowRatingDialog
-            newDevice.provideControlMode = ProvideControlMode.toString(provideControlMode)
-            newDevice.vpnInterfaceWhileOffline = vpnInterfaceWhileOffline
-            newDevice.canRefer = canRefer
-            newDevice.allowForeground = allowForeground
-            newDevice.provideNetworkMode = ProvideNetworkMode.toString(provideNetworkMode)
-            newDevice.canPromptIntroFunnel = canPromptIntroFunnel
-            newDevice.performanceProfile = performanceProfile
-
-            addLocalStateChangeSubscriptionsLocked(localState, newDevice)
-
-            /**
-             * set initial jwt on device creation
-             */
-            runCatching {
-                localState.parseByJwt()
-            }.getOrNull()?.let { byJwt ->
-                jwtManager.updateJwt(byJwt)
-            } ?: jwtManager.clearJwt()
-
-            jwtRefreshSub = newDevice.addJwtRefreshListener { _ ->
-
-                val localState = newDevice.networkSpace?.asyncLocalState?.localState ?: return@addJwtRefreshListener
-                runCatching {
-                    localState.parseByJwt()
-                }.getOrNull()?.let { byJwt ->
-                    jwtManager.updateJwt(byJwt)
-                } ?: jwtManager.clearJwt()
-            }
-
-            authLogoutSub = newDevice.addAuthLogoutListener {
-                onAuthLogout?.invoke()
-            }
-            deviceChanges.prepareUpdate(newDevice)
+            },
+            closePartialState = {
+                if (device === newDevice) {
+                    clearDevice()
+                } else {
+                    newDevice.close()
+                }
+            },
+        )
+        val notifyDeviceChanged = when (configuration) {
+            is DeviceConfigurationResult.Configured -> configuration.value
+            is DeviceConfigurationResult.Failed -> return DeviceInitResult.Failed(
+                configuration.failure,
+            )
         }
         notifyDeviceChanged()
-        return true
+        return DeviceInitResult.Ready
     }
 
     private fun createDeviceLocalWithDefaults(

@@ -325,7 +325,9 @@ fun LoginCreateNetwork(
                             createNetworkError = error
 
                             if (error != null) {
-                                isContentVisible = true
+                                val visibility = loginRetryVisibility()
+                                isContentVisible = visibility.contentVisible
+                                welcomeOverlayVisible = visibility.welcomeOverlayVisible
                             }
                         }
                     )

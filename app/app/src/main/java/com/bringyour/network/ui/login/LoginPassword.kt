@@ -105,18 +105,34 @@ fun LoginPassword(
         loginError = null
         inProgress = true
 
+        val application = app
+        if (application == null) {
+            loginError = loginErrMsg
+            inProgress = false
+            return@login
+        }
+        val loginAttemptId = application.beginPasswordLogin()
+
         val args = AuthLoginWithPasswordArgs()
         args.userAuth = user.text
         args.password = password.text
         args.verifyOtpNumeric = true
 
-        app?.api?.authLoginWithPassword(args) { result, err ->
+        application.api?.authLoginWithPassword(args) { result, err ->
             scope.launch {
 
                 if (err != null) {
+                    application.failPasswordLogin(
+                        loginAttemptId,
+                        com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+                    )
                     inProgress = false
                     loginError = err.message
                 } else if (result.error != null) {
+                    application.failPasswordLogin(
+                        loginAttemptId,
+                        com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_REJECTED,
+                    )
                     inProgress = false
                     loginError = result.error.message
                 } else if (result.network != null) {
@@ -127,7 +143,11 @@ fun LoginPassword(
                         navController.navigate("verify/${Uri.encode(userAuth)}")
 
                     } else {
-                        app.login(result.network.byJwt)
+                        if (!application.login(result.network.byJwt)) {
+                            loginError = loginErrMsg
+                            inProgress = false
+                            return@launch
+                        }
 
                         isContentVisible = false
 
@@ -141,6 +161,9 @@ fun LoginPassword(
                             { error ->
                             if (error != null) {
                                 inProgress = false
+                                val visibility = loginRetryVisibility()
+                                isContentVisible = visibility.contentVisible
+                                welcomeOverlayVisible = visibility.welcomeOverlayVisible
                             }
 
                             loginError = error
@@ -149,11 +172,19 @@ fun LoginPassword(
                     }
 
                 } else {
+                    application.failPasswordLogin(
+                        loginAttemptId,
+                        com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
+                    )
                     loginError = loginErrMsg
                     inProgress = false
                 }
             }
         } ?: run {
+            application.failPasswordLogin(
+                loginAttemptId,
+                com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+            )
             loginError = loginErrMsg
             inProgress = false
         }

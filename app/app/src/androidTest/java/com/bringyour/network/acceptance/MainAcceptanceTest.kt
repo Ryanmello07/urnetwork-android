@@ -405,18 +405,7 @@ class MainAcceptanceTest {
         val clientId = JSONObject(payload).getString("client_id")
         check(clientId.isNotBlank()) { "password login returned no client ID" }
 
-        acceptanceDir.mkdirs()
-        val retained = File(acceptanceDir, "active-client-ids")
-        val clientIds = if (retained.isFile) retained.readLines().toMutableSet() else mutableSetOf()
-        if (clientIds.add(clientId)) {
-            val temporary = File(acceptanceDir, "active-client-ids.tmp")
-            temporary.writeText(clientIds.sorted().joinToString(separator = "\n", postfix = "\n"))
-            check(temporary.renameTo(retained)) { "could not retain the active client ID" }
-            retained.setReadable(false, false)
-            retained.setWritable(false, false)
-            retained.setReadable(true, true)
-            retained.setWritable(true, true)
-        }
+        ActiveClientLedger(File(acceptanceDir, "active-client-ids")).retain(clientId)
     }
 
     private fun logoutThroughUi() {
@@ -503,13 +492,20 @@ class MainAcceptanceTest {
 
     private fun capture(name: String) {
         screenshotsDir.mkdirs()
-        val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: return
+        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+            ?: throw AssertionError("Could not capture workflow screenshot $name")
+        val screenshot = File(screenshotsDir, "$name.png")
         try {
-            FileOutputStream(File(screenshotsDir, "$name.png")).use {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            FileOutputStream(screenshot).use {
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) {
+                    "Could not encode workflow screenshot $name"
+                }
             }
         } finally {
             bitmap.recycle()
+        }
+        check(screenshot.isFile && screenshot.length() > 8) {
+            "Workflow screenshot $name was not persisted"
         }
     }
 

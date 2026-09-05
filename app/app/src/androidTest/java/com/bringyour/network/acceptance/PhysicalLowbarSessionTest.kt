@@ -2,8 +2,8 @@ package com.bringyour.network.acceptance
 
 import android.content.Intent
 import android.os.Debug
+import android.os.Process
 import android.os.SystemClock
-import android.util.Base64
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -12,6 +12,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.bringyour.network.BuildConfig
 import com.bringyour.network.LoginActivity
+import com.bringyour.network.LoginStartupState
 import com.bringyour.network.MainActivity
 import com.bringyour.network.MainApplication
 import com.bringyour.network.ui.shared.models.ProvideControlMode
@@ -27,6 +28,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -62,6 +64,7 @@ class PhysicalLowbarSessionTest {
     private val samplesFile = File(acceptanceDir, "physical-memory.ndjson")
     private val summaryFile = File(acceptanceDir, "physical-summary.json")
     private val activeClientFile = File(acceptanceDir, "physical-active-client-id")
+    private val activeClientLedger = ActiveClientLedger(File(acceptanceDir, "active-client-ids"))
     private val expectedPeerFile = File(acceptanceDir, "physical-expected-peer-id")
 
     @Volatile
@@ -99,7 +102,10 @@ class PhysicalLowbarSessionTest {
         }
     }
 
-    private fun loginWithPassword(application: MainApplication) {
+    private fun loginWithPassword(
+        application: MainApplication,
+        ledgerFailure: AtomicReference<Throwable?>,
+    ) {
         val lines = credentialsFile.readLines()
         check(lines.size == 2 && lines.all { it.isNotBlank() }) {
             "physical credentials were not installed"
@@ -111,31 +117,44 @@ class PhysicalLowbarSessionTest {
             uiTimeoutMillis = UI_TIMEOUT_MILLIS,
             authTimeoutMillis = AUTH_TIMEOUT_MILLIS,
         )
-        waitFor("authenticated DeviceLocal", AUTH_TIMEOUT_MILLIS) { application.device != null }
-        instrumentation.runOnMainSync {
-            context.startActivity(
-                Intent(context, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                },
-            )
+        val deadline = SystemClock.elapsedRealtime() + AUTH_TIMEOUT_MILLIS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            ledgerFailure.get()?.let { throw it }
+            when (val state = application.loginStartupState.value) {
+                is LoginStartupState.Failed -> throw LoginStartupFailureException(state)
+                is LoginStartupState.LoggedOut -> error("login terminated during logout")
+                is LoginStartupState.Ready -> {
+                    check(application.device != null) { "ready login has no DeviceLocal" }
+                    retainActiveClient(state.clientId)
+                    instrumentation.runOnMainSync {
+                        context.startActivity(
+                            Intent(context, MainActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            },
+                        )
+                    }
+                    return
+                }
+                else -> Unit
+            }
+            SystemClock.sleep(100)
         }
-        retainActiveClient(application)
+        val state = application.loginStartupState.value
+        throw AssertionError(
+            "Timed out waiting for authenticated DeviceLocal; login state=${state.javaClass.simpleName}",
+        )
     }
 
-    private fun retainActiveClient(application: MainApplication) {
-        val clientJwt = application.asyncLocalState?.localState?.byClientJwt.orEmpty()
-        val parts = clientJwt.split(".")
-        check(parts.size == 3) { "password login returned an invalid client JWT" }
-        val payload = String(
-            Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
-            Charsets.UTF_8,
-        )
-        val clientId = JSONObject(payload).getString("client_id")
-        check(clientId.matches(Regex("[A-Za-z0-9._-]+"))) {
-            "password login returned an invalid client ID"
-        }
+    private fun retainActiveClient(clientId: String) {
+        activeClientLedger.retain(clientId)
         writePrivate(activeClientFile, "$clientId\n")
     }
+
+    private class LoginStartupFailureException(val state: LoginStartupState.Failed) :
+        IllegalStateException("login startup failed at ${state.stage.wireValue}: ${state.failure.wireValue}")
+
+    private class CleanupLedgerFailureException(cause: Throwable) :
+        IllegalStateException("client cleanup ownership could not be persisted", cause)
 
     private fun handleVpnConsentIfPresent() {
         val button = uiDevice.wait(
@@ -223,6 +242,7 @@ class PhysicalLowbarSessionTest {
         val device = application.device
         val result = JSONObject()
             .put("type", "sample")
+            .put("pid", Process.myPid())
             .put("elapsedMs", SystemClock.elapsedRealtime() - startElapsedMs)
             .put("timeUnixMs", System.currentTimeMillis())
             .put("phase", phase)
@@ -665,12 +685,52 @@ class PhysicalLowbarSessionTest {
         startElapsedMs: Long,
         extra: JSONObject = JSONObject(),
     ) {
-        val value = snapshot(application, startElapsedMs)
+        val value = runCatching { snapshot(application, startElapsedMs) }.getOrElse { error ->
+            JSONObject()
+                .put("elapsedMs", SystemClock.elapsedRealtime() - startElapsedMs)
+                .put("timeUnixMs", System.currentTimeMillis())
+                .put("phase", phase)
+                .put("pid", Process.myPid())
+                .put("snapshotErrorType", error.javaClass.simpleName)
+        }
             .put("type", "status")
             .put("commandId", id)
             .put("state", state)
             .put("extra", extra)
         writePrivate(statusFile, "${value}\n")
+    }
+
+    private fun failureStatus(
+        id: String,
+        application: MainApplication,
+        startElapsedMs: Long,
+        error: Throwable,
+    ) {
+        val extra = JSONObject().put("errorType", error.javaClass.simpleName)
+        val startupState = application.loginStartupState.value
+        val startupFailure = when (error) {
+            is LoginStartupFailureException -> error.state
+            else -> startupState as? LoginStartupState.Failed
+        }
+        when {
+            error is CleanupLedgerFailureException -> {
+                extra.put("stage", "client-allocation")
+                extra.put("failure", "cleanup-ledger-persistence-failed")
+            }
+            startupFailure != null -> {
+                extra.put("stage", startupFailure.stage.wireValue)
+                extra.put("failure", startupFailure.failure.wireValue)
+            }
+            startupState is LoginStartupState.Pending -> {
+                extra.put("stage", startupState.stage.wireValue)
+                extra.put("failure", "startup-timeout")
+            }
+            startupState is LoginStartupState.LoggedOut -> {
+                extra.put("stage", "logout")
+                extra.put("failure", "auth-logout")
+            }
+        }
+        status(id, "error", application, startElapsedMs, extra)
     }
 
     private fun stopClient(connectVc: ConnectViewController, device: DeviceLocal) {
@@ -926,9 +986,15 @@ class PhysicalLowbarSessionTest {
         statusFile.delete()
         samplesFile.delete()
         summaryFile.delete()
-        activeClientFile.delete()
 
         val application = context.applicationContext as MainApplication
+        val ledgerFailure = AtomicReference<Throwable?>()
+        val removeAllocationListener = application.addLoginClientAllocationListener { allocation ->
+            runCatching { activeClientLedger.retain(allocation.clientId) }
+                .onFailure {
+                    ledgerFailure.compareAndSet(null, CleanupLedgerFailureException(it))
+                }
+        }
         val stopped = AtomicBoolean(false)
         val summary = SampleSummary()
         val startElapsedMs = SystemClock.elapsedRealtime()
@@ -936,10 +1002,11 @@ class PhysicalLowbarSessionTest {
         var connectVc: ConnectViewController? = null
         var peerVc: PeerViewController? = null
         var sampler: Thread? = null
+        var activeCommandId = "0"
 
         try {
             launchLoggedOutApp(application)
-            loginWithPassword(application)
+            loginWithPassword(application, ledgerFailure)
             val device = checkNotNull(application.device)
             connectVc = device.openConnectViewController().also { it.start() }
             peerVc = device.openPeerViewController().also { it.start() }
@@ -952,35 +1019,35 @@ class PhysicalLowbarSessionTest {
             var finished = false
             while (!finished && SystemClock.elapsedRealtime() < deadline) {
                 val text = runCatching { commandFile.readText().trim() }.getOrDefault("")
+                if (text.isNotEmpty()) activeCommandId = text.substringBefore('|')
+                ledgerFailure.get()?.let { throw it }
+                (application.loginStartupState.value as? LoginStartupState.Failed)?.let {
+                    throw LoginStartupFailureException(it)
+                }
                 if (text.isNotEmpty()) {
                     val id = text.substringBefore('|')
                     if (id != lastCommandId) {
                         lastCommandId = id
-                        try {
-                            finished = commandResult(
-                                text,
-                                application,
-                                device,
-                                checkNotNull(connectVc),
-                                checkNotNull(peerVc),
-                                startElapsedMs,
-                            )
-                        } catch (error: Throwable) {
-                            status(
-                                id,
-                                "error",
-                                application,
-                                startElapsedMs,
-                                JSONObject().put("errorType", error.javaClass.simpleName),
-                            )
-                            throw error
-                        }
+                        activeCommandId = id
+                        finished = commandResult(
+                            text,
+                            application,
+                            device,
+                            checkNotNull(connectVc),
+                            checkNotNull(peerVc),
+                            startElapsedMs,
+                        )
                     }
                 }
                 SystemClock.sleep(COMMAND_POLL_MILLIS)
             }
             assertTrue("physical session reached its safety timeout", finished)
+        } catch (error: Throwable) {
+            runCatching { failureStatus(activeCommandId, application, startElapsedMs, error) }
+                .onFailure(error::addSuppressed)
+            throw error
         } finally {
+            removeAllocationListener()
             stopped.set(true)
             sampler?.join(5_000)
             val device = application.device

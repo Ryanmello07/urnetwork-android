@@ -300,6 +300,9 @@ fun handleLoginFlow(
         authClientAndFinish { error ->
             if (error != null) {
                 Log.i(TAG, "auth client and finish err: $error")
+                val visibility = loginRetryVisibility()
+                onContentVisibilityChange(visibility.contentVisible)
+                onWelcomeOverlayVisibilityChange(visibility.welcomeOverlayVisible)
                 onErr()
             }
         }

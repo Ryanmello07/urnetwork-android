@@ -8,12 +8,12 @@
 # connect, verify a changed public egress IP from a second UID, disconnect, and
 # log out.
 #
-# Targets: github, play, solana_dapp, ethos_dapp, and the ungoogled github
-# source transform shipped by F-Droid. GitHub, Ethos, and F-Droid run on every
-# eligible supported-ARM device; Ethos requires Android API 27, Play requires
-# Google Play services, and Solana requires Seeker or Saga hardware. All share
-# one application id, so each compatible device/target cell starts from a clean
-# install while securely restoring the same recoverable account fixture.
+# Targets: github, play, solana_dapp, and the ungoogled github source transform
+# shipped by F-Droid. GitHub and F-Droid run on every eligible supported-ARM
+# device, Play requires Google Play services, and Solana requires Seeker or
+# Saga hardware. All share one application id, so each compatible device/target
+# cell starts from a clean install while securely restoring the same
+# recoverable account fixture.
 #
 # Usage:
 #   ./test-main.sh                         all targets on every eligible device
@@ -56,7 +56,7 @@ keep_emulator=0
 keep_fixture="${UR_ACCEPT_KEEP_FIXTURE:-0}"
 result_matrix="${UR_ACCEPT_RESULT_FILE:-}"
 smoke_only=0
-targets="github play solana_dapp ethos_dapp fdroid"
+targets="github play solana_dapp fdroid"
 selected_targets=""
 selected_flavor_value=""
 flavor_selector_count=0
@@ -126,7 +126,7 @@ if [ -n "$selected_targets" ]; then
   targets="$(printf '%s\n' "$selected_targets" | tr ',' ' ')"
 fi
 for target in $targets; do
-  case "$target" in github|play|solana_dapp|ethos_dapp|fdroid) ;; *) echo "unknown flavor: $target" >&2; exit 2 ;; esac
+  case "$target" in github|play|solana_dapp|fdroid) ;; *) echo "unknown flavor: $target" >&2; exit 2 ;; esac
 done
 build_targets="$targets"
 if [ "$smoke_only" -ne 1 ]; then
@@ -167,6 +167,12 @@ config_reader="$root/tests/read-tests-config.sh"
 [ -x "$config_reader" ] || die "test config reader is missing: $config_reader"
 UR_ACCEPT_VAULT="$vault" "$config_reader" --ready validate
 android_unlock_code="$(UR_ACCEPT_VAULT="$vault" "$config_reader" get android.unlock_code)"
+gradle_worker_args=()
+emulator_core_args=()
+if android_parallelism="$(android_acceptance_positive_parallelism "${GOMAXPROCS:-}")"; then
+  gradle_worker_args=(--max-workers "$android_parallelism")
+  emulator_core_args=(-cores "$android_parallelism")
+fi
 acc_user=""
 acc_pass=""
 if [ "$smoke_only" -ne 1 ]; then
@@ -201,6 +207,7 @@ peer_serial=""
 peer_emulator_pid=""
 provider_session_pid=""
 client_session_pid=""
+p2p_cleanup_failed=0
 fdroid_tree=""
 private_staging=""
 private_staging_serial=""
@@ -325,6 +332,8 @@ cleanup() {
     peer_cleanup="$artifacts/cleanup-clients/peer"
     mkdir -p "$peer_cleanup"
     if android_acceptance_adb_device_ready "$adb" "$peer_serial"; then
+      pull_android_acceptance_active_clients \
+        "$adb" "$peer_serial" "$run_dir" "$peer_cleanup" || exit_status=1
       pull_android_acceptance_private_client_id \
         "$adb" "$peer_serial" com.bringyour.network \
         files/acceptance/physical-active-client-id \
@@ -344,7 +353,7 @@ cleanup() {
       exit_status=1
     fi
   fi
-  if [ -n "$credentials" ] && ! release_active_clients "$artifacts/cleanup-clients"; then
+  if [ -n "$credentials" ] && ! release_active_clients "$artifacts"; then
     echo "[android acceptance] could not release every retained network client" >&2
     exit_status=1
   fi
@@ -468,7 +477,7 @@ if [ "$skip_build" -ne 1 ]; then
       GOBIN="$tools_dir/go-bin" \
       PATH="$tools_dir/go-bin:$PATH" \
       URNETWORK_ANDROID_SDK_BUILD_OWNER="$sdk_build_owner" \
-      timeout 3600 ./gradlew :app:buildSdkAcceptance
+      timeout 3600 ./gradlew :app:buildSdkAcceptance "${gradle_worker_args[@]}"
   ) 2>&1 | tee "$artifacts/sdk-build.log"
 fi
 
@@ -518,6 +527,57 @@ capture_device_fleet() {
     "$raw" "$selected_output" "$excluded_devices" "${reserved_device_serials[@]}"
 }
 
+# Only the exact fallback child started by this invocation uses the
+# credential-free AVD path. Attached hardware and arbitrary pre-existing
+# emulators retain the strict private-PIN contract.
+runner_owns_fallback_emulator() {
+  local target_serial="$1"
+
+  [ "$started_emulator" -eq 1 ] && [ -n "$emulator_pid" ] && \
+    [ -n "$started_emulator_serial" ] && \
+    [ "$target_serial" = "$started_emulator_serial" ]
+}
+
+prepare_selected_device() {
+  local target_serial="$1" state_dir="$2" status_file="$3"
+  local diagnostic_file="${status_file%.txt}-interactive.txt"
+
+  if runner_owns_fallback_emulator "$target_serial"; then
+    android_acceptance_prepare_owned_emulator \
+      "$adb" "$target_serial" "$avd_name" "$emulator_pid" \
+      "$state_dir" "$status_file" "$diagnostic_file"
+  else
+    android_acceptance_prepare_device \
+      "$adb" "$target_serial" "$android_unlock_code" "$state_dir" "$status_file"
+  fi
+}
+
+selected_device_interactive() {
+  local target_serial="$1" diagnostic_file="$2"
+
+  if runner_owns_fallback_emulator "$target_serial"; then
+    android_acceptance_runner_owned_emulator_interactive \
+      "$adb" "$target_serial" "$avd_name" "$emulator_pid" "$diagnostic_file"
+  else
+    android_acceptance_unlock_device "$adb" "$target_serial" "$android_unlock_code"
+  fi
+}
+
+run_after_selected_device_interactive() {
+  local target_serial="$1" diagnostic_file="$2"
+  shift 2
+
+  [ "$#" -gt 0 ] || return 2
+  if runner_owns_fallback_emulator "$target_serial"; then
+    android_acceptance_run_after_owned_emulator_interactive \
+      "$adb" "$target_serial" "$avd_name" "$emulator_pid" \
+      "$diagnostic_file" "$@"
+  else
+    android_acceptance_run_after_unlock \
+      "$adb" "$target_serial" "$android_unlock_code" "$@"
+  fi
+}
+
 capture_device_fleet || die "could not enumerate the attached Android device fleet"
 if [ "$execution_mode" = diagnostic ]; then
   android_acceptance_select_diagnostic_device \
@@ -529,6 +589,7 @@ if [ "$execution_mode" = diagnostic ]; then
 elif [ ! -s "$device_serials" ]; then
   echo "[android acceptance] no eligible attached device; starting fallback AVD $avd_name"
   emulator_args=(-avd "$avd_name" -read-only -no-snapshot -no-boot-anim -netdelay none -netspeed full)
+  emulator_args+=("${emulator_core_args[@]}")
   [ "$headless" -eq 1 ] && emulator_args+=(-no-window)
   run_android_acceptance_shared_avd_emulator \
     "$emulator" "$artifacts/emulator.log" "${emulator_args[@]}" &
@@ -556,8 +617,8 @@ while IFS=$'\t' read -r device_id target_serial extra <&3; do
   device_state_dir="$run_dir/devices/$device_id"
   mkdir -p "$device_state_dir"
   readiness_file="$artifacts/device-readiness/$device_id.txt"
-  if ! android_acceptance_prepare_device \
-      "$adb" "$serial" "$android_unlock_code" "$device_state_dir" "$readiness_file"; then
+  if ! prepare_selected_device \
+      "$serial" "$device_state_dir" "$readiness_file"; then
     readiness_status="$(sed -n 's/^status=//p' "$readiness_file" 2>/dev/null || true)"
     die "Android device $serial readiness failed: ${readiness_status:-unknown}; see $readiness_file"
   fi
@@ -650,7 +711,6 @@ gradle_flavor() {
     github|fdroid) printf 'Github' ;;
     play) printf 'Play' ;;
     solana_dapp) printf 'Solana_dapp' ;;
-    ethos_dapp) printf 'Ethos_dapp' ;;
   esac
 }
 
@@ -744,6 +804,27 @@ collect_smoke_artifacts() {
   timeout 30 "$adb" -s "$serial" exec-out uiautomator dump /dev/tty >"$out/ui.xml" 2>/dev/null || true
 }
 
+collect_physical_artifacts() {
+  local target_serial="$1" out="$2" artifact_status=0
+  mkdir -p "$out/glog" || return 1
+  timeout 30 "$adb" -s "$target_serial" logcat -d >"$out/logcat.txt" 2>&1 || \
+    artifact_status=1
+  timeout 30 "$adb" -s "$target_serial" exec-out screencap -p \
+    >"$out/foreground.png" 2>/dev/null || artifact_status=1
+  timeout 30 "$adb" -s "$target_serial" shell dumpsys activity activities \
+    >"$out/activity.txt" 2>&1 || artifact_status=1
+  timeout 30 "$adb" -s "$target_serial" shell ps -A \
+    >"$out/processes.txt" 2>&1 || artifact_status=1
+  timeout 30 "$adb" -s "$target_serial" exec-out run-as com.bringyour.network \
+    cat files/acceptance/physical-status >"$out/status.json" 2>/dev/null || artifact_status=1
+  timeout 30 "$adb" -s "$target_serial" exec-out run-as com.bringyour.network \
+    tar -C files/logs -cf - . 2>/dev/null | \
+    tar -xf - -C "$out/glog" 2>/dev/null || artifact_status=1
+  [ -s "$out/foreground.png" ] || artifact_status=1
+  [ -s "$out/status.json" ] || artifact_status=1
+  return "$artifact_status"
+}
+
 boot_peer_emulator() {
   local devices port=""
   if [ -n "$peer_serial" ] && android_acceptance_adb_device_ready "$adb" "$peer_serial"; then
@@ -762,14 +843,16 @@ boot_peer_emulator() {
   fi
   peer_serial="emulator-$port"
   peer_args=(-avd "$avd_name" -read-only -port "$port" -no-snapshot -no-boot-anim -netdelay none -netspeed full)
+  peer_args+=("${emulator_core_args[@]}")
   [ "$headless" -eq 1 ] && peer_args+=(-no-window)
   mkdir -p "$artifacts/peer-emulator"
   run_android_acceptance_shared_avd_emulator \
     "$emulator" "$artifacts/peer-emulator/emulator.log" "${peer_args[@]}" &
   peer_emulator_pid=$!
-  if ! android_acceptance_prepare_device \
-      "$adb" "$peer_serial" "$android_unlock_code" "$run_dir/peer-device" \
-      "$artifacts/peer-emulator/readiness.txt"; then
+  if ! android_acceptance_prepare_owned_emulator \
+      "$adb" "$peer_serial" "$avd_name" "$peer_emulator_pid" \
+      "$run_dir/peer-device" "$artifacts/peer-emulator/readiness.txt" \
+      "$artifacts/peer-emulator/interactive.txt"; then
     echo "peer Android emulator did not become ready; see $artifacts/peer-emulator/readiness.txt" >&2
     return 1
   fi
@@ -780,12 +863,33 @@ boot_peer_emulator() {
 }
 
 wait_physical_status() {
-  local target_serial="$1" command_id="$2" state="$3" proof="$4" timeout_seconds="$5" status
+  local target_serial="$1" command_id="$2" state="$3" proof="$4" timeout_seconds="$5"
+  local session_pid="${6:-}" status parser_output parser_status
   for _ in $(seq 1 "$timeout_seconds"); do
     status="$(timeout 15 "$adb" -s "$target_serial" exec-out run-as com.bringyour.network \
       cat files/acceptance/physical-status 2>/dev/null | tr -d '\r' || true)"
-    if printf '%s' "$status" | node "$here/scripts/p2p-status.mjs" "$command_id" "$state" "$proof"; then
+    if parser_output="$(printf '%s' "$status" | \
+      node "$here/scripts/p2p-status.mjs" "$command_id" "$state" "$proof" 2>&1)"; then
       return 0
+    else
+      parser_status=$?
+    fi
+    if [ "$parser_status" -eq 3 ]; then
+      echo "Android physical session reported $parser_output" >&2
+      return 3
+    fi
+    if [ "$parser_status" -eq 4 ]; then
+      p2p_cleanup_failed=1
+      echo "Android physical session reported $parser_output" >&2
+      return 3
+    fi
+    if [ "$parser_status" -eq 2 ]; then
+      echo "Android physical session wrote an invalid terminal status" >&2
+      return 2
+    fi
+    if ! android_acceptance_session_running "$session_pid"; then
+      echo "Android physical instrumentation exited before $command_id reached $state" >&2
+      return 4
     fi
     sleep 1
   done
@@ -840,6 +944,7 @@ run_android_peer_to_peer() {
   local provider_app_apk="$5" provider_instrumentation_apk="$6" provider_build_id="$7"
   local provider_id_file="$run_dir/provider-client-id" session_status=0
   local provider_started=0 client_started=0 target_serial iteration app_apk instrumentation_apk install_role
+  p2p_cleanup_failed=0
   mkdir -p "$out"
   if [ ! -f "$client_app_apk" ] || [ ! -f "$client_instrumentation_apk" ] || \
      [ ! -f "$provider_app_apk" ] || [ ! -f "$provider_instrumentation_apk" ] || \
@@ -885,30 +990,42 @@ run_android_peer_to_peer() {
   done
 
   if [ "$session_status" -eq 0 ]; then
-    "$adb" -s "$peer_serial" shell am instrument -w -r \
-      -e class com.bringyour.network.acceptance.PhysicalLowbarSessionTest \
-      -e acceptanceBuildId "$provider_build_id" \
-      com.bringyour.network.test/androidx.test.runner.AndroidJUnitRunner \
-      >"$out/provider-instrumentation.log" 2>&1 &
-    provider_session_pid=$!
-    provider_started=1
-    if ! wait_physical_status "$peer_serial" 0 ready none 180; then
-      echo "Android peer provider session did not become ready" >&2
+    if ! android_acceptance_runner_owned_emulator_interactive \
+        "$adb" "$peer_serial" "$avd_name" "$peer_emulator_pid" \
+        "$out/provider-interactive.txt"; then
+      echo "Android peer provider did not reach credential-free interactive state" >&2
       session_status=1
+    else
+      "$adb" -s "$peer_serial" shell am instrument -w -r \
+        -e class com.bringyour.network.acceptance.PhysicalLowbarSessionTest \
+        -e acceptanceBuildId "$provider_build_id" \
+        com.bringyour.network.test/androidx.test.runner.AndroidJUnitRunner \
+        >"$out/provider-instrumentation.log" 2>&1 &
+      provider_session_pid=$!
+      provider_started=1
+      if ! wait_physical_status "$peer_serial" 0 ready none 180 "$provider_session_pid"; then
+        echo "Android peer provider session did not become ready" >&2
+        session_status=1
+      fi
     fi
   fi
 
   if [ "$session_status" -eq 0 ]; then
-    "$adb" -s "$serial" shell am instrument -w -r \
-      -e class com.bringyour.network.acceptance.PhysicalLowbarSessionTest \
-      -e acceptanceBuildId "$client_build_id" \
-      com.bringyour.network.test/androidx.test.runner.AndroidJUnitRunner \
-      >"$out/client-instrumentation.log" 2>&1 &
-    client_session_pid=$!
-    client_started=1
-    if ! wait_physical_status "$serial" 0 ready none 180; then
-      echo "Android peer client session did not become ready" >&2
+    if ! selected_device_interactive "$serial" "$out/client-interactive.txt"; then
+      echo "Android peer client did not reach its required interactive state" >&2
       session_status=1
+    else
+      "$adb" -s "$serial" shell am instrument -w -r \
+        -e class com.bringyour.network.acceptance.PhysicalLowbarSessionTest \
+        -e acceptanceBuildId "$client_build_id" \
+        com.bringyour.network.test/androidx.test.runner.AndroidJUnitRunner \
+        >"$out/client-instrumentation.log" 2>&1 &
+      client_session_pid=$!
+      client_started=1
+      if ! wait_physical_status "$serial" 0 ready none 180 "$client_session_pid"; then
+        echo "Android peer client session did not become ready" >&2
+        session_status=1
+      fi
     fi
   fi
 
@@ -922,7 +1039,7 @@ run_android_peer_to_peer() {
 
   if [ "$session_status" -eq 0 ]; then
     if ! send_physical_command "$peer_serial" 'provider-start|provide|' ||
-       ! wait_physical_status "$peer_serial" provider-start complete none 180; then
+       ! wait_physical_status "$peer_serial" provider-start complete none 180 "$provider_session_pid"; then
       echo "Android peer provider did not enter Network provide mode" >&2
       session_status=1
     fi
@@ -930,13 +1047,13 @@ run_android_peer_to_peer() {
   if [ "$session_status" -eq 0 ]; then
     for iteration in $(seq 1 "$repeat_count"); do
       if ! send_physical_command "$serial" "client-connect-${iteration}|peer-connect|h1" ||
-         ! wait_physical_status "$serial" "client-connect-${iteration}" complete none 240; then
+         ! wait_physical_status "$serial" "client-connect-${iteration}" complete none 240 "$client_session_pid"; then
         echo "Android client did not connect to the exact peer provider" >&2
         session_status=1
         break
       fi
       if ! send_physical_command "$serial" "client-probe-${iteration}|probe|" ||
-         ! wait_physical_status "$serial" "client-probe-${iteration}" complete client 90; then
+         ! wait_physical_status "$serial" "client-probe-${iteration}" complete client 90 "$client_session_pid"; then
         echo "Android client produced no bidirectional peer traffic proof" >&2
         session_status=1
         break
@@ -945,18 +1062,23 @@ run_android_peer_to_peer() {
   fi
   if [ "$session_status" -eq 0 ]; then
     if ! send_physical_command "$peer_serial" 'provider-proof|provider-proof|' ||
-       ! wait_physical_status "$peer_serial" provider-proof complete provider 90; then
+       ! wait_physical_status "$peer_serial" provider-proof complete provider 90 "$provider_session_pid"; then
       echo "Android provider produced no bidirectional peer traffic proof" >&2
       session_status=1
     fi
   fi
 
   if [ "$session_status" -eq 0 ]; then
+    collect_physical_artifacts "$serial" "$out/client-before-teardown" || session_status=1
+    collect_physical_artifacts "$peer_serial" "$out/provider-before-teardown" || session_status=1
     send_physical_command "$serial" 'client-finish|finish|' || session_status=1
-    wait_physical_status "$serial" client-finish complete none 120 || session_status=1
+    wait_physical_status "$serial" client-finish complete none 120 "$client_session_pid" || session_status=1
     send_physical_command "$peer_serial" 'provider-finish|finish|' || session_status=1
-    wait_physical_status "$peer_serial" provider-finish complete none 120 || session_status=1
-  else
+    wait_physical_status "$peer_serial" provider-finish complete none 120 "$provider_session_pid" || session_status=1
+  fi
+  if [ "$session_status" -ne 0 ]; then
+    collect_physical_artifacts "$serial" "$out/client-before-force-stop" || session_status=1
+    collect_physical_artifacts "$peer_serial" "$out/provider-before-force-stop" || session_status=1
     timeout 30 "$adb" -s "$serial" shell am force-stop com.bringyour.network >/dev/null 2>&1 || true
     timeout 30 "$adb" -s "$peer_serial" shell am force-stop com.bringyour.network >/dev/null 2>&1 || true
   fi
@@ -994,24 +1116,33 @@ run_android_peer_to_peer() {
     session_status=1
   fi
 
-  if [ "$session_status" -eq 0 ]; then
-    pull_physical_client "$serial" "$out/active-client-id-1" || session_status=1
-    pull_physical_client "$peer_serial" "$out/active-client-id-2" || session_status=1
-  else
-    pull_android_acceptance_private_client_id \
-      "$adb" "$serial" com.bringyour.network files/acceptance/physical-active-client-id \
-      "$out/active-client-id-1" || true
-    pull_android_acceptance_private_client_id \
-      "$adb" "$peer_serial" com.bringyour.network files/acceptance/physical-active-client-id \
-      "$out/active-client-id-2" || true
-  fi
+  pull_android_acceptance_active_clients \
+    "$adb" "$serial" "$run_dir" "$out/client-ownership" || {
+      session_status=1
+      p2p_cleanup_failed=1
+    }
+  pull_android_acceptance_active_clients \
+    "$adb" "$peer_serial" "$run_dir" "$out/provider-ownership" || {
+      session_status=1
+      p2p_cleanup_failed=1
+    }
+  pull_android_acceptance_private_client_id \
+    "$adb" "$serial" com.bringyour.network files/acceptance/physical-active-client-id \
+    "$out/active-client-id-1" || p2p_cleanup_failed=1
+  pull_android_acceptance_private_client_id \
+    "$adb" "$peer_serial" com.bringyour.network files/acceptance/physical-active-client-id \
+    "$out/active-client-id-2" || p2p_cleanup_failed=1
   if ! release_active_clients "$out"; then
     session_status=1
+    p2p_cleanup_failed=1
+  else
+    timeout 30 "$adb" -s "$serial" shell run-as com.bringyour.network \
+      rm -f files/acceptance/physical-active-client-id \
+      files/acceptance/active-client-ids >/dev/null 2>&1 || true
+    timeout 30 "$adb" -s "$peer_serial" shell run-as com.bringyour.network \
+      rm -f files/acceptance/physical-active-client-id \
+      files/acceptance/active-client-ids >/dev/null 2>&1 || true
   fi
-  timeout 30 "$adb" -s "$serial" shell run-as com.bringyour.network \
-    rm -f files/acceptance/physical-active-client-id >/dev/null 2>&1 || true
-  timeout 30 "$adb" -s "$peer_serial" shell run-as com.bringyour.network \
-    rm -f files/acceptance/physical-active-client-id >/dev/null 2>&1 || true
   [ "$session_status" -eq 0 ]
 }
 
@@ -1089,7 +1220,8 @@ for target in $build_targets; do
       BRINGYOUR_HOME="$root" timeout 3600 ./gradlew \
         ":app:assemble${flavor}Debug" \
         ":app:assemble${flavor}DebugAndroidTest" \
-        -PurnetworkAcceptanceBuildId="$build_id"
+        -PurnetworkAcceptanceBuildId="$build_id" \
+        "${gradle_worker_args[@]}"
     ) 2>&1 | tee "$build_out/build.log"
     build_status=${PIPESTATUS[0]}
     set -e
@@ -1161,6 +1293,7 @@ for target in $build_targets; do
     mkdir -p "$out"
     test_status=0
     p2p_status=0
+    p2p_cleanup_failed=0
     fixture_missing=0
     client_cleanup_failed=0
 
@@ -1175,20 +1308,6 @@ for target in $build_targets; do
         record_smoke_result "$device_id" "$serial" "$target" FAIL "device became unavailable"
       else
         record_device_cases "$device_id" "$serial" "$target" FAIL "device became unavailable" \
-          email phone instant password data-plane peer-to-peer
-      fi
-      overall=1
-      continue
-    fi
-    if ! android_acceptance_unlock_device "$adb" "$serial" "$android_unlock_code"; then
-      echo "selected Android device $serial could not be unlocked" >&2
-      if [ "$execution_mode" = diagnostic ]; then
-        record_device_cases "$device_id" "$serial" "$target" FAIL "device could not be unlocked" \
-          "$diagnostic_case"
-      elif [ "$smoke_only" -eq 1 ]; then
-        record_smoke_result "$device_id" "$serial" "$target" FAIL "device could not be unlocked"
-      else
-        record_device_cases "$device_id" "$serial" "$target" FAIL "device could not be unlocked" \
           email phone instant password data-plane peer-to-peer
       fi
       overall=1
@@ -1263,7 +1382,9 @@ for target in $build_targets; do
 
     if [ "$smoke_only" -eq 1 ]; then
       if [ "$test_status" -eq 0 ] && \
-         ! android_acceptance_launch_smoke \
+         ! run_after_selected_device_interactive \
+           "$serial" "$out/smoke-interactive.txt" \
+           android_acceptance_launch_smoke \
            "$adb" "$serial" com.bringyour.network "$out/launch.log"; then
         echo "launch smoke failed for $target on $serial" >&2
         test_status=1
@@ -1293,18 +1414,26 @@ for target in $build_targets; do
 
     if [ "$test_status" -eq 0 ]; then
       set +e
-      timeout "$acceptance_timeout_seconds" "$adb" -s "$serial" shell am instrument -w -r \
-        -e class com.bringyour.network.acceptance.EgressProbeRequestTest,com.bringyour.network.acceptance.MainAcceptanceTest \
-        -e acceptanceBuildId "$build_id" \
-        -e repeat "$repeat_count" \
-        com.bringyour.network.test/androidx.test.runner.AndroidJUnitRunner \
-        2>&1 | tee "$out/instrumentation.log"
+      run_after_selected_device_interactive \
+        "$serial" "$out/instrumentation-interactive.txt" \
+        timeout "$acceptance_timeout_seconds" \
+        "$adb" -s "$serial" shell am instrument -w -r \
+          -e class com.bringyour.network.acceptance.EgressProbeRequestTest,com.bringyour.network.acceptance.MainAcceptanceTest \
+          -e acceptanceBuildId "$build_id" \
+          -e repeat "$repeat_count" \
+          com.bringyour.network.test/androidx.test.runner.AndroidJUnitRunner \
+          2>&1 | tee "$out/instrumentation.log"
       test_status=${PIPESTATUS[0]}
       set -e
     else
       : >"$out/instrumentation.log"
     fi
     collect_target_artifacts "$out" || test_status=1
+    if [ "$test_status" -eq 0 ] && \
+       ! android_acceptance_verify_workflow_artifacts "$out" "$repeat_count"; then
+      echo "instrumentation did not retain every workflow screenshot for $target on $serial" >&2
+      test_status=1
+    fi
     if release_active_clients "$out"; then
       timeout 30 "$adb" -s "$serial" shell run-as com.bringyour.network rm -f files/acceptance/active-client-ids >/dev/null 2>&1 || true
     else
@@ -1339,6 +1468,11 @@ for target in $build_targets; do
         "$out/peer-to-peer" "$target_apk" "$test_apk" "$build_id" \
         "$provider_cache/app.apk" "$provider_cache/test.apk" "$provider_build_id"; then
         echo "peer-to-peer rejected for $target on $serial" >&2
+        p2p_status=1
+      fi
+      if [ "$p2p_cleanup_failed" -eq 1 ]; then
+        echo "peer-to-peer cleanup ownership was not discharged for $target on $serial" >&2
+        client_cleanup_failed=1
         p2p_status=1
       fi
     else

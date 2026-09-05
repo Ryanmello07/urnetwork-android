@@ -11,6 +11,101 @@ fail() {
   exit 1
 }
 
+[ "$(android_acceptance_positive_parallelism 1)" = 1 ] || \
+  fail "positive GOMAXPROCS did not produce a worker count"
+[ "$(android_acceptance_positive_parallelism 32)" = 32 ] || \
+  fail "multi-digit GOMAXPROCS did not produce a worker count"
+[ "$(android_acceptance_positive_parallelism 0007)" = 7 ] || \
+  fail "positive GOMAXPROCS was not normalized"
+for invalid_parallelism in '' 0 00 -1 +1 1.5 one '1 '; do
+  if android_acceptance_positive_parallelism "$invalid_parallelism" >/dev/null; then
+    fail "invalid GOMAXPROCS was accepted: '$invalid_parallelism'"
+  fi
+done
+android_acceptance_session_running "" || fail "empty session PID was not optional"
+android_acceptance_session_running "$$" || fail "live session PID was rejected"
+(exit 0) & completed_session_pid=$!
+wait "$completed_session_pid"
+if android_acceptance_session_running "$completed_session_pid"; then
+  fail "completed instrumentation PID was treated as live"
+fi
+
+workflow_dir="$(mktemp -d "${TMPDIR:-/tmp}/urnetwork-android-workflow.test.XXXXXX")"
+mkdir -p "$workflow_dir/ui/screenshots"
+for workflow_iteration in 1 2; do
+  for workflow_suffix in \
+    email-signup email-login phone-signup phone-login \
+    instant-account secret-key-login connected disconnected; do
+    printf '\211PNG\015\012\032\012proof\n' \
+      >"$workflow_dir/ui/screenshots/$workflow_iteration-$workflow_suffix.png"
+  done
+done
+android_acceptance_verify_workflow_artifacts "$workflow_dir" 2 || \
+  fail "complete workflow screenshot evidence was rejected"
+rm "$workflow_dir/ui/screenshots/2-disconnected.png"
+if android_acceptance_verify_workflow_artifacts "$workflow_dir" 2; then
+  fail "a missing workflow screenshot was accepted"
+fi
+printf '\211PNG\015\012\032\012proof\n' \
+  >"$workflow_dir/ui/screenshots/2-disconnected.png"
+printf '\211PNG\015\012\032\012unexpected\n' \
+  >"$workflow_dir/ui/screenshots/2-failure.png"
+if android_acceptance_verify_workflow_artifacts "$workflow_dir" 2; then
+  fail "an unexpected success-cell screenshot was accepted"
+fi
+rm "$workflow_dir/ui/screenshots/2-failure.png"
+printf 'not a png\n' >"$workflow_dir/ui/screenshots/2-disconnected.png"
+if android_acceptance_verify_workflow_artifacts "$workflow_dir" 2; then
+  fail "a malformed workflow screenshot was accepted"
+fi
+rm "$workflow_dir/ui/screenshots/2-disconnected.png"
+ln -s "$workflow_dir/ui/screenshots/1-disconnected.png" \
+  "$workflow_dir/ui/screenshots/2-disconnected.png"
+if android_acceptance_verify_workflow_artifacts "$workflow_dir" 2; then
+  fail "a symlinked workflow screenshot was accepted"
+fi
+if android_acceptance_verify_workflow_artifacts "$workflow_dir" 0; then
+  fail "a non-positive workflow repetition count was accepted"
+fi
+rm -rf "$workflow_dir"
+# shellcheck disable=SC2016
+grep -Fq 'gradle_worker_args=(--max-workers "$android_parallelism")' "$here/test-main.sh" || \
+  fail "positive GOMAXPROCS is not mapped to Gradle workers"
+# shellcheck disable=SC2016
+[ "$(grep -Fc '"${gradle_worker_args[@]}"' "$here/test-main.sh")" -eq 2 ] || \
+  fail "both Android Gradle invocations do not consume the worker override"
+# shellcheck disable=SC2016
+grep -Fq 'emulator_core_args=(-cores "$android_parallelism")' "$here/test-main.sh" || \
+  fail "positive GOMAXPROCS is not mapped to emulator cores"
+# shellcheck disable=SC2016
+[ "$(grep -Fc '+=("${emulator_core_args[@]}")' "$here/test-main.sh")" -eq 2 ] || \
+  fail "fallback and peer emulators do not both consume the core override"
+for physical_artifact in foreground.png activity.txt processes.txt status.json files/logs; do
+  grep -Fq "$physical_artifact" "$here/test-main.sh" || \
+    fail "physical teardown does not retain $physical_artifact"
+done
+# shellcheck disable=SC2016
+grep -Fq 'android_acceptance_session_running "$session_pid"' "$here/test-main.sh" || \
+  fail "physical status waits do not fail when instrumentation exits"
+# shellcheck disable=SC2016
+grep -Fq 'release_active_clients "$artifacts"' "$here/test-main.sh" || \
+  fail "EXIT cleanup does not retry every retained P2P ownership ledger"
+grep -Fq 'p2p_cleanup_failed=1' "$here/test-main.sh" || \
+  fail "P2P cleanup failures are not retained as an unsafe-stop condition"
+# shellcheck disable=SC2016
+grep -Fq '[ "$parser_status" -eq 4 ]' "$here/test-main.sh" || \
+  fail "terminal cleanup-ledger failures do not force the unsafe-stop condition"
+grep -Fq 'client_cleanup_failed=1' "$here/test-main.sh" || \
+  fail "P2P cleanup failure cannot stop subsequent account allocations"
+# shellcheck disable=SC2016
+grep -Fq 'android_acceptance_verify_workflow_artifacts "$out" "$repeat_count"' \
+  "$here/test-main.sh" || fail "the live runner can pass without workflow screenshot evidence"
+# This is a literal Kotlin source-contract assertion.
+# shellcheck disable=SC2016
+grep -Fq 'throw AssertionError("Could not capture workflow screenshot $name")' \
+  "$here/app/app/src/androidTest/java/com/bringyour/network/acceptance/MainAcceptanceTest.kt" || \
+  fail "instrumentation still silently ignores unavailable screenshots"
+
 fleet_dir="$(mktemp -d "${TMPDIR:-/tmp}/urnetwork-android-fleet.test.XXXXXX")"
 fleet_raw="$fleet_dir/adb-devices.raw"
 fleet_selected="$fleet_dir/selected"
@@ -48,22 +143,19 @@ printf '%s\n' \
   >"$fleet_capabilities"
 android_acceptance_write_device_flavor_plan \
   "$fleet_capabilities" "$fleet_plan" "$fleet_skips" \
-  github play solana_dapp ethos_dapp fdroid || \
+  github play solana_dapp fdroid || \
   fail "could not create fleet plan"
-[ "$(wc -l <"$fleet_plan" | tr -d ' ')" = 7 ] || \
+[ "$(wc -l <"$fleet_plan" | tr -d ' ')" = 6 ] || \
   fail "device/flavor plan did not contain every compatible cell"
-[ "$(sort -u "$fleet_plan" | wc -l | tr -d ' ')" = 7 ] || \
+[ "$(sort -u "$fleet_plan" | wc -l | tr -d ' ')" = 6 ] || \
   fail "device/flavor plan contains a duplicate"
-expected_skips=$'device-002-partner-serial\tpartner-serial\tplay\trequires-google-play-services\ndevice-001-emulator-5554\temulator-5554\tsolana_dapp\trequires-solana-seeker-or-saga\ndevice-001-emulator-5554\temulator-5554\tethos_dapp\trequires-android-api-27'
+expected_skips=$'device-002-partner-serial\tpartner-serial\tplay\trequires-google-play-services\ndevice-001-emulator-5554\temulator-5554\tsolana_dapp\trequires-solana-seeker-or-saga'
 [ "$(cat "$fleet_skips")" = "$expected_skips" ] || \
   fail "device/flavor incompatibilities were not recorded exactly"
 for general_target in github fdroid; do
   [ "$(awk -F '\t' -v target="$general_target" '$3 == target { count++ } END { print count + 0 }' "$fleet_plan")" = 2 ] || \
     fail "$general_target did not cover every supported-ARM fleet device"
 done
-[ "$(awk -F '\t' '$3 == "ethos_dapp" { print $1 FS $2 }' "$fleet_plan")" = \
-  $'device-002-partner-serial\tpartner-serial' ] || \
-  fail "Ethos eligibility did not enforce the WalletSDK Android API 27 minimum"
 [ "$(awk -F '\t' '$3 == "play" { print $1 FS $2 }' "$fleet_plan")" = \
   $'device-001-emulator-5554\temulator-5554' ] || \
   fail "Play eligibility did not follow the Google Play services capability"
@@ -71,7 +163,7 @@ done
   $'device-002-partner-serial\tpartner-serial' ] || \
   fail "Solana eligibility did not follow the Saga/Seeker capability"
 android_acceptance_require_target_coverage \
-  "$fleet_plan" github play solana_dapp ethos_dapp fdroid || \
+  "$fleet_plan" github play solana_dapp fdroid || \
   fail "complete flavor coverage was rejected"
 if android_acceptance_require_target_coverage "$fleet_plan" missing >/dev/null 2>&1; then
   fail "a requested flavor with no compatible device was accepted"
@@ -80,6 +172,17 @@ printf '%s\n' $'device-bad\tbad-serial\t1\t0\tnot-an-api' >"$fleet_dir/bad-capab
 if android_acceptance_write_device_flavor_plan \
     "$fleet_dir/bad-capabilities" "$fleet_dir/bad-plan" "$fleet_dir/bad-skips" github; then
   fail "a malformed Android API capability was accepted"
+fi
+dropped_target="ethos""_dapp"
+if android_acceptance_write_device_flavor_plan \
+    "$fleet_capabilities" "$fleet_dir/dropped-plan" "$fleet_dir/dropped-skips" \
+    "$dropped_target" >/dev/null 2>&1; then
+  fail "a removed Android acceptance target was still planned"
+fi
+if android_acceptance_validate_diagnostic_request \
+    0B111JEC200229 peer-to-peer 1 "$dropped_target" 1 0 0 0 0 '' \
+    3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
+  fail "a removed Android acceptance target was accepted for diagnostics"
 fi
 while IFS=$'\t' read -r device_id device_serial flavor; do
   for result_case in email phone instant password data-plane peer-to-peer; do
@@ -414,8 +517,19 @@ trap - EXIT
 
 grep -Fq 'reserved_device_serials=(3B161FDJG001KT R5CX21FY6ND)' "$here/test-main.sh" || \
   fail "the two performance devices are not mandatory runner exclusions"
-grep -Fq 'targets="github play solana_dapp ethos_dapp fdroid"' "$here/test-main.sh" || \
+grep -Fq 'targets="github play solana_dapp fdroid"' "$here/test-main.sh" || \
   fail "the canonical no-selector flavor matrix changed"
+if grep -Fq "$dropped_target" \
+    "$here/test-main.sh" "$here/test-main-lib.sh" "$here/build.sh" \
+    "$here/.github/workflows/build-and-test.yml"; then
+  fail "the removed Android target remains in acceptance or aggregate build dispatch"
+fi
+for aggregate_build_task in \
+    assemblePlayRelease bundlePlayRelease assembleSolana_dappRelease \
+    compileGithubReleaseKotlin; do
+  [ "$(grep -Fo "$aggregate_build_task" "$here/build.sh" | wc -l | tr -d ' ')" -eq 1 ] || \
+    fail "aggregate Android build does not dispatch $aggregate_build_task exactly once"
+done
 # These checks intentionally assert literal runner source expressions.
 # shellcheck disable=SC2016
 grep -Fq 'exec "$network_test_gate" android-acceptance -- "$here/test-main.sh" "$@"' \
@@ -497,6 +611,8 @@ grep -Fq 'get android.unlock_code' "$here/test-main.sh" || \
   fail "the Android runner does not read the private unlock code"
 grep -Fq 'android_acceptance_prepare_device' "$here/test-main.sh" || \
   fail "the Android runner bypasses structured device readiness"
+grep -Fq 'android_acceptance_prepare_owned_emulator' "$here/test-main.sh" || \
+  fail "runner-owned AVDs still consume physical-device readiness"
 grep -Fq 'android_acceptance_restore_network' "$here/test-main.sh" || \
   fail "the Android runner does not restore runner-owned Wi-Fi state"
 # This intentionally asserts the literal source expression.
@@ -765,21 +881,30 @@ large_android_output="$(awk 'BEGIN {
 readiness_dir="$(mktemp -d "${TMPDIR:-/tmp}/urnetwork-android-readiness.test.XXXXXX")"
 readiness_calls="$readiness_dir/calls"
 readiness_probe_count="$readiness_dir/probe-count"
+readiness_trust_count="$readiness_dir/trust-count"
 readiness_status="$readiness_dir/status"
 readiness_state="$readiness_dir/state/network-state"
+readiness_interactive="$readiness_dir/interactive.txt"
 
 reset_readiness_fake() {
   : >"$readiness_calls"
   printf '0\n' >"$readiness_probe_count"
+  printf '0\n' >"$readiness_trust_count"
   rm -rf "$readiness_dir/state"
-  rm -f "$readiness_status"
+  rm -f "$readiness_status" "$readiness_interactive"
   FAKE_READY_ADB_AVAILABLE=1
   FAKE_READY_BOOT=1
   FAKE_READY_API=34
   FAKE_READY_API_AVAILABLE=1
   FAKE_READY_ABI=arm64-v8a,armeabi-v7a
   FAKE_READY_ABI_AVAILABLE=1
+  FAKE_READY_AVD=urnetwork-acceptance
+  FAKE_READY_LOCK_DISABLED=true
+  FAKE_READY_DREAMING_LOCKSCREEN=false
+  FAKE_READY_WINDOW_AVAILABLE=1
   FAKE_READY_UNLOCK_STATE=unlocked
+  FAKE_READY_TRUST_SUCCEEDS_AFTER=0
+  FAKE_READY_POWER_STATE=awake
   FAKE_READY_LARGE_POWER=0
   FAKE_READY_LARGE_CONNECTIVITY=0
   FAKE_READY_LARGE_PROBE=0
@@ -792,7 +917,8 @@ reset_readiness_fake() {
 
 fake_readiness_adb() {
   local count
-  [ "$1" = -s ] && [ "$2" = readiness-device ] || return 90
+  [ "$1" = -s ] || return 90
+  case "$2" in readiness-device|emulator-5558) ;; *) return 90 ;; esac
   shift 2
   printf '%s\n' "$*" >>"$readiness_calls"
   case "$*" in
@@ -801,6 +927,9 @@ fake_readiness_adb() {
       ;;
     get-state)
       printf 'device\n'
+      ;;
+    'emu avd name')
+      printf '%s\nOK\n' "$FAKE_READY_AVD"
       ;;
     'shell getprop sys.boot_completed')
       printf '%s\n' "$FAKE_READY_BOOT"
@@ -814,16 +943,36 @@ fake_readiness_adb() {
       printf '%s\n' "$FAKE_READY_ABI"
       ;;
     'shell input keyevent KEYCODE_WAKEUP') ;;
+    'shell wm dismiss-keyguard') ;;
+    'shell cmd lock_settings get-disabled')
+      printf '%s\n' "$FAKE_READY_LOCK_DISABLED"
+      ;;
+    'shell dumpsys window')
+      [ "$FAKE_READY_WINDOW_AVAILABLE" -eq 1 ] || return 1
+      [ "$FAKE_READY_DREAMING_LOCKSCREEN" = absent ] || \
+        printf '  mDreamingLockscreen=%s\n' "$FAKE_READY_DREAMING_LOCKSCREEN"
+      ;;
     'shell dumpsys power')
-      printf '  mWakefulness=Awake\n'
+      case "$FAKE_READY_POWER_STATE" in
+        awake) printf '  mWakefulness=Awake\n' ;;
+        asleep) printf '  mWakefulness=Asleep\n' ;;
+        unknown) printf 'wake state unavailable\n' ;;
+      esac
       [ "$FAKE_READY_LARGE_POWER" -eq 0 ] || printf '%s\n' "$large_android_output"
       ;;
     'shell dumpsys trust')
-      case "$FAKE_READY_UNLOCK_STATE" in
-        unlocked) printf 'User (id=0) (current): deviceLocked=false\n' ;;
-        locked) printf 'User (id=0) (current): deviceLocked=true\n' ;;
-        *) printf 'lock state unavailable\n' ;;
-      esac
+      count="$(tr -d '\r\n' <"$readiness_trust_count")"
+      count=$((count + 1))
+      printf '%s\n' "$count" >"$readiness_trust_count"
+      if [ "$count" -le "$FAKE_READY_TRUST_SUCCEEDS_AFTER" ]; then
+        printf 'lock state unavailable\n'
+      else
+        case "$FAKE_READY_UNLOCK_STATE" in
+          unlocked) printf 'User (id=0) (current): deviceLocked=0\n' ;;
+          locked) printf 'User (id=0) (current): deviceLocked=1\n' ;;
+          *) printf 'lock state unavailable\n' ;;
+        esac
+      fi
       ;;
     'shell toybox nc -w 5 -q 1 api.bringyour.com 443')
       count="$(tr -d '\r\n' <"$readiness_probe_count")"
@@ -867,6 +1016,13 @@ fake_readiness_adb() {
 readiness_status_is() {
   [ "$(cat "$readiness_status" 2>/dev/null || true)" = "status=$1" ] || \
     fail "readiness status was not $1"
+}
+
+owned_diagnostic_field_is() {
+  local diagnostic_file="$1" field="$2" expected="$3"
+
+  [ "$(grep -Fxc "$field=$expected" "$diagnostic_file" 2>/dev/null || true)" -eq 1 ] || \
+    fail "owned AVD diagnostic $field was not $expected"
 }
 
 reset_readiness_fake
@@ -948,6 +1104,169 @@ if android_acceptance_prepare_device \
   fail "a device with unknown unlock state passed readiness"
 fi
 readiness_status_is unlock-failed
+
+# A fresh, read-only AVD can publish sys.boot_completed before its current-user
+# trust state settles. The runner owns this exact child and knows the setup AVD
+# has no credential, so wait for every non-secret platform signal without
+# ever sending the physical-device PIN. The state transition is counter-driven,
+# not timing-dependent: the first two trust reads are deliberately unknown.
+reset_readiness_fake
+FAKE_READY_TRUST_SUCCEEDS_AFTER=2
+android_acceptance_prepare_owned_emulator \
+  fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+  "$readiness_dir/state" "$readiness_status" "$readiness_interactive" 1 1 3 || \
+  fail "a runner-owned credential-free AVD was rejected while trust state settled"
+readiness_status_is ready
+owned_diagnostic_field_is "$readiness_interactive" attempt 3
+owned_diagnostic_field_is "$readiness_interactive" serial valid
+owned_diagnostic_field_is "$readiness_interactive" owner live
+owned_diagnostic_field_is "$readiness_interactive" adb ready
+owned_diagnostic_field_is "$readiness_interactive" avd match
+owned_diagnostic_field_is "$readiness_interactive" wake complete
+owned_diagnostic_field_is "$readiness_interactive" dismiss complete
+owned_diagnostic_field_is "$readiness_interactive" credential disabled
+owned_diagnostic_field_is "$readiness_interactive" window not-dreaming
+owned_diagnostic_field_is "$readiness_interactive" power awake
+owned_diagnostic_field_is "$readiness_interactive" trust unlocked
+owned_diagnostic_field_is "$readiness_interactive" result ready
+if grep -Fq 'emulator-5558' "$readiness_interactive" || \
+   grep -Fq 'urnetwork-acceptance' "$readiness_interactive" || \
+   grep -Fq "$$" "$readiness_interactive"; then
+  fail "owned AVD diagnostics retained a serial, AVD name, or owner PID"
+fi
+[ "$(cat "$readiness_trust_count")" -eq 3 ] || \
+  fail "owned AVD readiness did not poll the transient trust state"
+grep -Fq 'shell wm dismiss-keyguard' "$readiness_calls" || \
+  fail "owned AVD readiness did not dismiss its credential-free keyguard"
+if grep -Eq 'shell wm size|shell input swipe|KEYCODE_[0-9]' "$readiness_calls"; then
+  fail "owned AVD readiness entered the physical-device PIN path"
+fi
+
+reset_readiness_fake
+FAKE_READY_DREAMING_LOCKSCREEN=absent
+android_acceptance_prepare_owned_emulator \
+  fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+  "$readiness_dir/state" "$readiness_status" "$readiness_interactive" 1 1 1 || \
+  fail "an API-36 owned AVD without the legacy window diagnostic was rejected"
+readiness_status_is ready
+owned_diagnostic_field_is "$readiness_interactive" window absent
+owned_diagnostic_field_is "$readiness_interactive" result ready
+
+# Ownership is an explicit gate, not an inference from an emulator-* serial.
+# A dead child, a different AVD name, or permanently unknown trust state must
+# fail without attempting a credential or reaching the network probe.
+reset_readiness_fake
+FAKE_READY_AVD=foreign-avd
+if android_acceptance_prepare_owned_emulator \
+    fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+    "$readiness_dir/state" "$readiness_status" "$readiness_interactive" 1 1 1; then
+  fail "an arbitrary emulator was accepted as the runner-owned AVD"
+fi
+readiness_status_is owned-emulator-interactive-failed
+owned_diagnostic_field_is "$readiness_interactive" avd mismatch
+owned_diagnostic_field_is "$readiness_interactive" wake unchecked
+owned_diagnostic_field_is "$readiness_interactive" result failed
+if grep -Eq 'shell wm dismiss-keyguard|shell toybox nc' "$readiness_calls"; then
+  fail "an unowned emulator was mutated or network-probed"
+fi
+
+reset_readiness_fake
+if android_acceptance_prepare_owned_emulator \
+    fake_readiness_adb emulator-5558 urnetwork-acceptance 99999999 \
+    "$readiness_dir/state" "$readiness_status" "$readiness_interactive" 1 1 1; then
+  fail "an emulator without the runner's live child was accepted as owned"
+fi
+readiness_status_is owned-emulator-interactive-failed
+owned_diagnostic_field_is "$readiness_interactive" owner not-live
+owned_diagnostic_field_is "$readiness_interactive" adb unchecked
+owned_diagnostic_field_is "$readiness_interactive" result failed
+if grep -Eq 'shell wm dismiss-keyguard|shell toybox nc' "$readiness_calls"; then
+  fail "an emulator without a live owner was mutated or network-probed"
+fi
+
+reset_readiness_fake
+FAKE_READY_UNLOCK_STATE=unknown
+if android_acceptance_prepare_owned_emulator \
+    fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+    "$readiness_dir/state" "$readiness_status" "$readiness_interactive" 1 1 1; then
+  fail "an owned AVD with unverifiable trust state passed readiness"
+fi
+readiness_status_is owned-emulator-interactive-failed
+owned_diagnostic_field_is "$readiness_interactive" trust unknown
+owned_diagnostic_field_is "$readiness_interactive" result failed
+if grep -Eq 'shell wm size|shell input swipe|KEYCODE_[0-9]' "$readiness_calls"; then
+  fail "an unverifiable owned AVD received the physical-device PIN"
+fi
+
+for owned_avd_incomplete_state in credential lockscreen window-command power; do
+  reset_readiness_fake
+  case "$owned_avd_incomplete_state" in
+    credential) FAKE_READY_LOCK_DISABLED=false ;;
+    lockscreen) FAKE_READY_DREAMING_LOCKSCREEN=true ;;
+    window-command) FAKE_READY_WINDOW_AVAILABLE=0 ;;
+    power) FAKE_READY_POWER_STATE=asleep ;;
+  esac
+  if android_acceptance_prepare_owned_emulator \
+      fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+      "$readiness_dir/state" "$readiness_status" "$readiness_interactive" 1 1 1; then
+    fail "an owned AVD passed with incomplete $owned_avd_incomplete_state state"
+  fi
+  readiness_status_is owned-emulator-interactive-failed
+  case "$owned_avd_incomplete_state" in
+    credential) owned_diagnostic_field_is "$readiness_interactive" credential enabled ;;
+    lockscreen) owned_diagnostic_field_is "$readiness_interactive" window dreaming ;;
+    window-command) owned_diagnostic_field_is "$readiness_interactive" window unavailable ;;
+    power) owned_diagnostic_field_is "$readiness_interactive" power not-awake ;;
+  esac
+  owned_diagnostic_field_is "$readiness_interactive" result failed
+done
+
+owned_execution_marker="$readiness_dir/owned-execution"
+mark_owned_execution() {
+  printf '%s\n' "$1" >"$owned_execution_marker"
+}
+reset_readiness_fake
+android_acceptance_run_after_owned_emulator_interactive \
+  fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+  "$readiness_interactive" mark_owned_execution launched || \
+  fail "owned AVD execution did not use its credential-free interactive gate"
+[ "$(cat "$owned_execution_marker")" = launched ] || \
+  fail "owned AVD execution did not reach the product command"
+owned_diagnostic_field_is "$readiness_interactive" result ready
+if grep -Eq 'shell wm size|shell input swipe|KEYCODE_[0-9]' "$readiness_calls"; then
+  fail "owned AVD execution entered the physical-device PIN path"
+fi
+
+owned_execution_ready_diagnostic="$readiness_dir/execution-ready-interactive.txt"
+owned_execution_failed_diagnostic="$readiness_dir/execution-failed-interactive.txt"
+reset_readiness_fake
+android_acceptance_run_after_owned_emulator_interactive \
+  fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+  "$owned_execution_ready_diagnostic" mark_owned_execution first-boundary || \
+  fail "the first owned AVD execution boundary was rejected"
+owned_execution_ready_snapshot="$(cat "$owned_execution_ready_diagnostic")"
+rm -f "$owned_execution_marker"
+reset_readiness_fake
+FAKE_READY_AVD=foreign-avd
+if android_acceptance_run_after_owned_emulator_interactive \
+    fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+    "$owned_execution_failed_diagnostic" mark_owned_execution should-not-run; then
+  fail "an unowned AVD reached the post-install product command"
+fi
+[ ! -e "$owned_execution_marker" ] || \
+  fail "the product command ran after the owned AVD gate failed"
+[ "$(cat "$owned_execution_ready_diagnostic")" = "$owned_execution_ready_snapshot" ] || \
+  fail "a later owned AVD boundary overwrote earlier diagnostic evidence"
+owned_diagnostic_field_is "$owned_execution_ready_diagnostic" result ready
+owned_diagnostic_field_is "$owned_execution_failed_diagnostic" avd mismatch
+owned_diagnostic_field_is "$owned_execution_failed_diagnostic" result failed
+if android_acceptance_run_after_owned_emulator_interactive \
+    fake_readiness_adb emulator-5558 urnetwork-acceptance "$$" \
+    "$readiness_interactive"; then
+  fail "an empty owned AVD execution command was accepted"
+else
+  [ "$?" -eq 2 ] || fail "an empty owned AVD execution command returned the wrong status"
+fi
 
 for failure_case in network dns tcp; do
   reset_readiness_fake
@@ -1261,6 +1580,129 @@ done <"$device_helper_dir/device-rows"
 unset FAKE_UNLOCK_DRAIN_STDIN
 [ "$(wc -l <"$device_helper_dir/device-seen" | tr -d ' ')" = 2 ] || \
   fail "an adb helper consumed the remaining device fleet from stdin"
+
+# A large APK install may let an OEM's delayed keyguard alarm expire after the
+# cell's initial readiness check. Reproduce that state transition and require
+# the execution boundary to wake/unlock once before invoking the product
+# command. An unverifiable unlock must remain fail-closed and must not launch.
+execution_marker="$device_helper_dir/execution-marker"
+run_if_execution_unlocked() {
+  [ "$(tr -d '\r\n' <"$unlock_state")" = 0 ] || return 93
+  printf '%s\n' "$1" >"$execution_marker"
+}
+reset_unlock_fake
+printf '0\n' >"$unlock_state"
+# Simulated install delay expires the device's prior interactive/unlock state.
+printf '1\n' >"$unlock_state"
+android_acceptance_run_after_unlock \
+  fake_unlock_adb test-device 010181 \
+  run_if_execution_unlocked launched || \
+  fail "a device re-locked during install was not refreshed before execution"
+[ "$(cat "$execution_marker")" = launched ] || \
+  fail "the post-install execution command did not run"
+[ "$(cat "$unlock_submissions")" -eq 1 ] || \
+  fail "post-install execution did not use exactly one credential submission"
+
+rm -f "$execution_marker"
+reset_unlock_fake
+FAKE_UNLOCK_POST_SUBMIT_UNKNOWN=1
+if android_acceptance_run_after_unlock \
+    fake_unlock_adb test-device 010181 \
+    run_if_execution_unlocked should-not-run >/dev/null 2>&1; then
+  fail "an unverifiable post-install unlock was accepted"
+fi
+[ ! -e "$execution_marker" ] || \
+  fail "the product command ran after an unverifiable unlock"
+if android_acceptance_run_after_unlock \
+    fake_unlock_adb test-device 010181 >/dev/null 2>&1; then
+  fail "an empty post-unlock execution command was accepted"
+else
+  [ "$?" -eq 2 ] || fail "an empty execution command returned the wrong status"
+fi
+
+# Pin the production placement as well as the helper behavior. Every install
+# completes before the final interactive boundary, and no potentially blocking
+# setup step may sit between that boundary and its UI/instrumentation launch.
+runner_source="$here/test-main.sh"
+owned_selection_source="$(sed -n \
+  '/^runner_owns_fallback_emulator()/,/^capture_device_fleet ||/p' "$runner_source")"
+# This intentionally asserts the literal runner ownership expression.
+# shellcheck disable=SC2016
+grep -Fq '[ "$target_serial" = "$started_emulator_serial" ]' \
+  <<<"$owned_selection_source" || \
+  fail "fallback AVD ownership is inferred without the captured runner serial"
+grep -Fq 'android_acceptance_prepare_owned_emulator' \
+  <<<"$owned_selection_source" || \
+  fail "the runner-started fallback AVD uses physical-device readiness"
+grep -Fq "local diagnostic_file=\"\${status_file%.txt}-interactive.txt\"" \
+  <<<"$owned_selection_source" || \
+  fail "fallback AVD readiness lacks its own durable diagnostic artifact"
+grep -Fq 'android_acceptance_prepare_device' <<<"$owned_selection_source" || \
+  fail "non-owned targets no longer use strict physical-device readiness"
+grep -Fq 'android_acceptance_unlock_device' <<<"$owned_selection_source" || \
+  fail "non-owned execution no longer uses the private-PIN gate"
+
+peer_boot_source="$(sed -n '/^boot_peer_emulator()/,/^wait_physical_status()/p' "$runner_source")"
+grep -Fq 'android_acceptance_prepare_owned_emulator' <<<"$peer_boot_source" || \
+  fail "peer AVD readiness still uses the physical-device PIN contract"
+# This intentionally asserts the literal runner child PID expression.
+# shellcheck disable=SC2016
+grep -Fq '"$peer_emulator_pid"' <<<"$peer_boot_source" || \
+  fail "peer AVD readiness is not tied to the runner's live child"
+grep -Fq 'peer-emulator/interactive.txt' <<<"$peer_boot_source" || \
+  fail "peer AVD readiness lacks its own durable diagnostic artifact"
+if grep -Fq 'android_unlock_code' <<<"$peer_boot_source"; then
+  fail "peer AVD readiness still receives the physical-device PIN"
+fi
+
+peer_source="$(sed -n '/^run_android_peer_to_peer()/,/^record_device_cases()/p' "$runner_source")"
+peer_install_line="$(grep -Fn -m1 'android_acceptance_install_cell_apks' <<<"$peer_source" | cut -d: -f1)"
+peer_provider_gate_line="$(grep -Fn -m1 \
+  'android_acceptance_runner_owned_emulator_interactive' <<<"$peer_source" | cut -d: -f1)"
+peer_client_gate_line="$(grep -Fn -m1 \
+  'selected_device_interactive' <<<"$peer_source" | cut -d: -f1)"
+peer_launch_lines="$(grep -Fn 'shell am instrument -w -r' <<<"$peer_source" | cut -d: -f1)"
+[ -n "$peer_provider_gate_line" ] && [ -n "$peer_client_gate_line" ] && \
+  [ "$(wc -l <<<"$peer_launch_lines" | tr -d ' ')" -eq 2 ] || \
+  fail "peer instrumentation does not have one final interactive gate per role"
+peer_provider_launch_line="$(sed -n '1p' <<<"$peer_launch_lines")"
+peer_client_launch_line="$(sed -n '2p' <<<"$peer_launch_lines")"
+[ "$peer_install_line" -lt "$peer_provider_gate_line" ] && \
+  [ "$peer_provider_gate_line" -lt "$peer_provider_launch_line" ] && \
+  [ "$peer_provider_launch_line" -lt "$peer_client_gate_line" ] && \
+  [ "$peer_client_gate_line" -lt "$peer_client_launch_line" ] || \
+  fail "peer provider/client interactive gates are not ordered after install"
+if grep -Fq 'android_unlock_code' <<<"$peer_source"; then
+  fail "the runner-owned peer provider still receives the physical-device PIN"
+fi
+grep -Fq 'provider-interactive.txt' <<<"$peer_source" || \
+  fail "peer provider launch lacks its own durable diagnostic artifact"
+grep -Fq 'client-interactive.txt' <<<"$peer_source" || \
+  fail "peer client launch lacks its own durable diagnostic artifact"
+
+# The sed range intentionally matches the runner's literal $peer_serial source.
+# shellcheck disable=SC2016
+cell_source="$(sed -n '/^overall=0$/,/^if \[ -n "\$peer_serial" \]/p' "$runner_source")"
+cell_install_line="$(grep -Fn -m1 'android_acceptance_install_cell_apks' <<<"$cell_source" | cut -d: -f1)"
+cell_unlock_lines="$(grep -Fn 'run_after_selected_device_interactive' <<<"$cell_source" | cut -d: -f1)"
+smoke_launch_line="$(grep -Fn -m1 'android_acceptance_launch_smoke' <<<"$cell_source" | cut -d: -f1)"
+full_launch_line="$(grep -Fn -m1 'shell am instrument -w -r' <<<"$cell_source" | cut -d: -f1)"
+[ "$(wc -l <<<"$cell_unlock_lines" | tr -d ' ')" -eq 2 ] || \
+  fail "smoke/full execution does not have one final unlock per launch"
+cell_smoke_unlock_line="$(sed -n '1p' <<<"$cell_unlock_lines")"
+cell_full_unlock_line="$(sed -n '2p' <<<"$cell_unlock_lines")"
+[ "$cell_install_line" -lt "$cell_smoke_unlock_line" ] && \
+  [ "$cell_smoke_unlock_line" -lt "$smoke_launch_line" ] && \
+  [ "$smoke_launch_line" -lt "$cell_full_unlock_line" ] && \
+  [ "$cell_full_unlock_line" -lt "$full_launch_line" ] || \
+  fail "smoke/full unlocks are not ordered at the post-install launch boundary"
+if grep -Fq 'android_acceptance_unlock_device' <<<"$cell_source"; then
+  fail "the cell still consumes its only unlock before package installation"
+fi
+grep -Fq 'smoke-interactive.txt' <<<"$cell_source" || \
+  fail "smoke launch lacks its own durable diagnostic artifact"
+grep -Fq 'instrumentation-interactive.txt' <<<"$cell_source" || \
+  fail "full launch lacks its own durable diagnostic artifact"
 
 fake_capability_adb() {
   [ "$1" = -s ] || return 90
@@ -1706,7 +2148,6 @@ FAKE_MAIN_APPLICATION_LARGE=0
 
 for flavor_abi_contract in \
   'github:arm64-v8a,armeabi-v7a:26' \
-  'ethos_dapp:arm64-v8a,armeabi-v7a:27' \
   'fdroid:arm64-v8a,armeabi-v7a:26' \
   'play:arm64-v8a,armeabi-v7a,x86_64:26' \
   'solana_dapp:arm64-v8a:26'; do
@@ -1719,17 +2160,6 @@ for flavor_abi_contract in \
   verify_android_acceptance_shipping_apk_min_sdk fake_apkanalyzer app.apk "$flavor" || \
     fail "$flavor shipping APK minimum SDK contract was rejected"
 done
-FAKE_APP_ABIS=arm64-v8a
-if verify_android_acceptance_shipping_apk_abis \
-    fake_apkanalyzer app.apk ethos_dapp >/dev/null 2>&1; then
-  fail "an Ethos APK missing 32-bit ARM support passed its shipping contract"
-fi
-FAKE_APP_ABIS=arm64-v8a,armeabi-v7a
-FAKE_APP_MIN_SDK=26
-if verify_android_acceptance_shipping_apk_min_sdk \
-    fake_apkanalyzer app.apk ethos_dapp >/dev/null 2>&1; then
-  fail "an Ethos APK below the WalletSDK API minimum passed its shipping contract"
-fi
 
 gradle_product_flavor_block() {
   local flavor="$1"
@@ -1758,12 +2188,8 @@ assert_gradle_flavor_abis() {
 }
 
 assert_gradle_flavor_abis github "'armeabi-v7a', 'arm64-v8a'"
-assert_gradle_flavor_abis ethos_dapp "'armeabi-v7a', 'arm64-v8a'"
 assert_gradle_flavor_abis play "'x86_64', 'armeabi-v7a', 'arm64-v8a'"
 assert_gradle_flavor_abis solana_dapp "'arm64-v8a'"
-[ "$(gradle_product_flavor_block ethos_dapp | sed -n \
-  's/^[[:space:]]*minSdk = \([0-9][0-9]*\)[[:space:]]*$/\1/p')" = 27 ] || \
-  fail "Ethos Gradle minimum SDK does not match WalletSDK API 27"
 
 run_dir="$(mktemp -d "${TMPDIR:-/tmp}/urnetwork-android-acceptance.test.XXXXXX")"
 mkdir -p "$run_dir/go-mod-cache/example@v1.0.0/nested"
