@@ -145,7 +145,8 @@ class MainApplication : Application() {
     var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
     var powerSaveReceiver: BroadcastReceiver? = null
     var networkPolicyReceiver: BroadcastReceiver? = null
-    var thermalStatusListener: PowerManager.OnThermalStatusChangedListener? = null
+    private var thermalStatusRegistration: ThermalStatusRegistration? = null
+    private var thermalStatusGeneration = 0L
 
     // main-looper confined; latest thermal status composed into
     // setPerformanceDegraded alongside battery saver (see
@@ -1176,35 +1177,21 @@ class MainApplication : Application() {
             return
         }
 
-        // SEVERE matches the apple extension's .serious/.critical threshold:
-        // the point where the OS throttles enough that control pings answer
-        // slowly. The listener also fires once with the current status at
-        // registration, which initializes thermalDegraded.
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        val listener = object : PowerManager.OnThermalStatusChangedListener {
-            override fun onThermalStatusChanged(status: Int) {
-                if (thermalStatusListener !== this) {
-                    return
-                }
-                thermalDegraded = status >= PowerManager.THERMAL_STATUS_SEVERE
-                updatePerformanceDegraded()
+        val registrationGeneration = thermalStatusGeneration
+        thermalStatusRegistration = Api29ThermalStatusCompat.register(this) { degraded ->
+            if (registrationGeneration != thermalStatusGeneration) {
+                return@register
             }
+            thermalDegraded = degraded
+            updatePerformanceDegraded()
         }
-        thermalStatusListener = listener
-        powerManager.addThermalStatusListener(mainExecutor, listener)
     }
 
     fun removeThermalStatusListener() {
-        thermalStatusListener?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                try {
-                    powerManager.removeThermalStatusListener(it)
-                } catch (_: IllegalArgumentException) {
-                }
-            }
-        }
-        thermalStatusListener = null
+        thermalStatusGeneration += 1
+        val registration = thermalStatusRegistration
+        thermalStatusRegistration = null
+        registration?.close()
         thermalDegraded = false
     }
 

@@ -379,10 +379,11 @@ android {
 
             signingConfig = signingConfigs.ethos_dapp
 
-            // ethos dapp devices are exclusively arm64-v8a
+            // Ethos is a general shipping flavor; keep 32-bit ARM coverage for
+            // older supported devices alongside arm64.
             ndk {
                 //noinspection ChromeOsAbiSupport
-                abiFilters = ['arm64-v8a']
+                abiFilters = ['armeabi-v7a', 'arm64-v8a']
             }
 
             // remove opaque google metadata blocks

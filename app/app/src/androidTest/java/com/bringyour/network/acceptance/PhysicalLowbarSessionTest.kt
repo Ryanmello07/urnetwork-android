@@ -4,11 +4,11 @@ import android.content.Intent
 import android.os.Debug
 import android.os.SystemClock
 import android.util.Base64
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.bringyour.network.BuildConfig
 import com.bringyour.network.LoginActivity
@@ -31,6 +31,7 @@ import kotlin.concurrent.thread
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -47,9 +48,13 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class PhysicalLowbarSessionTest {
+    @get:Rule
+    val compose = createEmptyComposeRule()
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val uiDevice = UiDevice.getInstance(instrumentation)
+    private val passwordLoginUi = ComposePasswordLoginUi(compose)
     private val acceptanceDir = File(context.filesDir, "acceptance")
     private val credentialsFile = File(acceptanceDir, "credentials")
     private val commandFile = File(acceptanceDir, "physical-command")
@@ -92,23 +97,6 @@ class PhysicalLowbarSessionTest {
                 },
             )
         }
-        waitFor("password-login user field") { editableFields().isNotEmpty() }
-    }
-
-    private fun editableFields(): List<UiObject2> =
-        uiDevice.findObjects(By.clazz("android.widget.EditText"))
-            // Compose can replace a semantics node between findObjects and
-            // isEnabled while the login screen advances. A stale candidate is
-            // simply no longer an editable field; the surrounding wait loop
-            // will query the current tree again.
-            .mapNotNull { field ->
-                runCatching { field.takeIf { it.isEnabled } }.getOrNull()
-            }
-
-    private fun clickText(text: String, timeoutMillis: Long = UI_TIMEOUT_MILLIS) {
-        val objectToClick = uiDevice.wait(Until.findObject(By.text(text)), timeoutMillis)
-            ?: throw AssertionError("Timed out waiting for text $text")
-        objectToClick.click()
     }
 
     private fun loginWithPassword(application: MainApplication) {
@@ -116,17 +104,13 @@ class PhysicalLowbarSessionTest {
         check(lines.size == 2 && lines.all { it.isNotBlank() }) {
             "physical credentials were not installed"
         }
-        val userField = editableFields().firstOrNull()
-            ?: throw AssertionError("password-login user field is unavailable")
-        userField.text = lines[0]
-        clickText("Get started")
-        waitFor("password field", AUTH_TIMEOUT_MILLIS) {
-            editableFields().any { it.text != lines[0] }
-        }
-        val passwordField = editableFields().lastOrNull { it.text != lines[0] }
-            ?: throw AssertionError("password field is unavailable")
-        passwordField.text = lines[1]
-        clickText("Continue")
+        performPasswordLogin(
+            ui = passwordLoginUi,
+            user = lines[0],
+            password = lines[1],
+            uiTimeoutMillis = UI_TIMEOUT_MILLIS,
+            authTimeoutMillis = AUTH_TIMEOUT_MILLIS,
+        )
         waitFor("authenticated DeviceLocal", AUTH_TIMEOUT_MILLIS) { application.device != null }
         instrumentation.runOnMainSync {
             context.startActivity(
