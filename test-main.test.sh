@@ -408,6 +408,7 @@ chmod 700 "$network_gate_fake_bin/node"
 android_gate_missing_status=0
 env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
   -u URNETWORK_NETWORK_TEST_LOCK_ROLE \
+  -u URNETWORK_NETWORK_TEST_LOCK_SCOPE \
   PATH="$network_gate_fake_bin:$PATH" \
   ANDROID_GATE_NODE_MARKER="$network_gate_node_marker" \
   URNETWORK_ROOT="$network_gate_dir/missing-root" \
@@ -430,9 +431,10 @@ trap cleanup_android_network_gate_owner EXIT
 # shellcheck disable=SC2016
 env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
   -u URNETWORK_NETWORK_TEST_LOCK_ROLE \
+  -u URNETWORK_NETWORK_TEST_LOCK_SCOPE \
   URNETWORK_NETWORK_TESTING=1 \
   URNETWORK_NETWORK_TEST_LOCK_PATH="$network_gate_lock" \
-  "$network_gate" android-gate-test-owner -- /bin/bash -c \
+  "$network_gate" main-acceptance android-gate-test-owner -- /bin/bash -c \
     'printf "ready\n" >"$1"; IFS= read -r _ <"$2"' \
     bash "$network_gate_ready" "$network_gate_release" \
     >"$network_gate_output" 2>&1 &
@@ -451,6 +453,7 @@ fi
 android_gate_diagnostic_status=0
 env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
   -u URNETWORK_NETWORK_TEST_LOCK_ROLE \
+  -u URNETWORK_NETWORK_TEST_LOCK_SCOPE \
   PATH="$network_gate_fake_bin:$PATH" \
   ANDROID_GATE_NODE_MARKER="$network_gate_node_marker" \
   URNETWORK_ROOT="$here/.." \
@@ -465,6 +468,7 @@ env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
 android_gate_full_status=0
 env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
   -u URNETWORK_NETWORK_TEST_LOCK_ROLE \
+  -u URNETWORK_NETWORK_TEST_LOCK_SCOPE \
   PATH="$network_gate_fake_bin:$PATH" \
   ANDROID_GATE_NODE_MARKER="$network_gate_node_marker" \
   URNETWORK_ROOT="$here/.." \
@@ -501,12 +505,14 @@ env PATH="$network_gate_fake_bin:$PATH" \
 android_gate_nested_status=0
 env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
   -u URNETWORK_NETWORK_TEST_LOCK_ROLE \
+  -u URNETWORK_NETWORK_TEST_LOCK_SCOPE \
   PATH="$network_gate_fake_bin:$PATH" \
   ANDROID_GATE_NODE_MARKER="$network_gate_node_marker" \
   URNETWORK_ROOT="$here/.." \
   URNETWORK_NETWORK_TESTING=1 \
   URNETWORK_NETWORK_TEST_LOCK_PATH="$network_gate_lock" \
-  "$network_gate" android-p2p-diagnostic -- "$here/test-main.sh" --headless \
+  "$network_gate" main-acceptance android-p2p-diagnostic -- \
+    "$here/test-main.sh" --headless \
     >"$network_gate_dir/nested.log" 2>&1 || android_gate_nested_status=$?
 [ "$android_gate_nested_status" -eq 1 ] || \
   fail "Android rejected valid inherited shared ownership before preflight"
@@ -532,11 +538,11 @@ for aggregate_build_task in \
 done
 # These checks intentionally assert literal runner source expressions.
 # shellcheck disable=SC2016
-grep -Fq 'exec "$network_test_gate" android-acceptance -- "$here/test-main.sh" "$@"' \
+grep -Fq 'exec "$network_test_gate" main-acceptance android-acceptance --' \
   "$here/test-main.sh" || \
   fail "direct Android acceptance does not enter the shared network gate"
 # shellcheck disable=SC2016
-grep -Fq '"$network_test_gate" --verify-held' "$here/test-main.sh" || \
+grep -Fq '"$network_test_gate" --verify-held main-acceptance' "$here/test-main.sh" || \
   fail "Android acceptance does not verify inherited shared ownership"
 # This intentionally asserts a literal runner source expression.
 # shellcheck disable=SC2016
@@ -558,10 +564,10 @@ sdk_build_line="$(grep -n -m1 'timeout 3600 ./gradlew :app:buildSdkAcceptance' \
 # The following locators intentionally match literal runner expressions.
 # shellcheck disable=SC2016
 network_gate_line="$(grep -n -m1 \
-  'exec "$network_test_gate" android-acceptance' \
+  'exec "$network_test_gate" main-acceptance android-acceptance' \
   "$here/test-main.sh" | cut -d: -f1)"
 # shellcheck disable=SC2016
-network_verify_line="$(grep -n -m1 '"$network_test_gate" --verify-held' \
+network_verify_line="$(grep -n -m1 '"$network_test_gate" --verify-held main-acceptance' \
   "$here/test-main.sh" | cut -d: -f1)"
 # shellcheck disable=SC2016
 preflight_line="$(grep -n -m1 'node "$root/build/all/acceptance/preflight-main.mjs"' \
