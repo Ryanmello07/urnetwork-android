@@ -23,9 +23,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.bringyour.network.BuildConfig
 import com.bringyour.network.LoginActivity
 import com.bringyour.network.MainApplication
@@ -35,11 +33,11 @@ import com.bringyour.network.ui.PostLoginUiAction
 import com.bringyour.network.ui.nextPostLoginUiAction
 import com.bringyour.network.ui.performTransientUiActionIfPresent
 import com.bringyour.network.ui.login.ACCEPTANCE_INSTANT_ERROR_TAG
+import com.bringyour.sdk.Sdk
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.regex.Pattern
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -62,6 +60,7 @@ class MainAcceptanceTest {
     private val testsFile = File(acceptanceDir, "tests.json")
     private val resultFile = File(acceptanceDir, "result")
     private val screenshotsDir = File(acceptanceDir, "screenshots")
+    private val startupGoroutinesFile = File(acceptanceDir, "main-startup-goroutines.txt")
 
     private fun log(message: String) {
         Log.i(TAG, message)
@@ -196,9 +195,15 @@ class MainAcceptanceTest {
             val action = postLoginUiAction()
             if (action == null && tagExists("acceptance.nav.connect")) break
             if (System.nanoTime() >= deadlineNanos) {
-                throw AssertionError(
-                    "Timed out advancing through post-login UI after ${AUTH_TIMEOUT_MILLIS / 1_000}s"
-                )
+                val state = (context.applicationContext as MainApplication).loginStartupState.value
+                throwLoginStartupTimeout(
+                    state,
+                    AssertionError(
+                        "Timed out advancing through post-login UI after ${AUTH_TIMEOUT_MILLIS / 1_000}s",
+                    ),
+                ) {
+                    Sdk.writeGoroutineStacks(startupGoroutinesFile.absolutePath)
+                }
             }
 
             if (action != null) dismissPostLoginUiAction(action)
@@ -427,14 +432,6 @@ class MainAcceptanceTest {
         return networkId
     }
 
-    private fun handleVpnConsentIfPresent() {
-        val button = device.wait(
-            Until.findObject(By.text(Pattern.compile("(?i)^(allow|ok)$"))),
-            8_000,
-        ) ?: device.findObject(By.res("android:id/button1"))
-        button?.click()
-    }
-
     private fun publicIp(): String {
         val value = EgressProbeRequest.queryPublicIp(instrumentation, EGRESS_TIMEOUT_MILLIS)
         waitForTag("acceptance.connect.status")
@@ -446,7 +443,7 @@ class MainAcceptanceTest {
         log("physical egress before connect: $before")
 
         clickTag("acceptance.connect")
-        handleVpnConsentIfPresent()
+        device.clickVerifiedVpnConsentIfPresent()
         waitFor("connected status", CONNECT_TIMEOUT_MILLIS) {
             contentDescriptionExists("Connected")
         }
@@ -529,6 +526,7 @@ class MainAcceptanceTest {
         acceptanceDir.mkdirs()
         resultFile.delete()
         screenshotsDir.deleteRecursively()
+        startupGoroutinesFile.delete()
         launchLoggedOutApp()
 
         var secretKey = readFixture()

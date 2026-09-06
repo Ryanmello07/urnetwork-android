@@ -139,6 +139,7 @@ fun AuthCodeLoginSheet(
                             application?.api,
                             {},
                             { result ->
+                                onLogin(result.jwt)
 
                                 scope.launch { sheetState.hide() }.invokeOnCompletion {
 
@@ -146,7 +147,6 @@ fun AuthCodeLoginSheet(
                                         setIsPresenting(false)
                                     }
 
-                                    onLogin(result.jwt)
                                 }
                             }
                         )

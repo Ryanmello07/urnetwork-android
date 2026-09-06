@@ -35,6 +35,172 @@ class LoginStartupStateTest {
     }
 
     @Test
+    fun `password result reaches ready after UI observer detaches`() {
+        val tracker = LoginStartupTracker()
+        val requester = DeferredPasswordRequester()
+        val dispatches = ArrayDeque<() -> Unit>()
+        val uiCompletions = mutableListOf<PasswordLoginCompletion>()
+        var uiAttached = true
+        val coordinator = PasswordLoginCoordinator(
+            tracker = tracker,
+            requester = requester,
+            sessionAuthenticator = NetworkSessionAuthenticator { _, newNetwork, completion ->
+                assertFalse(newNetwork)
+                val attemptId = tracker.state.value.attemptId ?: error("missing attempt")
+                assertTrue(
+                    tracker.pending(attemptId, LoginStartupStage.NETWORK_SESSION_PERSISTENCE),
+                )
+                assertTrue(tracker.pending(attemptId, LoginStartupStage.AUTH_CLIENT))
+                assertTrue(tracker.ready(attemptId, clientId))
+                completion(LoginClientCompletion.Ready(clientId))
+            },
+            dispatch = { dispatches.addLast(it) },
+        )
+
+        val attemptId = coordinator.authenticate("user@example.com", "password") {
+            if (uiAttached) uiCompletions += it
+        }
+        uiAttached = false
+        requester.complete(PasswordAuthWireResult(byJwt = "network-jwt"), null)
+
+        assertEquals(
+            LoginStartupState.Pending(attemptId, LoginStartupStage.PASSWORD_AUTH),
+            tracker.state.value,
+        )
+        dispatches.removeFirst().invoke()
+        assertEquals(LoginStartupState.Ready(attemptId, clientId), tracker.state.value)
+        assertTrue(uiCompletions.isEmpty())
+    }
+
+    @Test
+    fun `password session callback and exception complete once`() {
+        val tracker = LoginStartupTracker()
+        val completions = mutableListOf<PasswordLoginCompletion>()
+        val coordinator = PasswordLoginCoordinator(
+            tracker = tracker,
+            requester = PasswordAuthRequester { _, _, callback ->
+                callback(PasswordAuthWireResult(byJwt = "network-jwt"), null)
+            },
+            sessionAuthenticator = NetworkSessionAuthenticator { _, _, completion ->
+                val attemptId = tracker.state.value.attemptId ?: error("missing attempt")
+                assertTrue(tracker.ready(attemptId, clientId))
+                completion(LoginClientCompletion.Ready(clientId))
+                completion(
+                    LoginClientCompletion.Failed(LoginStartupFailure.AUTH_CLIENT_REQUEST_FAILED),
+                )
+                error("exception after session callback")
+            },
+            dispatch = { it() },
+        )
+        val attemptId = coordinator.authenticate("user@example.com", "password") {
+            completions += it
+        }
+
+        assertEquals(listOf(PasswordLoginCompletion.Ready(clientId)), completions)
+        assertEquals(LoginStartupState.Ready(attemptId, clientId), tracker.state.value)
+    }
+
+    @Test
+    fun `password response boundaries publish exact failures`() {
+        val cases = listOf(
+            PasswordCase(
+                result = null,
+                requestError = "offline",
+                failure = LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+            ),
+            PasswordCase(
+                result = null,
+                requestError = null,
+                failure = LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
+            ),
+            PasswordCase(
+                result = PasswordAuthWireResult(
+                    failure = LoginStartupFailure.PASSWORD_AUTH_REJECTED,
+                    failureMessage = "rejected",
+                ),
+                requestError = null,
+                failure = LoginStartupFailure.PASSWORD_AUTH_REJECTED,
+            ),
+            PasswordCase(
+                result = PasswordAuthWireResult(),
+                requestError = null,
+                failure = LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
+            ),
+        )
+
+        cases.forEach { case ->
+            val tracker = LoginStartupTracker()
+            var completion: PasswordLoginCompletion? = null
+            PasswordLoginCoordinator(
+                tracker = tracker,
+                requester = PasswordAuthRequester { _, _, callback ->
+                    callback(case.result, case.requestError)
+                },
+                sessionAuthenticator = NetworkSessionAuthenticator { _, _, _ ->
+                    error("must not authenticate session")
+                },
+                dispatch = { it() },
+            ).authenticate("user@example.com", "password") { completion = it }
+
+            assertEquals(
+                case.failure,
+                (completion as PasswordLoginCompletion.Failed).failure,
+            )
+            assertEquals(
+                case.failure,
+                (tracker.state.value as LoginStartupState.Failed).failure,
+            )
+        }
+    }
+
+    @Test
+    fun `password requester exception is terminal without a callback`() {
+        val tracker = LoginStartupTracker()
+        var completion: PasswordLoginCompletion? = null
+        PasswordLoginCoordinator(
+            tracker = tracker,
+            requester = PasswordAuthRequester { _, _, _ -> error("request panic") },
+            sessionAuthenticator = NetworkSessionAuthenticator { _, _, _ ->
+                error("must not authenticate session")
+            },
+            dispatch = { it() },
+        ).authenticate("user@example.com", "password") { completion = it }
+
+        assertEquals(
+            LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+            (completion as PasswordLoginCompletion.Failed).failure,
+        )
+        assertEquals(
+            LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+            (tracker.state.value as LoginStartupState.Failed).failure,
+        )
+    }
+
+    @Test
+    fun `password verification response does not require a network result`() {
+        val tracker = LoginStartupTracker()
+        var completion: PasswordLoginCompletion? = null
+        PasswordLoginCoordinator(
+            tracker = tracker,
+            requester = PasswordAuthRequester { _, _, callback ->
+                callback(
+                    PasswordAuthWireResult(verificationUserAuth = "verified@example.com"),
+                    null,
+                )
+            },
+            sessionAuthenticator = NetworkSessionAuthenticator { _, _, _ ->
+                error("must not authenticate session")
+            },
+            dispatch = { it() },
+        ).authenticate("user@example.com", "password") { completion = it }
+
+        assertEquals(
+            PasswordLoginCompletion.VerificationRequired("verified@example.com"),
+            completion,
+        )
+    }
+
+    @Test
     fun `allocation listeners replay once and stop after removal`() {
         val tracker = LoginStartupTracker()
         val attempt = tracker.begin(LoginStartupStage.AUTH_CLIENT)
@@ -424,6 +590,12 @@ class LoginStartupStateTest {
         val failure: LoginStartupFailure,
     )
 
+    private data class PasswordCase(
+        val result: PasswordAuthWireResult?,
+        val requestError: String?,
+        val failure: LoginStartupFailure,
+    )
+
     private class DeferredRequester : AuthClientRequester {
         private lateinit var callback: (AuthClientWireResult?, String?) -> Unit
 
@@ -432,6 +604,22 @@ class LoginStartupStateTest {
         }
 
         fun complete(result: AuthClientWireResult?, error: String?) {
+            callback(result, error)
+        }
+    }
+
+    private class DeferredPasswordRequester : PasswordAuthRequester {
+        private lateinit var callback: (PasswordAuthWireResult?, String?) -> Unit
+
+        override fun request(
+            userAuth: String,
+            password: String,
+            callback: (PasswordAuthWireResult?, String?) -> Unit,
+        ) {
+            this.callback = callback
+        }
+
+        fun complete(result: PasswordAuthWireResult?, error: String?) {
             callback(result, error)
         }
     }

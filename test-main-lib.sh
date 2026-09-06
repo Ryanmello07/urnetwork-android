@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Shared, side-effect-free helpers for the Android acceptance runner.
 
-# Converts Go's optional process parallelism into Android tool controls. An
+# Converts Go's optional process parallelism into a Gradle worker control. An
 # unset, zero, signed, or otherwise invalid value deliberately returns no
-# override so existing Gradle/emulator defaults remain unchanged.
+# override so Gradle's default remains unchanged. GOMAXPROCS is a host Go
+# scheduler budget, not a guest-hardware specification for an Android AVD.
 android_acceptance_positive_parallelism() {
   local value="${1:-}"
   case "${1:-}" in
@@ -57,6 +58,31 @@ android_acceptance_verify_workflow_artifacts() {
   done
 }
 
+# Accepts only a regular, nonempty runtime.Stack text artifact.
+android_acceptance_has_goroutine_stacks() {
+  local stacks_file="$1"
+
+  [ -f "$stacks_file" ] && [ ! -L "$stacks_file" ] && [ -s "$stacks_file" ] || return 1
+  LC_ALL=C grep -aq '^goroutine ' "$stacks_file"
+}
+
+# A physical session that classifies its terminal status as a startup timeout
+# must have completed the synchronous Go stack capture published immediately
+# before that status. Other failures and successful snapshots do not require it.
+android_acceptance_verify_physical_startup_evidence() {
+  local status_file="$1" stacks_file="$2" match_status=0
+
+  [ -f "$status_file" ] && [ ! -L "$status_file" ] && [ -s "$status_file" ] || return 1
+  LC_ALL=C grep -Eq '"failure"[[:space:]]*:[[:space:]]*"startup-timeout"' \
+    "$status_file" || match_status=$?
+  case "$match_status" in
+    0) ;;
+    1) return 0 ;;
+    *) return 1 ;;
+  esac
+  android_acceptance_has_goroutine_stacks "$stacks_file"
+}
+
 # GNU timeout normally moves its child into a separate process group. Under an
 # interactive runner that group is in the terminal background, so Gradle can
 # be stopped by SIGTTIN even after a successful build. Keep every bounded
@@ -87,17 +113,312 @@ android_acceptance_verify_sdk_build_owner() {
 # AVD writable, which otherwise prevents the peer-to-peer phase from starting.
 run_android_acceptance_shared_avd_emulator() {
   local emulator="$1" log_file="$2" argument
-  local read_only=0
+  local read_only=0 gpu_host=0 expects_gpu_value=0
   shift 2
 
   for argument in "$@"; do
+    if [ "$expects_gpu_value" -eq 1 ]; then
+      [ "$argument" = host ] || {
+        echo "refusing to start a shared acceptance AVD without host GPU rendering" >&2
+        return 2
+      }
+      gpu_host=1
+      expects_gpu_value=0
+      continue
+    fi
     [ "$argument" = -read-only ] && read_only=1
+    case "$argument" in
+      -gpu) expects_gpu_value=1 ;;
+      -gpu=host) gpu_host=1 ;;
+      -gpu=*|-cores|-cores=*)
+        echo "refusing unsupported shared acceptance AVD resource override: $argument" >&2
+        return 2
+        ;;
+    esac
   done
   if [ "$read_only" -ne 1 ]; then
     echo "refusing to start a shared acceptance AVD without -read-only" >&2
     return 2
   fi
+  if [ "$expects_gpu_value" -eq 1 ] || [ "$gpu_host" -ne 1 ]; then
+    echo "refusing to start a shared acceptance AVD without -gpu host" >&2
+    return 2
+  fi
   exec "$emulator" "$@" >"$log_file" 2>&1
+}
+
+# CPU, renderer, and focused-window evidence are classified into finite states
+# before any UI launch. Unknown and contradictory evidence is distinct from a
+# known bad state so diagnostics remain useful while every non-ready state
+# still fails closed at the execution boundary.
+android_acceptance_classify_cpu_evidence() {
+  local evidence="${1-}" lines count normalized
+
+  evidence="${evidence//$'\r'/}"
+  lines="$(printf '%s\n' "$evidence" | sed '/^[[:space:]]*$/d')"
+  [ -n "$lines" ] || { printf 'missing\n'; return 0; }
+  count="$(printf '%s\n' "$lines" | wc -l | tr -d '[:space:]')"
+  [ "$count" = 1 ] || { printf 'ambiguous\n'; return 0; }
+  if ! normalized="$(android_acceptance_cpu_count "$lines")"; then
+    printf 'malformed\n'
+    return 0
+  fi
+  case "$normalized" in
+    ''|0|1) printf 'insufficient\n' ;;
+    *) printf 'ready\n' ;;
+  esac
+}
+
+android_acceptance_cpu_count() {
+  local evidence="${1-}" lines line normalized last
+
+  evidence="${evidence//$'\r'/}"
+  lines="$(printf '%s\n' "$evidence" | sed '/^[[:space:]]*$/d')"
+  [ "$(printf '%s\n' "$lines" | wc -l | tr -d '[:space:]')" = 1 ] || return 1
+  line="$lines"
+  if [[ "$line" =~ ^[[:space:]]*online=0[[:space:]]*$ ]]; then
+    normalized=1
+  elif [[ "$line" =~ ^[[:space:]]*online=0-([1-9][0-9]{0,5})[[:space:]]*$ ]]; then
+    last="${BASH_REMATCH[1]}"
+    normalized="$((last + 1))"
+  elif [[ "$line" =~ ^[[:space:]]*([0-9]{1,6})[[:space:]]*$ ]]; then
+    normalized="${BASH_REMATCH[1]}"
+  elif [[ "$line" =~ Total[[:space:]]+of[[:space:]]+([0-9]{1,6})[[:space:]]+processors[[:space:]]+activated\. ]]; then
+    normalized="${BASH_REMATCH[1]}"
+  else
+    return 1
+  fi
+  while [ "${normalized#0}" != "$normalized" ]; do
+    normalized="${normalized#0}"
+  done
+  printf '%s\n' "${normalized:-0}"
+}
+
+android_acceptance_classify_renderer_evidence() {
+  local evidence="${1-}" relevant lower line
+  local host=0 software=0 malformed=0
+
+  evidence="${evidence//$'\r'/}"
+  relevant="$(printf '%s\n' "$evidence" | sed -n \
+    '/emuglConfig_init:/p; /GPU Renderer=/p; /^[[:space:]]*GLES:/p')"
+  [ -n "$relevant" ] || { printf 'missing\n'; return 0; }
+  while IFS= read -r line; do
+    lower="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+    case "$lower" in
+      *lavapipe*|*llvmpipe*|*swiftshader*|*swangle*) software=1 ;;
+    esac
+    case "$line" in
+      *'emuglConfig_init:'*)
+        case "$lower" in
+          *'vulkan_mode_selected:host gles_mode_selected:host'*) host=1 ;;
+          *lavapipe*|*llvmpipe*|*swiftshader*|*swangle*) ;;
+          *) malformed=1 ;;
+        esac
+        ;;
+      *'GPU Renderer='*)
+        case "$line" in
+          *'GPU Renderer=[]'*) malformed=1 ;;
+          *) [ "$software" -eq 1 ] || host=1 ;;
+        esac
+        ;;
+      *'GLES:'*)
+        case "$line" in
+          *'GLES:'*,*,*) [ "$software" -eq 1 ] || host=1 ;;
+          *) malformed=1 ;;
+        esac
+        ;;
+    esac
+  done <<<"$relevant"
+  if { [ "$host" -eq 1 ] && [ "$software" -eq 1 ]; } || \
+     { [ "$host" -eq 1 ] && [ "$malformed" -eq 1 ]; }; then
+    printf 'ambiguous\n'
+  elif [ "$software" -eq 1 ]; then
+    printf 'software\n'
+  elif [ "$malformed" -eq 1 ]; then
+    printf 'malformed\n'
+  elif [ "$host" -eq 1 ]; then
+    printf 'host\n'
+  else
+    printf 'malformed\n'
+  fi
+}
+
+android_acceptance_normalize_focused_window_value() {
+  local value="$1"
+
+  value="$(printf '%s\n' "$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  if [[ "$value" =~ ^Window\{[^[:space:]]+[[:space:]]+u[0-9]+[[:space:]]+(.+)\}$ ]]; then
+    value="${BASH_REMATCH[1]}"
+  fi
+  case "$value" in ''|null|'Window{null}'|*[![:print:]]*) return 1 ;; esac
+  printf '%s\n' "$value"
+}
+
+android_acceptance_normalize_focused_window_lines() {
+  local lines="$1" line
+
+  while IFS= read -r line; do
+    android_acceptance_normalize_focused_window_value "$line" || return 1
+  done <<<"$lines"
+}
+
+android_acceptance_classify_focused_window() {
+  local evidence="${1-}" current_lines focused_lines current focused
+  local current_values focused_values current_count focused_count lower
+
+  evidence="${evidence//$'\r'/}"
+  current_lines="$(printf '%s\n' "$evidence" | \
+    sed -n 's/^[[:space:]]*mCurrentFocus=//p')"
+  focused_lines="$(printf '%s\n' "$evidence" | \
+    sed -n 's/^[[:space:]]*mFocusedWindow=//p')"
+  if [ -z "$current_lines" ] && [ -z "$focused_lines" ]; then
+    printf 'missing\n'
+    return 0
+  fi
+  if [ -z "$current_lines" ] || [ -z "$focused_lines" ]; then
+    printf 'malformed\n'
+    return 0
+  fi
+  if ! current_values="$(android_acceptance_normalize_focused_window_lines \
+      "$current_lines")" || \
+     ! focused_values="$(android_acceptance_normalize_focused_window_lines \
+      "$focused_lines")"; then
+    printf 'malformed\n'
+    return 0
+  fi
+  current_values="$(printf '%s\n' "$current_values" | LC_ALL=C sort -u)"
+  focused_values="$(printf '%s\n' "$focused_values" | LC_ALL=C sort -u)"
+  current_count="$(printf '%s\n' "$current_values" | wc -l | tr -d '[:space:]')"
+  focused_count="$(printf '%s\n' "$focused_values" | wc -l | tr -d '[:space:]')"
+  if [ "$current_count" != 1 ] || [ "$focused_count" != 1 ]; then
+    printf 'ambiguous\n'
+    return 0
+  fi
+  current="$current_values"
+  focused="$focused_values"
+  if [ "$current" != "$focused" ]; then
+    printf 'ambiguous\n'
+    return 0
+  fi
+  lower="$(printf '%s' "$current" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    *'application not responding:'*|*'application error:'*|*"isn't responding"*|*'keeps stopping'*)
+      printf 'error-dialog\n'
+      ;;
+    *) printf 'clear\n' ;;
+  esac
+}
+
+android_acceptance_focused_error_subject() {
+  local evidence="${1-}" current_lines current subject
+
+  current_lines="$(printf '%s\n' "${evidence//$'\r'/}" | \
+    sed -n 's/^[[:space:]]*mCurrentFocus=//p')"
+  [ -n "$current_lines" ] || { printf 'none\n'; return 0; }
+  if ! current="$(android_acceptance_normalize_focused_window_lines \
+      "$current_lines")"; then
+    printf 'unknown\n'
+    return 0
+  fi
+  current="$(printf '%s\n' "$current" | LC_ALL=C sort -u)"
+  [ "$(printf '%s\n' "$current" | wc -l | tr -d '[:space:]')" = 1 ] || {
+    printf 'unknown\n'
+    return 0
+  }
+  case "$current" in
+    *'Application Not Responding: '*) subject="${current#*Application Not Responding: }" ;;
+    *'Application Error: '*) subject="${current#*Application Error: }" ;;
+    *) printf 'none\n'; return 0 ;;
+  esac
+  case "$subject" in
+    ''|*[!A-Za-z0-9._:-]*) printf 'unknown\n' ;;
+    *) printf '%s\n' "$subject" ;;
+  esac
+}
+
+# Device inventory IDs retain raw serials for the existing private mapping.
+# Preflight diagnostics use only the stable ordinal so runner-owned emulator
+# serials, AVD names, and child PIDs never escape into this new artifact.
+android_acceptance_sanitized_device_id() {
+  local device_id="$1" suffix
+
+  if [[ "$device_id" =~ ^device-([0-9][0-9][0-9])$ ]]; then
+    printf '%s\n' "$device_id"
+    return 0
+  fi
+  if [[ "$device_id" =~ ^device-([0-9][0-9][0-9])-(.+)$ ]]; then
+    suffix="${BASH_REMATCH[2]}"
+    [ -n "$suffix" ] || return 1
+    printf 'device-%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+# The optional renderer-evidence path marks a runner-owned emulator. Physical
+# devices still receive the focused-dialog gate, while owned AVDs must also
+# prove at least two guest CPUs and a host renderer. The diagnostic deliberately
+# records no adb serial, AVD name, PID, or renderer log path.
+android_acceptance_preflight_device() {
+  local adb="$1" serial="$2" device_id="$3" role="$4" diagnostic_file="$5"
+  local renderer_evidence_file="${6:-}" cpu_file window_file
+  local cpu_evidence='' window_evidence='' cpu_state=not-applicable cpu_count=not-applicable
+  local renderer_state=not-applicable focus_state error_subject result=ready
+
+  [[ "$device_id" =~ ^(device-[0-9][0-9][0-9]|peer-avd|setup-avd)$ ]] || return 2
+  case "$role" in smoke|instrumentation|client|provider|setup-smoke) ;; *) return 2 ;; esac
+  [ -n "$diagnostic_file" ] || return 2
+  mkdir -p "$(dirname "$diagnostic_file")" || return 1
+  : >"$diagnostic_file" || return 1
+  chmod 600 "$diagnostic_file" || return 1
+  cpu_file="${diagnostic_file%.txt}-cpu.txt"
+  window_file="${diagnostic_file%.txt}-window.txt"
+  : >"$window_file" || return 1
+  chmod 600 "$window_file" || return 1
+
+  if timeout 15 "$adb" -s "$serial" shell dumpsys window \
+      </dev/null >"$window_file" 2>/dev/null; then
+    window_evidence="$(cat "$window_file")"
+  fi
+  focus_state="$(android_acceptance_classify_focused_window "$window_evidence")"
+  error_subject="$(android_acceptance_focused_error_subject "$window_evidence")"
+
+  if [ -n "$renderer_evidence_file" ]; then
+    : >"$cpu_file" || return 1
+    chmod 600 "$cpu_file" || return 1
+    if timeout 15 "$adb" -s "$serial" shell cat /sys/devices/system/cpu/online \
+        </dev/null >"$cpu_file" 2>/dev/null; then
+      cpu_evidence="$(cat "$cpu_file")"
+      cpu_evidence="online=$cpu_evidence"
+    fi
+    cpu_state="$(android_acceptance_classify_cpu_evidence "$cpu_evidence")"
+    cpu_count="$(android_acceptance_cpu_count "$cpu_evidence" 2>/dev/null || printf 'unknown\n')"
+    if [ -f "$renderer_evidence_file" ] && [ ! -L "$renderer_evidence_file" ]; then
+      renderer_state="$(android_acceptance_classify_renderer_evidence \
+        "$(cat "$renderer_evidence_file")")"
+    else
+      renderer_state=missing
+    fi
+  fi
+
+  [ "$focus_state" = clear ] || result=failed
+  if [ -n "$renderer_evidence_file" ]; then
+    [ "$cpu_state" = ready ] || result=failed
+    [ "$renderer_state" = host ] || result=failed
+  fi
+  printf '%s\n' \
+    'version=1' \
+    "device_id=$device_id" \
+    "role=$role" \
+    "cpu=$cpu_state" \
+    "cpu_count=$cpu_count" \
+    "renderer=$renderer_state" \
+    "focus=$focus_state" \
+    "focused_error_subject=$error_subject" \
+    "result=$result" >"$diagnostic_file"
+  chmod 600 "$diagnostic_file" "$window_file" || return 1
+  [ ! -e "$cpu_file" ] || chmod 600 "$cpu_file" || return 1
+  [ "$result" = ready ]
 }
 
 # Copy one build's app/test pair into the runner-owned cache before another
@@ -1409,18 +1730,6 @@ android_acceptance_launch_smoke() {
   printf 'HarnessVerification: launch-status=%s foreground=%s process=%s\n' \
     "$reported_status" "$foreground_status" "$process_status" >>"$log_file"
   return 1
-}
-
-# The acceptance AVD's launcher can ANR while multiple read-only instances
-# start under software rendering. Its system error dialog then owns the
-# foreground window and hides the app from UI Automator even though the app is
-# healthy. This is a dedicated test AVD, so suppress those unrelated dialogs
-# before any instrumentation starts.
-android_acceptance_suppress_system_error_dialogs() {
-  local adb="$1" serial="$2"
-
-  timeout 15 "$adb" -s "$serial" shell settings put global hide_error_dialogs 1 \
-    </dev/null >/dev/null
 }
 
 # Compose can take longer to become idle while an app-owned infinite animation

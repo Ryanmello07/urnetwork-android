@@ -6,7 +6,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
 import com.bringyour.network.BuildConfig
-import com.bringyour.network.LoginActivity
+import com.bringyour.network.LoginClientCompletion
 import com.bringyour.network.MainApplication
 import com.bringyour.network.TAG
 import com.bringyour.sdk.Api
@@ -278,33 +278,34 @@ private fun launchInBrowser(context: Context, uri: Uri): Boolean {
 fun handleLoginFlow(
     networkJwt: String,
     scope: CoroutineScope,
-    appLogin: (String) -> Unit,
-    authClientAndFinish: (
-        callback: (String?) -> Unit,
-    ) -> Unit,
+    application: MainApplication?,
+    finishAuthenticatedLoginAfterWelcome: () -> Unit,
     onErr: () -> Unit,
     onContentVisibilityChange: (Boolean) -> Unit,
     onWelcomeOverlayVisibilityChange: (Boolean) -> Unit,
 ) {
-    scope.launch {
-        appLogin(networkJwt)
-
-        onContentVisibilityChange(false)
-
-        delay(500)
-
-        onWelcomeOverlayVisibilityChange(true)
-
-        delay(2250)
-
-        authClientAndFinish { error ->
-            if (error != null) {
-                Log.i(TAG, "auth client and finish err: $error")
+    val app = application
+    if (app == null) {
+        scope.launch { onErr() }
+        return
+    }
+    app.authenticateNetworkSession(networkJwt, newNetwork = false) { completion ->
+        if (completion is LoginClientCompletion.Ready) {
+            finishAuthenticatedLoginAfterWelcome()
+        }
+        scope.launch {
+            if (completion is LoginClientCompletion.Failed) {
+                Log.i(TAG, "auth client and finish err: ${completion.message}")
                 val visibility = loginRetryVisibility()
                 onContentVisibilityChange(visibility.contentVisible)
                 onWelcomeOverlayVisibilityChange(visibility.welcomeOverlayVisible)
                 onErr()
+                return@launch
             }
+
+            onContentVisibilityChange(false)
+            delay(500)
+            onWelcomeOverlayVisibilityChange(true)
         }
     }
 }

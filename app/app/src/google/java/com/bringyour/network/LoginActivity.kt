@@ -213,11 +213,11 @@ class LoginActivity : AppCompatActivity() {
 
             app.api?.authCodeLogin(args) { result, err ->
 
-                val loginJwt = result.jwt
+                val loginJwt = result?.jwt
 
                 if (err == null && loginJwt != null) {
 
-                    lifecycleScope.launch {
+                    app.dispatchLoginResult {
 
                         if (app.asyncLocalState?.localState?.byJwt == loginJwt) {
                             // user already logged into this network
@@ -234,7 +234,7 @@ class LoginActivity : AppCompatActivity() {
 
                             if (localState != null) {
                                 localState.parseByJwt { jwt, success ->
-                                    lifecycleScope.launch {
+                                    app.dispatchLoginResult {
                                         if (success && jwt != null) {
                                             targetJwt = loginJwt
                                             currentNetworkName = jwt.networkName
@@ -243,8 +243,8 @@ class LoginActivity : AppCompatActivity() {
                                         } else {
                                             Log.i(TAG, "authCodeLogin: local byJwt parse failed")
                                             app.logout()
-                                            app.login(loginJwt)
                                             welcomeThenAuthClientAndFinish(
+                                                byJwt = loginJwt,
                                                 callback = { error ->
                                                     if (error != null) {
                                                         Log.i(TAG, "authClientAndFinish error: $error")
@@ -258,8 +258,8 @@ class LoginActivity : AppCompatActivity() {
                             } else {
                                 Log.i(TAG, "authCodeLogin: local state missing")
                                 app.logout()
-                                app.login(loginJwt)
                                 welcomeThenAuthClientAndFinish(
+                                    byJwt = loginJwt,
                                     callback = { error ->
                                         if (error != null) {
                                             Log.i(TAG, "authClientAndFinish error: $error")
@@ -270,10 +270,8 @@ class LoginActivity : AppCompatActivity() {
                             }
 
                         } else {
-
-                            app.login(loginJwt)
-
                             welcomeThenAuthClientAndFinish(
+                                byJwt = loginJwt,
                                 callback = { err ->
                                     if (err != null) {
                                         Log.i(TAG, "authClientAndFinish error: $err")
@@ -386,27 +384,35 @@ class LoginActivity : AppCompatActivity() {
         args.authJwtType = provider
 
         app.api?.authLogin(args) { result, err ->
+            val resultError = result?.error
+            val networkJwt = if (err == null && resultError == null) {
+                result?.network?.byJwt?.takeIf(String::isNotEmpty)
+            } else {
+                null
+            }
+            if (networkJwt != null) {
+                welcomeThenAuthClientAndFinish(
+                    byJwt = networkJwt,
+                    callback = { finishError ->
+                        if (finishError != null) {
+                            Log.i(TAG, "authClientAndFinish error: $finishError")
+                        }
+                        isLoadingAuthCode = false
+                    },
+                )
+                return@authLogin
+            }
             lifecycleScope.launch {
                 if (err != null) {
                     isLoadingAuthCode = false
                     loginViewModel.setLoginError(err.message)
-                } else if (result.error != null) {
+                } else if (resultError != null) {
                     isLoadingAuthCode = false
-                    loginViewModel.setLoginError(result.error.message)
-                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
-                    loginViewModel.setLoginError(null)
-
-                    app.login(result.network.byJwt)
-
-                    welcomeThenAuthClientAndFinish(
-                        callback = { finishError ->
-                            if (finishError != null) {
-                                Log.i(TAG, "authClientAndFinish error: $finishError")
-                            }
-                            isLoadingAuthCode = false
-                        },
-                    )
-                } else if (result.authAllowed != null) {
+                    loginViewModel.setLoginError(resultError.message)
+                } else if (result == null) {
+                    isLoadingAuthCode = false
+                    loginViewModel.setLoginError(getString(R.string.login_error))
+                } else if (result?.authAllowed != null) {
                     val authAllowed = mutableListOf<String>()
                     for (i in 0 until result.authAllowed.len()) {
                         authAllowed.add(result.authAllowed.get(i))
@@ -479,28 +485,33 @@ class LoginActivity : AppCompatActivity() {
         args.walletAuth = walletAuth
 
         app.api?.authLogin(args) { result, err ->
+            val resultError = result?.error
+            val networkJwt = if (err == null && resultError == null) {
+                result?.network?.byJwt?.takeIf(String::isNotEmpty)
+            } else {
+                null
+            }
+            if (networkJwt != null) {
+                welcomeThenAuthClientAndFinish(
+                    byJwt = networkJwt,
+                    callback = { error ->
+                        if (error != null) {
+                            Log.i(TAG, "authClientAndFinish error: $error")
+                        }
+                        isLoadingAuthCode = false
+                    },
+                )
+                return@authLogin
+            }
             lifecycleScope.launch {
 
                 if (err != null) {
                     isLoadingAuthCode = false
                     loginViewModel.setLoginError(err.message)
-                } else if (result.error != null) {
+                } else if (resultError != null) {
                     isLoadingAuthCode = false
-                    loginViewModel.setLoginError(result.error.message)
-                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
-                    loginViewModel.setLoginError(null)
-
-                    app.login(result.network.byJwt)
-
-                    welcomeThenAuthClientAndFinish(
-                        callback = { error ->
-                            if (error != null) {
-                                Log.i(TAG, "authClientAndFinish error: $error")
-                            }
-                            isLoadingAuthCode = false
-                        },
-                    )
-                } else if (result.walletAuth != null) {
+                    loginViewModel.setLoginError(resultError.message)
+                } else if (result?.walletAuth != null) {
                     loginViewModel.setLoginError(null)
                     val api = app.api
                     if (api == null) {
@@ -590,16 +601,24 @@ class LoginActivity : AppCompatActivity() {
      * its own overlay; a failed finish takes the overlay down for the retry.
      */
     private fun welcomeThenAuthClientAndFinish(
+        byJwt: String,
         callback: (String?) -> Unit,
     ) {
-        welcomeOverlayVisible = true
-        lifecycleScope.launch(Dispatchers.Main) {
-            delay(2250)
-            authClientAndFinish { error ->
-                if (error != null) {
+        val app = app ?: run {
+            callback(getString(R.string.login_client_error))
+            return
+        }
+        app.authenticateNetworkSession(byJwt, newNetwork = false) { completion ->
+            lifecycleScope.launch(Dispatchers.Main) {
+                if (completion is LoginClientCompletion.Failed) {
                     welcomeOverlayVisible = false
+                    callback(completion.message ?: getString(R.string.login_client_error))
+                    return@launch
                 }
-                callback(error)
+                welcomeOverlayVisible = true
+                delay(2250)
+                finishAuthenticatedLogin()
+                callback(null)
             }
         }
     }
@@ -617,35 +636,55 @@ class LoginActivity : AppCompatActivity() {
                 if (completion is LoginClientCompletion.Failed) {
                     callback(completion.message ?: getString(R.string.login_client_error))
                 } else {
-
-                    val intent = Intent(this@LoginActivity, MainActivity::class.java)
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_TASK_ON_HOME)
-                    intent.putExtra("ANIMATE_IN", true)
-
-                    if (targetUrl != null) {
-                        intent.putExtra("TARGET_URL", targetUrl)
-                        // clear targetUrl
-                        targetUrl = null
-                    }
-
-                    if (defaultLocation != null) {
-                        intent.putExtra("DEFAULT_LOCATION", defaultLocation)
-                        // clear default location
-                        defaultLocation = null
-                    }
-
-                    startActivity(intent)
-
-                    if (Build.VERSION.SDK_INT >= 34) {
-                        overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
-                    } else {
-                        overridePendingTransition(0, 0)
-                    }
-
-                    finish()
+                    finishAuthenticatedLogin()
+                    callback(null)
                 }
             }
         }
+    }
+
+    // LoginStartupState is already Ready before either method is called. The
+    // Activity owns only animation/navigation; if it is destroyed, a fresh
+    // LoginActivity observes app.device in onCreate and enters MainActivity.
+    fun finishAuthenticatedLoginAfterWelcome() {
+        lifecycleScope.launch(Dispatchers.Main) {
+            delay(2750)
+            finishAuthenticatedLogin()
+        }
+    }
+
+    fun finishAuthenticatedLoginNow() {
+        lifecycleScope.launch(Dispatchers.Main) {
+            finishAuthenticatedLogin()
+        }
+    }
+
+    private fun finishAuthenticatedLogin() {
+        val intent = Intent(this@LoginActivity, MainActivity::class.java)
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_TASK_ON_HOME)
+        intent.putExtra("ANIMATE_IN", true)
+
+        if (targetUrl != null) {
+            intent.putExtra("TARGET_URL", targetUrl)
+            // clear targetUrl
+            targetUrl = null
+        }
+
+        if (defaultLocation != null) {
+            intent.putExtra("DEFAULT_LOCATION", defaultLocation)
+            // clear default location
+            defaultLocation = null
+        }
+
+        startActivity(intent)
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
+        } else {
+            overridePendingTransition(0, 0)
+        }
+
+        finish()
     }
 
 

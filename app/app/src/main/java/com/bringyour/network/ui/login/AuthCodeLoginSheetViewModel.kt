@@ -58,6 +58,16 @@ class AuthCodeLoginSheetViewModel @Inject constructor(): ViewModel() {
             authCodeLoginArgs.authCode = authCode.text
 
             api?.authCodeLogin(authCodeLoginArgs) { result, error ->
+                val loginJwt = if (error == null && result?.error == null) {
+                    result?.jwt?.takeIf(String::isNotEmpty)
+                } else {
+                    null
+                }
+                if (loginJwt != null && result != null) {
+                    onSuccess(result)
+                    viewModelScope.launch { isLoading = false }
+                    return@authCodeLogin
+                }
 
                 viewModelScope.launch {
 
@@ -77,7 +87,7 @@ class AuthCodeLoginSheetViewModel @Inject constructor(): ViewModel() {
                         return@launch
                     }
 
-                    onSuccess(result)
+                    onErr(null)
                     isLoading = false
 
                 }

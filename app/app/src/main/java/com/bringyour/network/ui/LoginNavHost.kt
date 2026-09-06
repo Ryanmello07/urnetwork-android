@@ -24,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.bringyour.network.LoginClientCompletion
 import com.bringyour.network.ui.components.overlays.FullScreenOverlay
 import com.bringyour.network.ui.components.overlays.WelcomeAnimatedOverlayLogin
 import com.bringyour.network.ui.login.AuthCodeLoadingScreen
@@ -252,6 +253,7 @@ fun LoginNavHost(
                         val scope = rememberCoroutineScope()
                         var contentVisible by remember { mutableStateOf(true) }
                         var welcomeVisible by remember { mutableStateOf(false) }
+                        var finishInProgress by remember { mutableStateOf(false) }
 
                         // the account exists server side and its jwt is persisted
                         // before the phrase is shown, so there is no way back out of
@@ -260,25 +262,37 @@ fun LoginNavHost(
                         // stranding an account whose seedphrase was never seen.
                         // Entering plays the welcome animation every other sign-in
                         // plays before the main activity opens on its Enter card
-                        val continueIntoApp: () -> Unit = {
-                            if (!welcomeVisible) {
-                                scope.launch {
-                                    contentVisible = false
-                                    delay(500)
-                                    welcomeVisible = true
-                                    delay(2250)
-                                    val activity = loginActivity ?: run {
-                                        welcomeVisible = false
-                                        contentVisible = true
-                                        return@launch
+                        val continueIntoApp: () -> Unit = continueIntoApp@{
+                            if (!finishInProgress) {
+                                val app = application
+                                val activity = loginActivity
+                                if (app == null || activity == null) {
+                                    return@continueIntoApp
+                                }
+                                finishInProgress = true
+                                app.authenticateLoginClient { completion ->
+                                    if (completion is LoginClientCompletion.Ready) {
+                                        activity.finishAuthenticatedLoginAfterWelcome()
                                     }
-                                    activity.authClientAndFinish { error ->
-                                        if (error != null) {
-                                            android.util.Log.e("LoginNavHost", "auth client finish err: $error")
-                                            android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
+                                    scope.launch {
+                                        if (completion is LoginClientCompletion.Failed) {
+                                            finishInProgress = false
+                                            android.util.Log.e(
+                                                "LoginNavHost",
+                                                "auth client finish err: ${completion.message}",
+                                            )
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Error logging in, please try again.",
+                                                android.widget.Toast.LENGTH_LONG,
+                                            ).show()
                                             welcomeVisible = false
                                             contentVisible = true
+                                            return@launch
                                         }
+                                        contentVisible = false
+                                        delay(500)
+                                        welcomeVisible = true
                                     }
                                 }
                             }
@@ -287,7 +301,13 @@ fun LoginNavHost(
                         val createdSeedphrase = seedphrase
                         if (createdSeedphrase == null) {
                             CreateNetworkInstant(
-                                appLogin = { jwt, newNetwork -> application?.login(jwt, newNetwork = newNetwork) },
+                                appLogin = { jwt, newNetwork, completion ->
+                                    application?.persistNetworkSession(
+                                        jwt,
+                                        newNetwork,
+                                        completion,
+                                    ) ?: completion(false)
+                                },
                                 onBack = {
                                     navController.popBackStack()
                                 },

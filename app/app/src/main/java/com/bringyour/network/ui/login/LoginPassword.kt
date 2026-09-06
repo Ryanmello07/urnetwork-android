@@ -58,9 +58,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
-import com.bringyour.sdk.AuthLoginWithPasswordArgs
 import com.bringyour.network.LoginActivity
 import com.bringyour.network.MainApplication
+import com.bringyour.network.PasswordLoginCompletion
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URInlineErrorText
@@ -111,82 +111,28 @@ fun LoginPassword(
             inProgress = false
             return@login
         }
-        val loginAttemptId = application.beginPasswordLogin()
-
-        val args = AuthLoginWithPasswordArgs()
-        args.userAuth = user.text
-        args.password = password.text
-        args.verifyOtpNumeric = true
-
-        application.api?.authLoginWithPassword(args) { result, err ->
+        application.authenticateWithPassword(user.text, password.text) { completion ->
+            if (completion is PasswordLoginCompletion.Ready) {
+                loginActivity?.finishAuthenticatedLoginAfterWelcome()
+            }
             scope.launch {
-
-                if (err != null) {
-                    application.failPasswordLogin(
-                        loginAttemptId,
-                        com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
-                    )
-                    inProgress = false
-                    loginError = err.message
-                } else if (result.error != null) {
-                    application.failPasswordLogin(
-                        loginAttemptId,
-                        com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_REJECTED,
-                    )
-                    inProgress = false
-                    loginError = result.error.message
-                } else if (result.network != null) {
-                    loginError = null
-
-                    if (result.verificationRequired != null) {
-
-                        navController.navigate("verify/${Uri.encode(userAuth)}")
-
-                    } else {
-                        if (!application.login(result.network.byJwt)) {
-                            loginError = loginErrMsg
-                            inProgress = false
-                            return@launch
-                        }
-
-                        isContentVisible = false
-
-                        delay(500)
-
-                        welcomeOverlayVisible = true
-
-                        delay(2250)
-
-                        loginActivity?.authClientAndFinish(
-                            { error ->
-                            if (error != null) {
-                                inProgress = false
-                                val visibility = loginRetryVisibility()
-                                isContentVisible = visibility.contentVisible
-                                welcomeOverlayVisible = visibility.welcomeOverlayVisible
-                            }
-
-                            loginError = error
-                            }
-                        )
+                when (completion) {
+                    is PasswordLoginCompletion.Failed -> {
+                        inProgress = false
+                        loginError = completion.message ?: loginErrMsg
                     }
-
-                } else {
-                    application.failPasswordLogin(
-                        loginAttemptId,
-                        com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
-                    )
-                    loginError = loginErrMsg
-                    inProgress = false
+                    is PasswordLoginCompletion.VerificationRequired -> {
+                        inProgress = false
+                        navController.navigate("verify/${Uri.encode(completion.userAuth)}")
+                    }
+                    is PasswordLoginCompletion.Ready -> {
+                        loginError = null
+                        isContentVisible = false
+                        delay(500)
+                        welcomeOverlayVisible = true
+                    }
                 }
             }
-        } ?: run {
-            application.failPasswordLogin(
-                loginAttemptId,
-                com.bringyour.network.LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
-            )
-            loginError = loginErrMsg
-            inProgress = false
         }
         Unit
     }

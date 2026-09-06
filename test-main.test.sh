@@ -75,15 +75,83 @@ grep -Fq 'gradle_worker_args=(--max-workers "$android_parallelism")' "$here/test
 [ "$(grep -Fc '"${gradle_worker_args[@]}"' "$here/test-main.sh")" -eq 2 ] || \
   fail "both Android Gradle invocations do not consume the worker override"
 # shellcheck disable=SC2016
-grep -Fq 'emulator_core_args=(-cores "$android_parallelism")' "$here/test-main.sh" || \
-  fail "positive GOMAXPROCS is not mapped to emulator cores"
-# shellcheck disable=SC2016
-[ "$(grep -Fc '+=("${emulator_core_args[@]}")' "$here/test-main.sh")" -eq 2 ] || \
-  fail "fallback and peer emulators do not both consume the core override"
-for physical_artifact in foreground.png activity.txt processes.txt status.json files/logs; do
+if grep -Eq 'emulator_core_args|(^|[[:space:]])-cores([=[:space:]]|$)' \
+    "$here/test-main.sh"; then
+  fail "host GOMAXPROCS still changes acceptance AVD guest CPUs"
+fi
+[ "$(grep -Ec '_(args|args)=\(-avd .* -gpu host ' "$here/test-main.sh")" -eq 2 ] || \
+  fail "fallback and peer acceptance AVDs do not both require host rendering"
+for physical_artifact in \
+  foreground.png activity.txt processes.txt status.json files/logs \
+  physical-startup-goroutines.txt; do
   grep -Fq "$physical_artifact" "$here/test-main.sh" || \
     fail "physical teardown does not retain $physical_artifact"
 done
+# shellcheck disable=SC2016
+grep -Fq 'android_acceptance_verify_physical_startup_evidence \' "$here/test-main.sh" || \
+  fail "physical collection does not enforce Pending startup evidence"
+physical_timeout_source="$(sed -n \
+  '/private fun loginWithPassword(/,/private fun retainActiveClient/p' \
+  "$here/app/app/src/androidTest/java/com/bringyour/network/acceptance/PhysicalLowbarSessionTest.kt")"
+grep -Fq 'throwLoginStartupTimeout(' <<<"$physical_timeout_source" || \
+  fail "physical login does not route its exact timeout through the evidence boundary"
+grep -Fq 'Sdk.writeGoroutineStacks(startupGoroutinesFile.absolutePath)' \
+  <<<"$physical_timeout_source" || \
+  fail "physical login timeout does not synchronously request Go stacks"
+grep -Fq 'main-startup-goroutines.txt' "$here/test-main.sh" || \
+  fail "main acceptance collection does not retain optional Pending startup evidence"
+main_timeout_source="$(sed -n \
+  '/private fun waitForMain()/,/private fun createInstantAccount()/p' \
+  "$here/app/app/src/androidTest/java/com/bringyour/network/acceptance/MainAcceptanceTest.kt")"
+grep -Fq 'throwLoginStartupTimeout(' <<<"$main_timeout_source" || \
+  fail "main login does not route its Pending timeout through the evidence boundary"
+grep -Fq 'Sdk.writeGoroutineStacks(startupGoroutinesFile.absolutePath)' \
+  <<<"$main_timeout_source" || \
+  fail "main login timeout does not synchronously request Go stacks"
+
+startup_evidence_dir="$(mktemp -d "${TMPDIR:-/tmp}/urnetwork-android-startup-evidence.test.XXXXXX")"
+startup_status="$startup_evidence_dir/status.json"
+startup_stacks="$startup_evidence_dir/goroutines.txt"
+printf '%s\n' '{"state":"ready","extra":{}}' >"$startup_status"
+android_acceptance_verify_physical_startup_evidence \
+  "$startup_status" "$startup_stacks" || \
+  fail "successful physical status incorrectly required startup stacks"
+printf '%s\n' \
+  '{"state":"error","extra":{"stage":"password-auth","failure":"password-auth-rejected"}}' \
+  >"$startup_status"
+android_acceptance_verify_physical_startup_evidence \
+  "$startup_status" "$startup_stacks" || \
+  fail "non-timeout physical failure incorrectly required startup stacks"
+printf '%s\n' \
+  '{"state":"error","extra":{"stage":"password-auth","failure":"startup-timeout"}}' \
+  >"$startup_status"
+if android_acceptance_verify_physical_startup_evidence \
+    "$startup_status" "$startup_stacks"; then
+  fail "physical startup timeout passed without Go stacks"
+fi
+: >"$startup_stacks"
+if android_acceptance_verify_physical_startup_evidence \
+    "$startup_status" "$startup_stacks"; then
+  fail "physical startup timeout accepted empty Go stacks"
+fi
+printf '%s\n' 'not a Go stack' >"$startup_stacks"
+if android_acceptance_verify_physical_startup_evidence \
+    "$startup_status" "$startup_stacks"; then
+  fail "physical startup timeout accepted malformed Go stacks"
+fi
+rm "$startup_stacks"
+printf '%s\n' 'goroutine 7 [running]:' >"$startup_evidence_dir/real-stacks"
+ln -s "$startup_evidence_dir/real-stacks" "$startup_stacks"
+if android_acceptance_verify_physical_startup_evidence \
+    "$startup_status" "$startup_stacks"; then
+  fail "physical startup timeout accepted symlinked Go stacks"
+fi
+rm "$startup_stacks"
+printf '%s\n' 'goroutine 7 [running]:' >"$startup_stacks"
+android_acceptance_verify_physical_startup_evidence \
+  "$startup_status" "$startup_stacks" || \
+  fail "physical startup timeout rejected complete Go stacks"
+rm -rf "$startup_evidence_dir"
 # shellcheck disable=SC2016
 grep -Fq 'android_acceptance_session_running "$session_pid"' "$here/test-main.sh" || \
   fail "physical status waits do not fail when instrumentation exits"
@@ -662,13 +730,162 @@ system_timeout_executable="$(type -P timeout)"
 
 emulator_log="$(mktemp "${TMPDIR:-/tmp}/urnetwork-android-emulator.test.XXXXXX")"
 if (run_android_acceptance_shared_avd_emulator \
-    /usr/bin/true "$emulator_log" -avd urnetwork-acceptance) >/dev/null 2>&1; then
+    /usr/bin/true "$emulator_log" -avd urnetwork-acceptance -gpu host) >/dev/null 2>&1; then
   fail "shared AVD launcher accepted a writable emulator"
 fi
 (run_android_acceptance_shared_avd_emulator \
-  /usr/bin/true "$emulator_log" -avd urnetwork-acceptance -read-only) || \
-  fail "shared AVD launcher rejected a read-only emulator"
+  /usr/bin/true "$emulator_log" -avd urnetwork-acceptance -read-only -gpu host) || \
+  fail "shared AVD launcher rejected a read-only host-rendered emulator"
+if (run_android_acceptance_shared_avd_emulator \
+    /usr/bin/true "$emulator_log" -avd urnetwork-acceptance -read-only) \
+    >/dev/null 2>&1; then
+  fail "shared AVD launcher accepted an implicit renderer"
+fi
+if (run_android_acceptance_shared_avd_emulator \
+    /usr/bin/true "$emulator_log" -avd urnetwork-acceptance -read-only -gpu auto) \
+    >/dev/null 2>&1; then
+  fail "shared AVD launcher accepted a renderer that can select software"
+fi
+if (run_android_acceptance_shared_avd_emulator \
+    /usr/bin/true "$emulator_log" -avd urnetwork-acceptance -read-only -gpu host -cores 1) \
+    >/dev/null 2>&1; then
+  fail "shared AVD launcher accepted a guest CPU override"
+fi
 rm -f "$emulator_log"
+
+preflight_fixture_dir="$here/tests/fixtures/android-preflight"
+assert_preflight_classification() {
+  local classifier="$1" expected="$2" fixture="$3" actual
+
+  actual="$($classifier "$(cat "$fixture")")"
+  [ "$actual" = "$expected" ] || \
+    fail "$fixture classified as $actual, expected $expected"
+}
+assert_preflight_classification \
+  android_acceptance_classify_cpu_evidence insufficient \
+  "$preflight_fixture_dir/captured-cpu.txt"
+assert_preflight_classification \
+  android_acceptance_classify_renderer_evidence software \
+  "$preflight_fixture_dir/captured-renderer.txt"
+assert_preflight_classification \
+  android_acceptance_classify_focused_window error-dialog \
+  "$preflight_fixture_dir/captured-window.txt"
+assert_preflight_classification \
+  android_acceptance_classify_cpu_evidence ready \
+  "$preflight_fixture_dir/clean-cpu.txt"
+assert_preflight_classification \
+  android_acceptance_classify_renderer_evidence host \
+  "$preflight_fixture_dir/clean-renderer.txt"
+assert_preflight_classification \
+  android_acceptance_classify_focused_window clear \
+  "$preflight_fixture_dir/clean-window.txt"
+assert_preflight_classification \
+  android_acceptance_classify_focused_window clear \
+  "$preflight_fixture_dir/duplicate-window.txt"
+assert_preflight_classification \
+  android_acceptance_classify_focused_window clear \
+  "$preflight_fixture_dir/equivalent-window-syntax.txt"
+for fixture_kind in cpu renderer window; do
+  classifier="android_acceptance_classify_${fixture_kind}_evidence"
+  [ "$fixture_kind" != window ] || classifier=android_acceptance_classify_focused_window
+  assert_preflight_classification \
+    "$classifier" malformed "$preflight_fixture_dir/malformed-$fixture_kind.txt"
+  assert_preflight_classification \
+    "$classifier" ambiguous "$preflight_fixture_dir/ambiguous-$fixture_kind.txt"
+done
+[ "$(android_acceptance_classify_cpu_evidence \
+  "$(cat "$preflight_fixture_dir/missing-evidence.txt")")" = missing ] || \
+  fail "missing CPU evidence was not classified distinctly"
+[ "$(android_acceptance_classify_renderer_evidence \
+  "$(cat "$preflight_fixture_dir/missing-evidence.txt")")" = missing ] || \
+  fail "missing renderer evidence was not classified distinctly"
+[ "$(android_acceptance_classify_focused_window \
+  "$(cat "$preflight_fixture_dir/missing-evidence.txt")")" = missing ] || \
+  fail "missing focused-window evidence was not classified distinctly"
+[ "$(android_acceptance_focused_error_subject \
+  "$(cat "$preflight_fixture_dir/captured-window.txt")")" = com.android.systemui ] || \
+  fail "captured SystemUI ANR subject was not retained"
+[ "$(android_acceptance_classify_renderer_evidence \
+  'GLES: Google (Apple), Android Emulator OpenGL ES Translator (Apple M1 Max), OpenGL ES 3.0')" = host ] || \
+  fail "a live host-rendered SurfaceFlinger identity was rejected"
+[ "$(android_acceptance_sanitized_device_id device-001-emulator-5558)" = device-001 ] || \
+  fail "device diagnostic ID retained its raw emulator serial"
+if android_acceptance_sanitized_device_id emulator-5558 >/dev/null; then
+  fail "an unstructured serial was accepted as a diagnostic device ID"
+fi
+
+# Preflight owns an explicit timeout at runtime. This fake keeps its adb
+# interaction deterministic without launching a process or touching a device.
+timeout() {
+  shift
+  "$@"
+}
+preflight_test_dir="$(mktemp -d "${TMPDIR:-/tmp}/urnetwork-android-preflight.test.XXXXXX")"
+preflight_diagnostic="$preflight_test_dir/provider-preflight.txt"
+FAKE_PREFLIGHT_CPU="$preflight_fixture_dir/clean-cpu.txt"
+FAKE_PREFLIGHT_WINDOW="$preflight_fixture_dir/clean-window.txt"
+fake_preflight_adb() {
+  [ "$1" = -s ] && [ "$2" = emulator-5558 ] && [ "$3" = shell ] || return 90
+  case "$4 $5" in
+    'cat /sys/devices/system/cpu/online') sed 's/^online=//' "$FAKE_PREFLIGHT_CPU" ;;
+    'dumpsys window') cat "$FAKE_PREFLIGHT_WINDOW" ;;
+    *) return 91 ;;
+  esac
+}
+android_acceptance_preflight_device \
+  fake_preflight_adb emulator-5558 peer-avd provider "$preflight_diagnostic" \
+  "$preflight_fixture_dir/clean-renderer.txt" || \
+  fail "clean host-rendered provider preflight was rejected"
+grep -Fxq 'device_id=peer-avd' "$preflight_diagnostic" || \
+  fail "preflight diagnostic omitted the sanitized device identity"
+grep -Fxq 'role=provider' "$preflight_diagnostic" || \
+  fail "preflight diagnostic omitted the execution role"
+grep -Fxq 'cpu_count=4' "$preflight_diagnostic" || \
+  fail "preflight diagnostic omitted the verified guest CPU count"
+grep -Fxq 'renderer=host' "$preflight_diagnostic" || \
+  fail "preflight diagnostic omitted the verified renderer"
+grep -Fxq 'focus=clear' "$preflight_diagnostic" || \
+  fail "preflight diagnostic omitted the verified foreground state"
+grep -Fxq 'result=ready' "$preflight_diagnostic" || \
+  fail "clean preflight did not publish a ready terminal state"
+if grep -Eq 'emulator-5558|urnetwork-acceptance|pid=' "$preflight_diagnostic"; then
+  fail "preflight diagnostic exposed a serial, AVD name, or PID"
+fi
+
+FAKE_PREFLIGHT_CPU="$preflight_fixture_dir/captured-online-cpu.txt"
+FAKE_PREFLIGHT_WINDOW="$preflight_fixture_dir/captured-window.txt"
+if android_acceptance_preflight_device \
+    fake_preflight_adb emulator-5558 peer-avd provider "$preflight_diagnostic" \
+    "$preflight_fixture_dir/captured-renderer.txt"; then
+  fail "captured one-CPU/software-rendered/SystemUI-ANR state passed preflight"
+fi
+grep -Fxq 'cpu=insufficient' "$preflight_diagnostic" || \
+  fail "captured one-CPU rejection was not retained"
+grep -Fxq 'renderer=software' "$preflight_diagnostic" || \
+  fail "captured software renderer rejection was not retained"
+grep -Fxq 'focus=error-dialog' "$preflight_diagnostic" || \
+  fail "captured focused SystemUI ANR rejection was not retained"
+grep -Fxq 'focused_error_subject=com.android.systemui' "$preflight_diagnostic" || \
+  fail "captured SystemUI error-dialog subject was not retained"
+grep -Fxq 'result=failed' "$preflight_diagnostic" || \
+  fail "bad preflight did not publish a failed terminal state"
+
+FAKE_PREFLIGHT_WINDOW="$preflight_fixture_dir/clean-window.txt"
+android_acceptance_preflight_device \
+  fake_preflight_adb emulator-5558 device-001 client \
+  "$preflight_test_dir/client-preflight.txt" || \
+  fail "clean physical-client focused-dialog preflight was rejected"
+grep -Fxq 'cpu=not-applicable' "$preflight_test_dir/client-preflight.txt" || \
+  fail "physical client unexpectedly required emulator CPU evidence"
+grep -Fxq 'role=client' "$preflight_test_dir/client-preflight.txt" || \
+  fail "physical-client role was not retained"
+if android_acceptance_preflight_device \
+    fake_preflight_adb emulator-5558 device-001-emulator-5558 client \
+    "$preflight_test_dir/raw-id-preflight.txt"; then
+  fail "preflight accepted a device ID containing a raw serial"
+fi
+rm -rf "$preflight_test_dir"
+unset -f timeout
 
 apk_test_dir="$(mktemp -d "${TMPDIR:-/tmp}/urnetwork-android-apk-cache.test.XXXXXX")"
 mkdir -p "$apk_test_dir/build" "$apk_test_dir/cache"
@@ -1667,17 +1884,27 @@ peer_provider_gate_line="$(grep -Fn -m1 \
   'android_acceptance_runner_owned_emulator_interactive' <<<"$peer_source" | cut -d: -f1)"
 peer_client_gate_line="$(grep -Fn -m1 \
   'selected_device_interactive' <<<"$peer_source" | cut -d: -f1)"
+# These locators intentionally match literal runner expressions.
+# shellcheck disable=SC2016
+peer_provider_preflight_line="$(grep -Fn -m1 \
+  '"$adb" "$peer_serial" peer-avd provider' <<<"$peer_source" | cut -d: -f1)"
+# shellcheck disable=SC2016
+peer_client_preflight_line="$(grep -Fn -m1 \
+  '"$adb" "$serial" "$client_diagnostic_id" client' <<<"$peer_source" | cut -d: -f1)"
 peer_launch_lines="$(grep -Fn 'shell am instrument -w -r' <<<"$peer_source" | cut -d: -f1)"
 [ -n "$peer_provider_gate_line" ] && [ -n "$peer_client_gate_line" ] && \
+  [ -n "$peer_provider_preflight_line" ] && [ -n "$peer_client_preflight_line" ] && \
   [ "$(wc -l <<<"$peer_launch_lines" | tr -d ' ')" -eq 2 ] || \
-  fail "peer instrumentation does not have one final interactive gate per role"
+  fail "peer instrumentation does not have one final interactive/preflight gate per role"
 peer_provider_launch_line="$(sed -n '1p' <<<"$peer_launch_lines")"
 peer_client_launch_line="$(sed -n '2p' <<<"$peer_launch_lines")"
 [ "$peer_install_line" -lt "$peer_provider_gate_line" ] && \
-  [ "$peer_provider_gate_line" -lt "$peer_provider_launch_line" ] && \
+  [ "$peer_provider_gate_line" -lt "$peer_provider_preflight_line" ] && \
+  [ "$peer_provider_preflight_line" -lt "$peer_provider_launch_line" ] && \
   [ "$peer_provider_launch_line" -lt "$peer_client_gate_line" ] && \
-  [ "$peer_client_gate_line" -lt "$peer_client_launch_line" ] || \
-  fail "peer provider/client interactive gates are not ordered after install"
+  [ "$peer_client_gate_line" -lt "$peer_client_preflight_line" ] && \
+  [ "$peer_client_preflight_line" -lt "$peer_client_launch_line" ] || \
+  fail "peer provider/client final gates are not ordered immediately before instrumentation"
 if grep -Fq 'android_unlock_code' <<<"$peer_source"; then
   fail "the runner-owned peer provider still receives the physical-device PIN"
 fi
@@ -1685,6 +1912,10 @@ grep -Fq 'provider-interactive.txt' <<<"$peer_source" || \
   fail "peer provider launch lacks its own durable diagnostic artifact"
 grep -Fq 'client-interactive.txt' <<<"$peer_source" || \
   fail "peer client launch lacks its own durable diagnostic artifact"
+grep -Fq 'provider-preflight.txt' <<<"$peer_source" || \
+  fail "peer provider launch lacks role-attributed preflight evidence"
+grep -Fq 'client-preflight.txt' <<<"$peer_source" || \
+  fail "peer client launch lacks role-attributed preflight evidence"
 
 # The sed range intentionally matches the runner's literal $peer_serial source.
 # shellcheck disable=SC2016
@@ -1709,6 +1940,21 @@ grep -Fq 'smoke-interactive.txt' <<<"$cell_source" || \
   fail "smoke launch lacks its own durable diagnostic artifact"
 grep -Fq 'instrumentation-interactive.txt' <<<"$cell_source" || \
   fail "full launch lacks its own durable diagnostic artifact"
+grep -Fq 'smoke-preflight.txt' <<<"$cell_source" || \
+  fail "smoke launch lacks its own role-attributed preflight evidence"
+grep -Fq 'instrumentation-preflight.txt' <<<"$cell_source" || \
+  fail "full launch lacks its own role-attributed preflight evidence"
+
+preflight_wrapper_source="$(sed -n \
+  '/^run_after_selected_device_interactive()/,/^capture_device_fleet ||/p' \
+  "$runner_source")"
+preflight_command_line="$(grep -Fn -m1 'android_acceptance_preflight_device' \
+  <<<"$preflight_wrapper_source" | cut -d: -f1)"
+preflight_execute_line="$(grep -Fn -m1 '  "$@"' \
+  <<<"$preflight_wrapper_source" | cut -d: -f1)"
+[ -n "$preflight_command_line" ] && [ -n "$preflight_execute_line" ] && \
+  [ "$preflight_command_line" -lt "$preflight_execute_line" ] || \
+  fail "smoke/full commands can execute before their final preflight"
 
 fake_capability_adb() {
   [ "$1" = -s ] || return 90
@@ -2375,16 +2621,22 @@ fi
 remove_android_acceptance_run_dir "$adb_run_dir"
 rm -f "$package_timeout_calls" "$package_uninstall_calls"
 
-system_dialog_calls="$(mktemp "${TMPDIR:-/tmp}/urnetwork-android-system-dialogs.test.XXXXXX")"
-fake_system_dialog_adb() {
-  printf '%s\n' "$*" >>"$system_dialog_calls"
-}
-android_acceptance_suppress_system_error_dialogs \
-  fake_system_dialog_adb emulator-5558 || \
-  fail "could not suppress system error dialogs"
-[ "$(cat "$system_dialog_calls")" = \
-  "-s emulator-5558 shell settings put global hide_error_dialogs 1" ] || \
-  fail "system error dialog suppression did not target the requested AVD"
-rm -f "$system_dialog_calls"
+if rg -n 'hide_error_dialogs|suppress_system_error_dialogs' \
+    "$here/test-main.sh" "$here/test-main-lib.sh" >/dev/null; then
+  fail "acceptance still hides Android system or product crash dialogs globally"
+fi
+
+setup_source="$here/../build/all/android/setup.sh"
+[ -f "$setup_source" ] || fail "Android setup source is missing"
+# This intentionally asserts the literal setup launch expression.
+# shellcheck disable=SC2016
+grep -Fq 'args=(-avd "$avd_name" -gpu host ' "$setup_source" || \
+  fail "Android setup smoke does not launch with host rendering"
+setup_preflight_line="$(grep -n -m1 'android_acceptance_preflight_device' \
+  "$setup_source" | cut -d: -f1)"
+setup_success_line="$(grep -n -m1 'SMOKE TEST PASSED' "$setup_source" | cut -d: -f1)"
+[ -n "$setup_preflight_line" ] && [ -n "$setup_success_line" ] && \
+  [ "$setup_preflight_line" -lt "$setup_success_line" ] || \
+  fail "Android setup can claim smoke success before resource/dialog preflight"
 
 echo "android/test-main.sh runner tests passed"

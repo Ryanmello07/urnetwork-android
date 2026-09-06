@@ -313,6 +313,167 @@ internal sealed class LoginClientCompletion {
     ) : LoginClientCompletion()
 }
 
+internal data class PasswordAuthWireResult(
+    val byJwt: String? = null,
+    val verificationUserAuth: String? = null,
+    val failure: LoginStartupFailure? = null,
+    val failureMessage: String? = null,
+)
+
+internal fun interface PasswordAuthRequester {
+    fun request(
+        userAuth: String,
+        password: String,
+        callback: (PasswordAuthWireResult?, String?) -> Unit,
+    )
+}
+
+internal fun interface NetworkSessionAuthenticator {
+    fun authenticate(
+        byJwt: String,
+        newNetwork: Boolean,
+        completion: (LoginClientCompletion) -> Unit,
+    )
+}
+
+internal sealed class PasswordLoginCompletion {
+    data class Ready(val clientId: String) : PasswordLoginCompletion()
+    data class VerificationRequired(val userAuth: String) : PasswordLoginCompletion()
+    data class Failed(
+        val failure: LoginStartupFailure,
+        val message: String? = null,
+    ) : PasswordLoginCompletion()
+}
+
+/** Owns password-auth completion after the initiating composition is gone. */
+internal class PasswordLoginCoordinator(
+    private val tracker: LoginStartupTracker,
+    private val requester: PasswordAuthRequester,
+    private val sessionAuthenticator: NetworkSessionAuthenticator,
+    private val dispatch: (() -> Unit) -> Unit,
+) {
+    fun authenticate(
+        userAuth: String,
+        password: String,
+        completion: (PasswordLoginCompletion) -> Unit,
+    ): Long {
+        val attemptId = tracker.begin(LoginStartupStage.PASSWORD_AUTH)
+        val completed = AtomicBoolean(false)
+        try {
+            requester.request(userAuth, password) { result, requestError ->
+                if (!completed.compareAndSet(false, true)) return@request
+                dispatch {
+                    complete(attemptId, result, requestError, completion)
+                }
+            }
+        } catch (_: Throwable) {
+            if (completed.compareAndSet(false, true)) {
+                dispatch {
+                    fail(
+                        attemptId,
+                        LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+                        null,
+                        completion,
+                    )
+                }
+            }
+        }
+        return attemptId
+    }
+
+    private fun complete(
+        attemptId: Long,
+        result: PasswordAuthWireResult?,
+        requestError: String?,
+        completion: (PasswordLoginCompletion) -> Unit,
+    ) {
+        if (!tracker.isActive(attemptId)) {
+            completion(PasswordLoginCompletion.Failed(LoginStartupFailure.STALE_ATTEMPT))
+            return
+        }
+        if (requestError != null) {
+            fail(
+                attemptId,
+                LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+                requestError,
+                completion,
+            )
+            return
+        }
+        if (result == null) {
+            fail(
+                attemptId,
+                LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
+                null,
+                completion,
+            )
+            return
+        }
+        result.failure?.let { failure ->
+            fail(attemptId, failure, result.failureMessage, completion)
+            return
+        }
+        result.verificationUserAuth?.takeIf(String::isNotEmpty)?.let { verificationUserAuth ->
+            completion(PasswordLoginCompletion.VerificationRequired(verificationUserAuth))
+            return
+        }
+        val byJwt = result.byJwt?.takeIf(String::isNotEmpty)
+        if (byJwt == null) {
+            fail(
+                attemptId,
+                LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
+                null,
+                completion,
+            )
+            return
+        }
+
+        val sessionCompleted = AtomicBoolean(false)
+        try {
+            sessionAuthenticator.authenticate(
+                byJwt,
+                false,
+                sessionResult@{ sessionCompletion ->
+                    if (!sessionCompleted.compareAndSet(false, true)) return@sessionResult
+                    completion(
+                        when (sessionCompletion) {
+                            is LoginClientCompletion.Ready ->
+                                PasswordLoginCompletion.Ready(sessionCompletion.clientId)
+                            is LoginClientCompletion.Failed ->
+                                PasswordLoginCompletion.Failed(
+                                    sessionCompletion.failure,
+                                    sessionCompletion.message,
+                                )
+                        },
+                    )
+                },
+            )
+        } catch (_: Throwable) {
+            if (!sessionCompleted.compareAndSet(false, true)) return
+            val state = tracker.state.value
+            val failure = (state as? LoginStartupState.Failed)?.failure
+                ?: LoginStartupFailure.NETWORK_SESSION_PERSISTENCE_FAILED
+            val stage = (state as? LoginStartupState.Pending)?.stage
+                ?: LoginStartupStage.NETWORK_SESSION_PERSISTENCE
+            tracker.fail(attemptId, stage, failure)
+            completion(PasswordLoginCompletion.Failed(failure))
+        }
+    }
+
+    private fun fail(
+        attemptId: Long,
+        failure: LoginStartupFailure,
+        message: String?,
+        completion: (PasswordLoginCompletion) -> Unit,
+    ) {
+        if (tracker.fail(attemptId, LoginStartupStage.PASSWORD_AUTH, failure)) {
+            completion(PasswordLoginCompletion.Failed(failure, message))
+        } else {
+            completion(PasswordLoginCompletion.Failed(LoginStartupFailure.STALE_ATTEMPT))
+        }
+    }
+}
+
 /** Coordinates one auth-client response without depending on an Activity lifecycle. */
 internal class LoginClientCoordinator(
     private val tracker: LoginStartupTracker,

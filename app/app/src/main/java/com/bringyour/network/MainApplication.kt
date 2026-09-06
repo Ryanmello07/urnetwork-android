@@ -207,11 +207,73 @@ class MainApplication : Application() {
                 }
             },
             starter = ClientSessionStarter(::startClientSession),
-            dispatch = { action ->
-                if (android.os.Looper.myLooper() == mainLooper) action() else mainHandler.post(action)
-            },
+            dispatch = ::dispatchLoginAction,
         )
     }
+
+    private val passwordLoginCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        PasswordLoginCoordinator(
+            tracker = loginStartupTracker,
+            requester = PasswordAuthRequester { userAuth, password, callback ->
+                val currentApi = api
+                if (currentApi == null) {
+                    callback(
+                        PasswordAuthWireResult(
+                            failure = LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+                        ),
+                        null,
+                    )
+                } else {
+                    val args = com.bringyour.sdk.AuthLoginWithPasswordArgs().apply {
+                        this.userAuth = userAuth
+                        this.password = password
+                        verifyOtpNumeric = true
+                    }
+                    currentApi.authLoginWithPassword(args) { result, error ->
+                        val mappedResponse = runCatching {
+                            val mappedResult = result?.let {
+                                val resultError = it.error
+                                PasswordAuthWireResult(
+                                    byJwt = it.network?.byJwt,
+                                    verificationUserAuth = it.verificationRequired?.userAuth,
+                                    failure = if (resultError == null) {
+                                        null
+                                    } else {
+                                        LoginStartupFailure.PASSWORD_AUTH_REJECTED
+                                    },
+                                    failureMessage = resultError?.message,
+                                )
+                            }
+                            mappedResult to error?.message
+                        }
+                        mappedResponse.fold(
+                            onSuccess = { (mappedResult, requestError) ->
+                                callback(mappedResult, requestError)
+                            },
+                            onFailure = {
+                                callback(
+                                    PasswordAuthWireResult(
+                                        failure = LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
+                                    ),
+                                    null,
+                                )
+                            },
+                        )
+                    }
+                }
+            },
+            sessionAuthenticator = NetworkSessionAuthenticator { byJwt, newNetwork, completion ->
+                authenticateNetworkSession(byJwt, newNetwork, completion)
+            },
+            dispatch = ::dispatchLoginAction,
+        )
+    }
+
+    private fun dispatchLoginAction(action: () -> Unit) {
+        if (android.os.Looper.myLooper() == mainLooper) action() else mainHandler.post(action)
+    }
+
+    internal fun dispatchLoginResult(action: () -> Unit) = dispatchLoginAction(action)
 
     @Inject
     lateinit var deviceManager: DeviceManager
@@ -1327,10 +1389,35 @@ class MainApplication : Application() {
      * signing in: the SDK reads a missing flag as "may prompt", so the flag
      * is written explicitly on every login, before the device reads it.
      */
-    fun beginPasswordLogin(): Long = loginStartupTracker.begin(LoginStartupStage.PASSWORD_AUTH)
+    internal fun authenticateWithPassword(
+        userAuth: String,
+        password: String,
+        completion: (PasswordLoginCompletion) -> Unit,
+    ): Long = passwordLoginCoordinator.authenticate(userAuth, password, completion)
 
-    fun failPasswordLogin(attemptId: Long, failure: LoginStartupFailure) {
-        loginStartupTracker.fail(attemptId, LoginStartupStage.PASSWORD_AUTH, failure)
+    internal fun authenticateNetworkSession(
+        byJwt: String,
+        newNetwork: Boolean,
+        completion: (LoginClientCompletion) -> Unit,
+    ) {
+        dispatchLoginAction {
+            if (!login(byJwt, newNetwork)) {
+                val state = loginStartupState.value
+                val failure = (state as? LoginStartupState.Failed)?.failure
+                    ?: LoginStartupFailure.NETWORK_SESSION_PERSISTENCE_FAILED
+                completion(LoginClientCompletion.Failed(failure))
+                return@dispatchLoginAction
+            }
+            authenticateLoginClient(completion)
+        }
+    }
+
+    internal fun persistNetworkSession(
+        byJwt: String,
+        newNetwork: Boolean,
+        completion: (Boolean) -> Unit,
+    ) {
+        dispatchLoginAction { completion(login(byJwt, newNetwork)) }
     }
 
     fun login(byJwt: String, newNetwork: Boolean = false): Boolean {

@@ -62,7 +62,11 @@ internal const val ACCEPTANCE_INSTANT_ERROR_TAG = "acceptance.instant.error"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateNetworkInstant(
-    appLogin: (byJwt: String, newNetwork: Boolean) -> Unit,
+    appLogin: (
+        byJwt: String,
+        newNetwork: Boolean,
+        completion: (Boolean) -> Unit,
+    ) -> Unit,
     onBack: () -> Unit,
     createNetworkInstantViewModel: CreateNetworkInstantViewModel = hiltViewModel(),
 ) {

@@ -7,9 +7,7 @@ import android.os.SystemClock
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.bringyour.network.BuildConfig
 import com.bringyour.network.LoginActivity
 import com.bringyour.network.LoginStartupState
@@ -66,6 +64,7 @@ class PhysicalLowbarSessionTest {
     private val activeClientFile = File(acceptanceDir, "physical-active-client-id")
     private val activeClientLedger = ActiveClientLedger(File(acceptanceDir, "active-client-ids"))
     private val expectedPeerFile = File(acceptanceDir, "physical-expected-peer-id")
+    private val startupGoroutinesFile = File(acceptanceDir, "physical-startup-goroutines.txt")
 
     @Volatile
     private var phase = "startup"
@@ -140,9 +139,14 @@ class PhysicalLowbarSessionTest {
             SystemClock.sleep(100)
         }
         val state = application.loginStartupState.value
-        throw AssertionError(
-            "Timed out waiting for authenticated DeviceLocal; login state=${state.javaClass.simpleName}",
-        )
+        throwLoginStartupTimeout(
+            state,
+            AssertionError(
+                "Timed out waiting for authenticated DeviceLocal; login state=${state.javaClass.simpleName}",
+            ),
+        ) {
+            Sdk.writeGoroutineStacks(startupGoroutinesFile.absolutePath)
+        }
     }
 
     private fun retainActiveClient(clientId: String) {
@@ -155,14 +159,6 @@ class PhysicalLowbarSessionTest {
 
     private class CleanupLedgerFailureException(cause: Throwable) :
         IllegalStateException("client cleanup ownership could not be persisted", cause)
-
-    private fun handleVpnConsentIfPresent() {
-        val button = uiDevice.wait(
-            Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)^(allow|ok)$"))),
-            8_000,
-        ) ?: uiDevice.findObject(By.res("android:id/button1"))
-        button?.click()
-    }
 
     private fun peerEgressProbe(): String {
         return EgressProbeRequest.queryPublicIp(instrumentation, EGRESS_TIMEOUT_MILLIS).also {
@@ -773,7 +769,7 @@ class PhysicalLowbarSessionTest {
         stopProvider(application, device)
         configureClientMode(device, mode)
         connectVc.connectBestAvailable()
-        handleVpnConsentIfPresent()
+        uiDevice.clickVerifiedVpnConsentIfPresent()
         waitFor("public VPN connection", CONNECT_TIMEOUT_MILLIS) {
             connectVc.connected && device.connectEnabled && device.tunnelStarted
         }
@@ -788,7 +784,7 @@ class PhysicalLowbarSessionTest {
         application.deviceManager.provideNetworkMode = ProvideNetworkMode.ALL
         application.deviceManager.provideControlMode = ProvideControlMode.NETWORK
         device.providePaused = false
-        handleVpnConsentIfPresent()
+        uiDevice.clickVerifiedVpnConsentIfPresent()
         waitFor("same-network provider", CONNECT_TIMEOUT_MILLIS) {
             device.provideEnabled &&
                 device.provideMode == Sdk.ProvideModeNetwork &&
@@ -841,7 +837,7 @@ class PhysicalLowbarSessionTest {
             peerLocation(peerVc, networkPeer) != null
         }
         connectVc.connect(checkNotNull(peerLocation(peerVc, networkPeer)))
-        handleVpnConsentIfPresent()
+        uiDevice.clickVerifiedVpnConsentIfPresent()
         waitFor("same-network peer VPN connection", CONNECT_TIMEOUT_MILLIS) {
             connectVc.connected && device.connectEnabled && device.tunnelStarted
         }
@@ -986,6 +982,7 @@ class PhysicalLowbarSessionTest {
         statusFile.delete()
         samplesFile.delete()
         summaryFile.delete()
+        startupGoroutinesFile.delete()
 
         val application = context.applicationContext as MainApplication
         val ledgerFailure = AtomicReference<Throwable?>()

@@ -62,6 +62,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.bringyour.sdk.NetworkCreateArgs
 import com.bringyour.network.LoginActivity
+import com.bringyour.network.LoginClientCompletion
 import com.bringyour.network.MainApplication
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.TermsCheckbox
@@ -298,59 +299,69 @@ fun LoginCreateNetwork(
         inProgress = true
 
         application?.api?.networkCreate(args) { result, err ->
-            scope.launch {
-
+            application.dispatchLoginResult {
                 if (err != null) {
-                    createNetworkError = err.message ?: createNetworkErrorMsg
-                    inProgress = false
-                } else if (result.error != null) {
-                    createNetworkError = result.error.message
-                    inProgress = false
-                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
-                    createNetworkError = null
-
-                    application.login(result.network.byJwt, newNetwork = true)
-
-                    isContentVisible = false
-
-                    delay(500)
-
-                    welcomeOverlayVisible = true
-
-                    delay(2250)
-
-                    loginActivity?.authClientAndFinish(
-                        { error ->
-                            inProgress = false
-                            createNetworkError = error
-
-                            if (error != null) {
-                                val visibility = loginRetryVisibility()
-                                isContentVisible = visibility.contentVisible
-                                welcomeOverlayVisible = visibility.welcomeOverlayVisible
-                            }
-                        }
-                    )
-                } else if (result.verificationRequired != null) {
-
-                    var userAuth: String? = null
-                    if (params is LoginCreateNetworkParams.LoginCreateUserAuthParams) {
-                        userAuth = params.userAuth
-                    } else if (params is LoginCreateNetworkParams.LoginCreateAuthJwtParams) {
-                        userAuth = result.verificationRequired.userAuth
+                    scope.launch {
+                        createNetworkError = err.message ?: createNetworkErrorMsg
+                        inProgress = false
                     }
-
-                    userAuth?.let {
-                        navController.navigate("verify/${Uri.encode(it)}")
-                    } ?: run {
+                } else if (result == null) {
+                    scope.launch {
                         createNetworkError = createNetworkErrorMsg
+                        inProgress = false
                     }
+                } else if (result.error != null) {
+                    scope.launch {
+                        createNetworkError = result.error.message
+                        inProgress = false
+                    }
+                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
+                    application.authenticateNetworkSession(
+                        result.network.byJwt,
+                        newNetwork = true,
+                    ) { completion ->
+                        if (completion is LoginClientCompletion.Ready) {
+                            loginActivity?.finishAuthenticatedLoginAfterWelcome()
+                        }
+                        scope.launch {
+                            val error = (completion as? LoginClientCompletion.Failed)?.message
+                            if (completion is LoginClientCompletion.Ready) {
+                                createNetworkError = null
+                                isContentVisible = false
+                                delay(500)
+                                welcomeOverlayVisible = true
+                                return@launch
+                            }
+                            inProgress = false
+                            createNetworkError = error ?: createNetworkErrorMsg
 
-                    inProgress = false
+                            val visibility = loginRetryVisibility()
+                            isContentVisible = visibility.contentVisible
+                            welcomeOverlayVisible = visibility.welcomeOverlayVisible
+                        }
+                    }
+                } else if (result.verificationRequired != null) {
+                    scope.launch {
+                        val verificationUserAuth = when (params) {
+                            is LoginCreateNetworkParams.LoginCreateUserAuthParams -> params.userAuth
+                            is LoginCreateNetworkParams.LoginCreateAuthJwtParams ->
+                                result.verificationRequired.userAuth
+                            is LoginCreateNetworkParams.LoginCreateWalletParams -> null
+                        }
 
+                        verificationUserAuth?.let {
+                            navController.navigate("verify/${Uri.encode(it)}")
+                        } ?: run {
+                            createNetworkError = createNetworkErrorMsg
+                        }
+
+                        inProgress = false
+                    }
                 } else {
-                    createNetworkError = createNetworkErrorMsg
-                    inProgress = false
+                    scope.launch {
+                        createNetworkError = createNetworkErrorMsg
+                        inProgress = false
+                    }
                 }
             }
         } ?: run {

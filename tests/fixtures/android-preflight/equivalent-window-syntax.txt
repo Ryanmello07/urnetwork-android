@@ -1,0 +1,3 @@
+    mFocusedWindow=com.sec.android.app.launcher/com.sec.android.app.launcher.activities.LauncherActivity
+  mCurrentFocus=Window{d65aee4 u0 com.sec.android.app.launcher/com.sec.android.app.launcher.activities.LauncherActivity}
+    mFocusedWindow=Window{d65aee4 u0 com.sec.android.app.launcher/com.sec.android.app.launcher.activities.LauncherActivity}

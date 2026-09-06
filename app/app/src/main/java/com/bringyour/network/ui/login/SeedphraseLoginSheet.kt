@@ -155,12 +155,13 @@ fun SeedphraseLoginSheet(
                             api = application?.api,
                             seedphrase = normalized,
                             onSuccess = { jwt ->
-                                isFinishing = true
-                                scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                onLogin(jwt)
+                                scope.launch {
+                                    isFinishing = true
+                                    sheetState.hide()
                                     if (!sheetState.isVisible) {
                                         setIsPresenting(false)
                                     }
-                                    onLogin(jwt)
                                 }
                             },
                             onError = { msg ->
