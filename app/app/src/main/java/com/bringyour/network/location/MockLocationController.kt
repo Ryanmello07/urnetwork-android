@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
-import com.bringyour.network.TAG
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,6 +39,7 @@ class MockLocationController @Inject constructor(
 ) {
 
     companion object {
+        private const val TAG = "MockLocationController"
         const val PREFS_NAME = "mock_location"
         const val PREF_KEY_ENABLED = "enabled"
         const val PREF_KEY_REGISTERED_PROVIDERS = "registered_providers"
@@ -84,6 +84,8 @@ class MockLocationController @Inject constructor(
     private var devOptionsEnabled = false
     private var selectedMockApp = false
     private var locationServicesEnabled = false
+    private var locationPermissionGranted = false
+    private var requiresLocationPermission = false
 
     private val _state = MutableStateFlow(
         MockLocationState(MockLocationStatus.DISABLED, enabled = false, target = null)
@@ -122,6 +124,7 @@ class MockLocationController @Inject constructor(
                 return@post
             }
             target = newTarget
+            Log.i(TAG, "mock location target updated present=${newTarget != null}")
             errorTransient = false
             if (posting && newTarget != null) {
                 teleport = true
@@ -186,8 +189,9 @@ class MockLocationController @Inject constructor(
             // the op callback arrives on a binder thread
             handler.post { onMockLocationOpChanged() }
         }
-        if (!enabled) {
-            // §6.3: nothing removes test providers on process death — clear
+        if (resolveStatus() != MockLocationStatus.ACTIVE) {
+            // §6.3: nothing removes test providers on process death, and a
+            // toggle left ON does not mean this process armed them — clear
             // anything a previous process left behind
             removeAllTestProviders()
         }
@@ -197,9 +201,11 @@ class MockLocationController @Inject constructor(
     private fun onMockLocationOpChanged() {
         refreshEligibilitySignals()
         if (selectedMockApp && !posting && (orphaned || !enabled)) {
-            // the op is back: the deferred cleanup is now possible (§6.4).
-            // On success this clears the orphaned flag; reconcile then lands
-            // on DISABLED (toggle off) or re-arms cleanly (toggle on).
+            // the mock-location op is back (the watcher also wakes us for
+            // COARSE changes; this branch is idempotent either way): the
+            // deferred cleanup is now possible (§6.4). On success this clears
+            // the orphaned flag; reconcile then lands on DISABLED (toggle off)
+            // or re-arms cleanly (toggle on).
             removeAllTestProviders()
         }
         reconcile()
@@ -209,6 +215,8 @@ class MockLocationController @Inject constructor(
         devOptionsEnabled = isDeveloperOptionsEnabled(context)
         selectedMockApp = isSelectedMockLocationApp(context)
         locationServicesEnabled = isLocationServicesEnabled(context)
+        requiresLocationPermission = supportsFusedMockLocation(context)
+        locationPermissionGranted = hasLocationPermission(context)
     }
 
     private fun resolveStatus(): MockLocationStatus {
@@ -227,8 +235,16 @@ class MockLocationController @Inject constructor(
         val shouldPost = resolveStatus() == MockLocationStatus.ACTIVE && !errorTransient
         if (shouldPost && !posting) {
             arm()
-        } else if (!shouldPost && posting) {
+        } else if (!shouldPost && (posting || mayHaveRegisteredProviders())) {
             disarm()
+        }
+        // the grant can arrive while the AOSP leg is already armed (the
+        // guide's button); engage the optional mirror without re-arming
+        if (posting && !fusedActive && locationPermissionGranted &&
+            supportsFusedMockLocation(context)
+        ) {
+            fusedActive = true
+            setFusedMockMode(context, true)
         }
         publishState()
     }
@@ -251,6 +267,8 @@ class MockLocationController @Inject constructor(
             devOptionsEnabled = devOptionsEnabled,
             mockAppSelected = selectedMockApp,
             locationServicesEnabled = locationServicesEnabled,
+            locationPermissionGranted = locationPermissionGranted,
+            requiresLocationPermission = requiresLocationPermission,
         )
     }
 
@@ -286,7 +304,9 @@ class MockLocationController @Inject constructor(
                 addTestProvider(locationManager, name)
             }
             registeredProviders = names
-            fusedActive = supportsFusedMockLocation(context)
+            // the FLP mirror is the only leg that needs the COARSE grant
+            // (§3.2); the AOSP test providers above are already registered
+            fusedActive = supportsFusedMockLocation(context) && locationPermissionGranted
             if (fusedActive) {
                 setFusedMockMode(context, true)
             }
@@ -357,9 +377,24 @@ class MockLocationController @Inject constructor(
 
     private fun disarm() {
         handler.removeCallbacks(postRunnable)
+        val wasPosting = posting
         posting = false
         fusedActive = false
         removeAllTestProviders()
+        if (wasPosting) {
+            // reconcile lets disarm run purely to reclaim leftovers; only a
+            // real stop is worth a line
+            Log.i(TAG, "mock location disarmed")
+        }
+    }
+
+    // providers can be registered while `posting` is false: arm() persists the
+    // claimed set before it registers anything, and a failed cleanup keeps it.
+    // Without this, a disarm that must reclaim leftovers is skipped whenever
+    // posting is already false (§6.3/§6.4).
+    private fun mayHaveRegisteredProviders(): Boolean {
+        return registeredProviders.isNotEmpty() ||
+                prefs.getStringSet(PREF_KEY_REGISTERED_PROVIDERS, null)?.isNotEmpty() == true
     }
 
     // Best-effort removal of every provider this app may have registered
@@ -423,7 +458,7 @@ class MockLocationController @Inject constructor(
                         buildLocation(name, postTarget, accuracy),
                     )
                 }
-                if (fusedActive) {
+                if (fusedActive && locationPermissionGranted) {
                     setFusedMockLocation(
                         context,
                         buildLocation(LocationManager.GPS_PROVIDER, postTarget, accuracy),
