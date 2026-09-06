@@ -3,8 +3,40 @@ package com.bringyour.network.acceptance
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextReplacement
+
+/** Binds the shared password-login contract to Compose semantics. */
+internal class ComposePasswordLoginUi(
+    private val compose: ComposeTestRule,
+) : PasswordLoginUi {
+    override fun waitForTag(tag: String, timeoutMillis: Long) {
+        try {
+            compose.waitUntil(timeoutMillis) {
+                compose.onAllNodesWithTag(tag, useUnmergedTree = true)
+                    .fetchSemanticsNodes(atLeastOneRootRequired = false)
+                    .isNotEmpty()
+            }
+        } catch (error: Throwable) {
+            throw AssertionError(
+                "Timed out waiting for UI tag $tag after ${timeoutMillis / 1_000}s",
+                error,
+            )
+        }
+    }
+
+    override fun replaceTagText(tag: String, value: String) {
+        compose.onNodeWithTag(tag, useUnmergedTree = true)
+            .assertExists()
+            .performTextReplacement(value)
+    }
+
+    override fun performEnabledTagClick(tag: String, timeoutMillis: Long) {
+        compose.performEnabledSemanticsClick(tag, timeoutMillis)
+    }
+}
 
 /**
  * Waits for the tagged control's enabled semantics before an acceptance action.

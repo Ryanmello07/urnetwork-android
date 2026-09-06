@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.settings
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import com.bringyour.network.BuildConfig
 import android.app.Activity
 import android.content.Context
@@ -125,8 +126,27 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bringyour.network.TAG
 import com.bringyour.network.ui.components.ProvideCellPicker
 import com.bringyour.network.ui.components.ProvideControlModePicker
+import com.bringyour.network.location.MockLocationStatus
+import com.bringyour.network.location.MockLocationTarget
+import com.bringyour.network.ui.connect.providerlocations.MockLocationViewModel
 import com.bringyour.network.ui.login.SeedphraseDisplayScreen
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
+/**
+ * Stateful root composable for the Settings screen, observing view model states
+ * and binding UI callbacks for account management, network modes, permissions,
+ * seed phrase verification, and mock location synchronization.
+ *
+ * @param navController Navigation controller for routing to nested screens and external flows.
+ * @param accountViewModel ViewModel managing authenticated user profile and client identity.
+ * @param planViewModel ViewModel managing subscription tier and upgrade options.
+ * @param settingsViewModel ViewModel managing application configuration and hardware preferences.
+ * @param overlayViewModel ViewModel managing global overlay dialogs and sheets.
+ * @param activityResultSender Sender for Mobile Wallet Adapter (MWA) activity results.
+ * @param earningsViewModel ViewModel managing earnings, rewards, and Seeker token holder status.
+ * @param isPro True if the current account holds an active supporter subscription tier.
+ * @param mockLocationViewModel ViewModel managing mock location simulation preferences and status.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -137,8 +157,25 @@ fun SettingsScreen(
     overlayViewModel: OverlayViewModel,
     activityResultSender: ActivityResultSender?,
     earningsViewModel: EarningsViewModel,
-    isPro: Boolean
+    isPro: Boolean,
+    mockLocationViewModel: MockLocationViewModel = hiltViewModel(),
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mockLocationState by mockLocationViewModel.state.collectAsState()
+
+    LaunchedEffect(Unit) {
+        mockLocationViewModel.refreshEligibility()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mockLocationViewModel.refreshEligibility()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val notificationsAllowed = settingsViewModel.permissionGranted.collectAsState().value
     val showDeleteAccountDialog = settingsViewModel.showDeleteAccountDialog.collectAsState().value
@@ -289,6 +326,20 @@ fun SettingsScreen(
         isGeneratingSeedphrase = isGeneratingSeedphrase,
         isRegeneratingSeedphrase = isRegeneratingSeedphrase,
         onSeedphraseActionClick = { action -> pendingSeedphraseAction = action },
+        mockLocationEnabled = mockLocationState.enabled,
+        mockLocationSetupComplete = mockLocationState.setupComplete,
+        mockLocationStatus = mockLocationState.status,
+        mockLocationTarget = mockLocationState.target,
+        onToggleMockLocation = {
+            val enabled = !mockLocationState.enabled
+            mockLocationViewModel.setEnabled(enabled)
+            if (mockLocationState.status == MockLocationStatus.ORPHANED || (enabled && !mockLocationState.setupComplete)) {
+                navController.navigate(Route.MockLocationGuide)
+            }
+        },
+        onOpenMockLocationGuide = {
+            navController.navigate(Route.MockLocationGuide)
+        },
     )
 
     if (isPresentingRenameDevice) {
@@ -466,6 +517,9 @@ fun SettingsScreen(
 
 }
 
+// stateless presentation half of the settings screen: every value and
+// callback is hoisted into the stateful composable above, which is what makes
+// the previews at the bottom of this file possible
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(
@@ -508,6 +562,12 @@ private fun SettingsScreen(
     isGeneratingSeedphrase: Boolean,
     isRegeneratingSeedphrase: Boolean,
     onSeedphraseActionClick: (SeedphraseAction) -> Unit,
+    mockLocationEnabled: Boolean = false,
+    mockLocationSetupComplete: Boolean = false,
+    mockLocationStatus: MockLocationStatus = MockLocationStatus.DISABLED,
+    mockLocationTarget: MockLocationTarget? = null,
+    onToggleMockLocation: () -> Unit = {},
+    onOpenMockLocationGuide: () -> Unit = {},
 ) {
 
     val context = LocalContext.current
@@ -547,8 +607,9 @@ private fun SettingsScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
+                .tabletReadableColumn()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             Row(
@@ -919,26 +980,78 @@ private fun SettingsScreen(
             /**
              * Device location sync (the mock location provider setup guide)
              */
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        navController.navigate(Route.MockLocationGuide)
-                    }
-                    .padding(vertical = 6.dp)
-                ,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    stringResource(id = R.string.mock_location_settings_row),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                onOpenMockLocationGuide()
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            stringResource(id = R.string.mock_location_settings_row),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Keyboard Arrow Right",
-                    tint = TextMuted
-                )
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Keyboard Arrow Right",
+                            tint = TextMuted
+                        )
+                    }
+
+                    // ORPHANED is not a togglable state: the test providers are
+                    // stuck until URnetwork is re-selected in developer options
+                    // and cleanup retries itself, so a switch that still reads ON
+                    // would be lying. Every other state stays tappable — an
+                    // incomplete setup reaches the guide through this switch.
+                    URSwitch(
+                        checked = mockLocationEnabled &&
+                                mockLocationStatus != MockLocationStatus.ORPHANED,
+                        enabled = mockLocationStatus != MockLocationStatus.ORPHANED,
+                        toggle = onToggleMockLocation,
+                    )
+                }
+
+                val statusSubtitle = when {
+                    mockLocationStatus == MockLocationStatus.ORPHANED ->
+                        stringResource(id = R.string.mock_location_status_stuck)
+                    mockLocationStatus == MockLocationStatus.ERROR_TRANSIENT ->
+                        stringResource(id = R.string.mock_location_status_retrying)
+                    mockLocationEnabled && !mockLocationSetupComplete ->
+                        stringResource(id = R.string.mock_location_needs_setup)
+                    mockLocationStatus == MockLocationStatus.ACTIVE && mockLocationTarget != null ->
+                        stringResource(id = R.string.mock_location_active, mockLocationTarget.label)
+                    mockLocationStatus == MockLocationStatus.ELIGIBLE && mockLocationEnabled ->
+                        stringResource(id = R.string.mock_location_waiting_for_provider)
+                    else -> null
+                }
+
+                if (statusSubtitle != null) {
+                    // the two failure states are the only red ones; the rest of
+                    // the chain is progress, not a problem
+                    val statusIsError = mockLocationStatus == MockLocationStatus.ORPHANED ||
+                            mockLocationStatus == MockLocationStatus.ERROR_TRANSIENT
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        statusSubtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (statusIsError)
+                            MaterialTheme.colorScheme.error
+                        else
+                            TextMuted
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -998,6 +1111,8 @@ private fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // product updates is an account email preference — it flips a flag
+            // on the network account and collects nothing from the device
             URTextInputLabel(text = stringResource(id = R.string.stay_in_touch))
 
             Row(

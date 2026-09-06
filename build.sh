@@ -7,7 +7,7 @@
 #      (../localizations/keys). The pipeline regenerates before every build,
 #      so a string that exists only in strings.xml but not in the store
 #      disappears there — running this locally reproduces that failure mode.
-#   2. run the pipeline's host gradle build (play + dApp store flavors), plus
+#   2. run the pipeline's host gradle build (Play + Solana store flavors), plus
 #      a compile check of the github flavor (its APK is built by
 #      build/all/build-fdroid.sh in the F-Droid buildserver container).
 #
@@ -43,8 +43,7 @@ fi
 echo "== gradle build (pipeline host flavors + github compile check)"
 (cd "$here/app" &&
     ./gradlew clean assemblePlayRelease bundlePlayRelease \
-        assembleSolana_dappRelease assembleEthos_dappRelease \
-        compileGithubReleaseKotlin)
+        assembleSolana_dappRelease compileGithubReleaseKotlin)
 
 if [ -z "${SKIP_FDROID:-}" ]; then
     echo "== fdroid container build (github flavor, like the pipeline)"

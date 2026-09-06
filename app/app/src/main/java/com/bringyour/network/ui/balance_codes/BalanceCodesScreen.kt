@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.balance_codes
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -148,7 +149,7 @@ private fun BalanceCodesTable(
         if (balanceCodes.isEmpty()) {
 
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.tabletReadableColumn().fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {

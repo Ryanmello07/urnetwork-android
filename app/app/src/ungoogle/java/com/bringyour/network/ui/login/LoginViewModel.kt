@@ -143,6 +143,16 @@ class LoginViewModel @Inject constructor(
         args.seedphrase = normalized
 
         authApi.authLogin(args) { result, err ->
+            val networkJwt = if (err == null && result?.error == null) {
+                result?.network?.byJwt?.takeIf(String::isNotEmpty)
+            } else {
+                null
+            }
+            if (networkJwt != null && result != null) {
+                onSuccess(networkJwt)
+                viewModelScope.launch { seedphraseAuthInProgress = false }
+                return@authLogin
+            }
             viewModelScope.launch {
                 if (err != null) {
                     setLoginError(err.message)
@@ -150,9 +160,6 @@ class LoginViewModel @Inject constructor(
                 } else if (result?.error != null) {
                     setLoginError(result.error.message)
                     onError(result.error.message ?: "Invalid seedphrase")
-                } else if (result?.network != null && result.network.byJwt.isNotEmpty()) {
-                    setLoginError(null)
-                    onSuccess(result.network.byJwt)
                 } else {
                     val msg = "Invalid seedphrase"
                     setLoginError(msg)
@@ -195,6 +202,15 @@ class LoginViewModel @Inject constructor(
             args.walletAuth = walletAuth
 
             authApi.authLogin(args) { result, err ->
+                val networkJwt = if (err == null && result?.error == null) {
+                    result?.network?.byJwt?.takeIf(String::isNotEmpty)
+                } else {
+                    null
+                }
+                if (networkJwt != null && result != null) {
+                    onLogin(result)
+                    return@authLogin
+                }
                 viewModelScope.launch {
                     // googleAuthInProgress = false
 
@@ -202,11 +218,6 @@ class LoginViewModel @Inject constructor(
                         setLoginError(err.message)
                     } else if (result.error != null) {
                         setLoginError(result.error.message)
-                    } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
-                        setLoginError(null)
-
-                        onLogin(result)
-
                     } else {
                         setLoginError(null)
 

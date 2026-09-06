@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import com.bringyour.network.ui.components.overlays.WelcomeAnimatedOverlayLogin
@@ -57,9 +58,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
-import com.bringyour.sdk.AuthLoginWithPasswordArgs
 import com.bringyour.network.LoginActivity
 import com.bringyour.network.MainApplication
+import com.bringyour.network.PasswordLoginCompletion
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URInlineErrorText
@@ -104,57 +105,34 @@ fun LoginPassword(
         loginError = null
         inProgress = true
 
-        val args = AuthLoginWithPasswordArgs()
-        args.userAuth = user.text
-        args.password = password.text
-        args.verifyOtpNumeric = true
-
-        app?.api?.authLoginWithPassword(args) { result, err ->
-            scope.launch {
-
-                if (err != null) {
-                    inProgress = false
-                    loginError = err.message
-                } else if (result.error != null) {
-                    inProgress = false
-                    loginError = result.error.message
-                } else if (result.network != null) {
-                    loginError = null
-
-                    if (result.verificationRequired != null) {
-
-                        navController.navigate("verify/${Uri.encode(userAuth)}")
-
-                    } else {
-                        app.login(result.network.byJwt)
-
-                        isContentVisible = false
-
-                        delay(500)
-
-                        welcomeOverlayVisible = true
-
-                        delay(2250)
-
-                        loginActivity?.authClientAndFinish(
-                            { error ->
-                            if (error != null) {
-                                inProgress = false
-                            }
-
-                            loginError = error
-                            }
-                        )
-                    }
-
-                } else {
-                    loginError = loginErrMsg
-                    inProgress = false
-                }
-            }
-        } ?: run {
+        val application = app
+        if (application == null) {
             loginError = loginErrMsg
             inProgress = false
+            return@login
+        }
+        application.authenticateWithPassword(user.text, password.text) { completion ->
+            if (completion is PasswordLoginCompletion.Ready) {
+                loginActivity?.finishAuthenticatedLoginAfterWelcome()
+            }
+            scope.launch {
+                when (completion) {
+                    is PasswordLoginCompletion.Failed -> {
+                        inProgress = false
+                        loginError = completion.message ?: loginErrMsg
+                    }
+                    is PasswordLoginCompletion.VerificationRequired -> {
+                        inProgress = false
+                        navController.navigate("verify/${Uri.encode(completion.userAuth)}")
+                    }
+                    is PasswordLoginCompletion.Ready -> {
+                        loginError = null
+                        isContentVisible = false
+                        delay(500)
+                        welcomeOverlayVisible = true
+                    }
+                }
+            }
         }
         Unit
     }
@@ -239,7 +217,7 @@ fun LoginPasswordForm(
 ) {
     Column(
         modifier = Modifier
-            .widthIn(max = 512.dp)
+            .tabletForm()
             .imePadding()
     ) {
         URTextInput(

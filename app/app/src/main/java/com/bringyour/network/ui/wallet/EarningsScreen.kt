@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.wallet
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -237,6 +238,7 @@ fun EarningsScreenContent(
         ) {
             Column(
                 modifier = Modifier
+                    .tabletReadableColumn()
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)

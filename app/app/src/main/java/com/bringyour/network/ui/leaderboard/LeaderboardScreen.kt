@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.leaderboard
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -96,8 +97,9 @@ fun LeaderboardScreen(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
                 .padding(innerPadding)
+                .tabletReadableColumn()
+                .fillMaxSize()
         ) {
 
             LeaderboardTabs(
@@ -136,6 +138,7 @@ fun LeaderboardScreen(
 
                             LazyColumn(
                                 modifier = Modifier
+                                    .tabletReadableColumn()
                                     .fillMaxSize()
                             ) {
 

@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -136,7 +137,7 @@ fun LoginPasswordResetAfterSend(
         ) {
             Column (
                 modifier = Modifier
-                    .fillMaxWidth().widthIn(max = 512.dp)
+                    .fillMaxWidth().tabletForm()
             ) {
                 Text(
                     stringResource(id = R.string.reset_link_sent),

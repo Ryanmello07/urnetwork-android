@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.leaderboard
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -169,7 +170,7 @@ fun PointsLeaderboardTab(
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.tabletReadableColumn().fillMaxSize()
         ) {
             item(key = "points-header") {
                 PointsHeader(

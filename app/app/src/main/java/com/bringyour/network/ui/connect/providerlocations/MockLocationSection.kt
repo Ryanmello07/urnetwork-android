@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +28,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import com.bringyour.network.R
 import com.bringyour.network.location.MockLocationStatus
 import com.bringyour.network.ui.Route
@@ -36,9 +40,14 @@ import com.bringyour.network.ui.theme.TextMuted
 
 /**
  * The Android-only "sync device location with provider" control at the top of
- * the provider locations sheet. The OS gives no callback when the user picks
- * the mock location app, so eligibility is re-read whenever this returns to
- * the foreground (the same discipline as the battery optimization toggle).
+ * the provider locations sheet.
+ *
+ * The OS gives no callback when the user picks the mock location app, so eligibility
+ * is re-read whenever this returns to the foreground (the same discipline as the
+ * battery optimization toggle).
+ *
+ * @param navController Navigation controller used to route to setup and troubleshooting guides.
+ * @param viewModel ViewModel providing mock location state and actions.
  */
 @Composable
 fun MockLocationSection(
@@ -103,15 +112,15 @@ fun MockLocationSection(
                 }
             }
 
+            // ORPHANED is not a togglable state: the test providers are stuck until
+            // the op comes back, so the preference cannot express what the user wants.
+            // The recovery row below is the way out of it from this screen.
             URSwitch(
-                checked = state.enabled,
+                checked = state.enabled && state.status != MockLocationStatus.ORPHANED,
+                enabled = state.status != MockLocationStatus.ORPHANED,
                 toggle = {
                     val enabled = !state.enabled
                     viewModel.setEnabled(enabled)
-                    // Turning it on with the device already set up just works —
-                    // only an incomplete setup opens the guide. `setupComplete`
-                    // is used rather than `status`, which reads DISABLED while
-                    // the toggle is off no matter how the device is configured.
                     if (enabled && !state.setupComplete) {
                         navController.navigate(Route.MockLocationGuide)
                     }
@@ -126,6 +135,7 @@ fun MockLocationSection(
             MockLocationStatus.NEEDS_DEV_OPTIONS,
             MockLocationStatus.NEEDS_SELECTION,
             MockLocationStatus.NEEDS_LOCATION_ON,
+            MockLocationStatus.NEEDS_LOCATION_PERMISSION,
             -> stringResource(id = R.string.mock_location_needs_setup)
 
             MockLocationStatus.ELIGIBLE ->
@@ -136,7 +146,7 @@ fun MockLocationSection(
             } ?: stringResource(id = R.string.use_most_stable_provider)
 
             MockLocationStatus.ORPHANED ->
-                stringResource(id = R.string.mock_location_error_cleanup_required)
+                stringResource(id = R.string.mock_location_status_stuck)
 
             else -> stringResource(id = R.string.use_most_stable_provider)
         }
@@ -144,7 +154,36 @@ fun MockLocationSection(
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
+            color = if (state.status == MockLocationStatus.ORPHANED)
+                MaterialTheme.colorScheme.error
+            else
+                TextMuted,
         )
+
+        if (state.status == MockLocationStatus.ORPHANED) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate(Route.MockLocationGuide) }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(id = R.string.mock_location_error_stuck_detail),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    // without the weight the text takes the whole row and the
+                    // chevron below measures to zero width
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
     }
 }

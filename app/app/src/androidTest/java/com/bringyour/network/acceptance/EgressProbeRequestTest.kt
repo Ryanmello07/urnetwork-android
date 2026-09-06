@@ -20,7 +20,7 @@ class EgressProbeRequestTest {
         )
 
         assertEquals("ACCEPTANCE_IP=203.0.113.7", response.message)
-        assertEquals(instrumentation.context.applicationInfo.uid, response.sourceUid)
-        assertNotEquals(instrumentation.targetContext.applicationInfo.uid, response.sourceUid)
+        assertEquals(instrumentation.context.installedPackageUid(), response.sourceUid)
+        assertNotEquals(instrumentation.targetContext.installedPackageUid(), response.sourceUid)
     }
 }

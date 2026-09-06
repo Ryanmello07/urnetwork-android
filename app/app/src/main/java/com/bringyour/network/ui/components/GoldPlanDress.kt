@@ -24,12 +24,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.referral.rememberReducedMotion
 import com.bringyour.network.ui.theme.Black
+import com.bringyour.network.ui.theme.Pink
 import com.bringyour.network.ui.theme.ProGold
 import com.bringyour.network.ui.theme.ProGoldLight
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
@@ -40,6 +42,11 @@ import com.bringyour.network.ui.theme.TopBarTitleTextStyle
  * ground with a gold wash brighter at the top left, and a white light that
  * runs around the gold border. Both motions stop under reduced motion,
  * leaving the static gold dress.
+ *
+ * When the box is the selected plan the dress also carries the app's purple
+ * selection language: the halo layers a purple glow over the gold one, the
+ * ground takes a slight purple tint, and the border base is a gold-purple
+ * blend, so the selection reads as such while the gold identity stays.
  */
 class GoldDress(
     /** where the light is along the border, 0..1 */
@@ -142,17 +149,22 @@ private fun DrawScope.drawGoldDress(
     val rings = 44
     val ringWidth = spill / rings
     val peak = 0.20f + 0.14f * breath
+    // selected: the purple selection glow sits over the gold halo at the
+    // same strength, so the two blend instead of the gold winning
+    val haloColors = if (selected) listOf(ProGold, Pink) else listOf(ProGold)
     for (ring in 0 until rings) {
         val t = ring / (rings - 1f)
         val distance = ringWidth * (ring + 0.5f)
         val fade = (1f - t) * (1f - t)
-        drawRoundRect(
-            color = ProGold.copy(alpha = peak * fade),
-            topLeft = Offset(-distance, -distance),
-            size = Size(size.width + 2 * distance, size.height + 2 * distance),
-            cornerRadius = CornerRadius(cornerRadius + distance),
-            style = Stroke(width = ringWidth + 1f)
-        )
+        for (haloColor in haloColors) {
+            drawRoundRect(
+                color = haloColor.copy(alpha = peak * fade),
+                topLeft = Offset(-distance, -distance),
+                size = Size(size.width + 2 * distance, size.height + 2 * distance),
+                cornerRadius = CornerRadius(cornerRadius + distance),
+                style = Stroke(width = ringWidth + 1f)
+            )
+        }
     }
 
     // opaque ground, then the gold wash with a brighter top-left
@@ -169,9 +181,14 @@ private fun DrawScope.drawGoldDress(
         ),
         cornerRadius = corner
     )
+    if (selected) {
+        // a slight purple tint over the gold wash marks the selected plan
+        drawRoundRect(color = Pink.copy(alpha = 0.10f), cornerRadius = corner)
+    }
 
-    // the border: solid gold with a bright light travelling around it
-    val base = if (selected) ProGold else ProGold.copy(alpha = 0.7f)
+    // the border: solid gold with a bright light travelling around it; the
+    // selected box's border is an even gold-purple blend
+    val base = if (selected) lerp(ProGold, Pink, 0.5f) else ProGold.copy(alpha = 0.7f)
     val stops = ArrayList<Pair<Float, Color>>()
     stops += 0f to base
     stops += 1f to base

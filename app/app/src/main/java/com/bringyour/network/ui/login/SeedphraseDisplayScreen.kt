@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -133,7 +134,7 @@ fun SeedphraseDisplayScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(
-                modifier = Modifier.widthIn(max = 512.dp)
+                modifier = Modifier.tabletForm()
             ) {
                 Text(
                     stringResource(id = R.string.your_seedphrase),

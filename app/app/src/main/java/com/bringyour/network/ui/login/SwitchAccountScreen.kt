@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.LoginActivity
+import com.bringyour.network.LoginClientCompletion
 import com.bringyour.network.MainApplication
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.ButtonStyle
@@ -42,12 +43,13 @@ fun SwitchAccountScreen(
         if (!targetJwt.isNullOrEmpty()) {
             // switch to different account
 
-            application.login(targetJwt)
-            loginActivity.authClientAndFinish(
-                {err ->
+            application.authenticateNetworkSession(targetJwt, newNetwork = false) { completion ->
+                if (completion is LoginClientCompletion.Ready) {
+                    loginActivity.finishAuthenticatedLoginNow()
+                } else {
                     setSwitchAccount(false)
-                },
-            )
+                }
+            }
 
         } else {
             Log.i("SwitchAccountScreen", "No target jwt found")

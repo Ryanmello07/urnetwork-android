@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -61,7 +62,11 @@ internal const val ACCEPTANCE_INSTANT_ERROR_TAG = "acceptance.instant.error"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateNetworkInstant(
-    appLogin: (byJwt: String, newNetwork: Boolean) -> Unit,
+    appLogin: (
+        byJwt: String,
+        newNetwork: Boolean,
+        completion: (Boolean) -> Unit,
+    ) -> Unit,
     onBack: () -> Unit,
     createNetworkInstantViewModel: CreateNetworkInstantViewModel = hiltViewModel(),
 ) {
@@ -149,7 +154,7 @@ internal fun CreateNetworkInstantContent(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(
-                modifier = Modifier.widthIn(max = 512.dp)
+                modifier = Modifier.tabletForm()
             ) {
                 Text(
                     stringResource(id = R.string.create_instant_account),

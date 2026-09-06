@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.profile
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -193,6 +194,7 @@ fun ProfileScreen(
         Column(
             modifier = Modifier
                 .padding(innerPadding)
+                .tabletReadableColumn()
                 .padding(16.dp)
                 .imePadding()
         ) {

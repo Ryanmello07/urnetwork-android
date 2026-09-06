@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -111,7 +112,7 @@ fun LoginInitial(
         handleLoginFlow(
             networkJwt = networkJwt,
             scope = scope,
-            appLogin = { application?.login(networkJwt) },
+            application = application,
             onContentVisibilityChange = {
                 contentVisible = it
             },
@@ -121,8 +122,8 @@ fun LoginInitial(
             onWelcomeOverlayVisibilityChange = {
                 welcomeOverlayVisible = it
             },
-            authClientAndFinish = { cb ->
-                loginActivity?.authClientAndFinish(cb)
+            finishAuthenticatedLoginAfterWelcome = {
+                loginActivity?.finishAuthenticatedLoginAfterWelcome()
             }
         )
     }
@@ -303,11 +304,14 @@ fun LoginInitial(
         onLogin = { jwt ->
             val application = context.applicationContext as? com.bringyour.network.MainApplication
             val loginActivity = context as? com.bringyour.network.LoginActivity
-            application?.login(jwt)
-            loginActivity?.authClientAndFinish { error ->
-                if (error != null) {
-                    android.util.Log.e("LoginInitial", "auth client finish err: $error")
-                    android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
+            application?.authenticateNetworkSession(jwt, newNetwork = false) { completion ->
+                when (completion) {
+                    is com.bringyour.network.LoginClientCompletion.Ready ->
+                        loginActivity?.finishAuthenticatedLoginNow()
+                    is com.bringyour.network.LoginClientCompletion.Failed -> {
+                        android.util.Log.e("LoginInitial", "auth client finish err: ${completion.message}")
+                        android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
@@ -447,7 +451,9 @@ fun LoginInitial(
             ) {
 
                 Column(
-                    modifier = Modifier.imePadding()
+                    modifier = Modifier
+                        .tabletForm()
+                        .imePadding()
                 ) {
                     OnboardingCarousel()
 
@@ -536,7 +542,7 @@ fun LoginInitialActions(
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = 512.dp),
+                .tabletForm(),
             horizontalAlignment = Alignment.Start
         ) {
 

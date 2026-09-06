@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.stats
 
+import com.bringyour.network.ui.components.tabletReadableColumn
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
@@ -251,7 +252,7 @@ fun ContractStatsScreen(
 
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.tabletReadableColumn().fillMaxSize()
                 ) {
                     itemsIndexed(
                         rows,

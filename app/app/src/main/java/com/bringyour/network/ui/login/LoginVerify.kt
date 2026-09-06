@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.login
 
+import com.bringyour.network.ui.components.tabletForm
 import android.util.Patterns
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -58,6 +59,7 @@ import androidx.navigation.compose.rememberNavController
 import com.bringyour.sdk.AuthVerifyArgs
 import com.bringyour.sdk.AuthVerifySendArgs
 import com.bringyour.network.LoginActivity
+import com.bringyour.network.LoginClientCompletion
 import com.bringyour.network.MainApplication
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.URCodeInput
@@ -145,40 +147,57 @@ fun LoginVerify(
         args.verifyCode = code.joinToString("")
 
         application?.api?.authVerify(args) { result, err ->
-            scope.launch {
-                verifyInProgress = false
-
+            application.dispatchLoginResult {
                 if (err != null) {
-                    verifyError = err.message
-                } else if (result.error != null) {
-                    verifyError = result.error.message
-                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
-                    verifyError = null
-
-                    // a verified sign-up is a new network: it gets the onboarding flow
-                    application.login(result.network.byJwt, newNetwork = true)
-
-                    verifyInProgress = true
-
-                    isContentVisible = false
-
-                    delay(500)
-
-                    welcomeOverlayVisible = true
-
-                    delay(2250)
-
-                    loginActivity?.authClientAndFinish({ error ->
+                    scope.launch {
                         verifyInProgress = false
-
-                        verifyError = error
-                    })
+                        verifyError = err.message
+                        code = List(codeLength) { "" }
+                    }
+                } else if (result == null) {
+                    scope.launch {
+                        verifyInProgress = false
+                        verifyError = verifyErrMsg
+                        code = List(codeLength) { "" }
+                    }
+                } else if (result.error != null) {
+                    scope.launch {
+                        verifyInProgress = false
+                        verifyError = result.error.message
+                        code = List(codeLength) { "" }
+                    }
+                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
+                    // a verified sign-up is a new network: it gets the onboarding flow
+                    application.authenticateNetworkSession(
+                        result.network.byJwt,
+                        newNetwork = true,
+                    ) { completion ->
+                        if (completion is LoginClientCompletion.Ready) {
+                            loginActivity?.finishAuthenticatedLoginAfterWelcome()
+                        }
+                        scope.launch {
+                            val error = (completion as? LoginClientCompletion.Failed)?.message
+                            if (completion is LoginClientCompletion.Ready) {
+                                verifyError = null
+                                isContentVisible = false
+                                delay(500)
+                                welcomeOverlayVisible = true
+                                return@launch
+                            }
+                            verifyInProgress = false
+                            verifyError = error ?: verifyErrMsg
+                            val visibility = loginRetryVisibility()
+                            isContentVisible = visibility.contentVisible
+                            welcomeOverlayVisible = visibility.welcomeOverlayVisible
+                            code = List(codeLength) { "" }
+                        }
+                    }
                 } else {
-                    verifyError = verifyErrMsg
-                }
-
-                if (verifyError != null) {
-                    code = List(codeLength) { "" }
+                    scope.launch {
+                        verifyInProgress = false
+                        verifyError = verifyErrMsg
+                        code = List(codeLength) { "" }
+                    }
                 }
             }
         } ?: run {
@@ -243,7 +262,7 @@ fun LoginVerify(
                 Column(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .widthIn(max = 512.dp)
+                        .tabletForm()
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally

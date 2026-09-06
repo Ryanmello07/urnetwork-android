@@ -24,6 +24,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.WorkManager
 import com.bringyour.network.location.MockLocationController
+import com.bringyour.network.location.MockLocationFeeder
 import com.bringyour.network.ui.shared.models.ProvideNetworkMode
 import com.bringyour.sdk.DeviceLocal
 import com.bringyour.sdk.LocalState
@@ -145,7 +146,8 @@ class MainApplication : Application() {
     var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
     var powerSaveReceiver: BroadcastReceiver? = null
     var networkPolicyReceiver: BroadcastReceiver? = null
-    var thermalStatusListener: PowerManager.OnThermalStatusChangedListener? = null
+    private var thermalStatusRegistration: ThermalStatusRegistration? = null
+    private var thermalStatusGeneration = 0L
 
     // main-looper confined; latest thermal status composed into
     // setPerformanceDegraded alongside battery saver (see
@@ -158,6 +160,122 @@ class MainApplication : Application() {
 
     var loginVc: LoginViewController? = null
 
+    /** Process-owned, bounded login diagnostics shared with acceptance. */
+    val loginStartupTracker = LoginStartupTracker()
+    val loginStartupState get() = loginStartupTracker.state
+
+    private val loginClientCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        LoginClientCoordinator(
+            tracker = loginStartupTracker,
+            requester = AuthClientRequester { callback ->
+                val currentApi = api
+                if (currentApi == null) {
+                    callback(
+                        AuthClientWireResult(
+                            clientId = null,
+                            byClientJwt = null,
+                            failure = LoginStartupFailure.AUTH_CLIENT_UNAVAILABLE,
+                        ),
+                        null,
+                    )
+                } else {
+                    val args = com.bringyour.sdk.AuthNetworkClientArgs().apply {
+                        deviceDescription = this@MainApplication.deviceDescription
+                        deviceSpec = this@MainApplication.deviceSpec
+                    }
+                    currentApi.authNetworkClient(args) { result, error ->
+                        val resultError = result?.error
+                        val failure = when {
+                            resultError?.clientLimitExceeded == true ->
+                                LoginStartupFailure.AUTH_CLIENT_LIMIT_EXCEEDED
+                            resultError?.upgradeRequired == true ->
+                                LoginStartupFailure.AUTH_CLIENT_UPGRADE_REQUIRED
+                            resultError != null -> LoginStartupFailure.AUTH_CLIENT_REJECTED
+                            else -> null
+                        }
+                        callback(
+                            result?.let {
+                                AuthClientWireResult(
+                                    clientId = it.clientId?.toString(),
+                                    byClientJwt = it.byClientJwt,
+                                    failure = failure,
+                                    failureMessage = resultError?.message,
+                                )
+                            },
+                            error?.message,
+                        )
+                    }
+                }
+            },
+            starter = ClientSessionStarter(::startClientSession),
+            dispatch = ::dispatchLoginAction,
+        )
+    }
+
+    private val passwordLoginCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        PasswordLoginCoordinator(
+            tracker = loginStartupTracker,
+            requester = PasswordAuthRequester { userAuth, password, callback ->
+                val currentApi = api
+                if (currentApi == null) {
+                    callback(
+                        PasswordAuthWireResult(
+                            failure = LoginStartupFailure.PASSWORD_AUTH_REQUEST_FAILED,
+                        ),
+                        null,
+                    )
+                } else {
+                    val args = com.bringyour.sdk.AuthLoginWithPasswordArgs().apply {
+                        this.userAuth = userAuth
+                        this.password = password
+                        verifyOtpNumeric = true
+                    }
+                    currentApi.authLoginWithPassword(args) { result, error ->
+                        val mappedResponse = runCatching {
+                            val mappedResult = result?.let {
+                                val resultError = it.error
+                                PasswordAuthWireResult(
+                                    byJwt = it.network?.byJwt,
+                                    verificationUserAuth = it.verificationRequired?.userAuth,
+                                    failure = if (resultError == null) {
+                                        null
+                                    } else {
+                                        LoginStartupFailure.PASSWORD_AUTH_REJECTED
+                                    },
+                                    failureMessage = resultError?.message,
+                                )
+                            }
+                            mappedResult to error?.message
+                        }
+                        mappedResponse.fold(
+                            onSuccess = { (mappedResult, requestError) ->
+                                callback(mappedResult, requestError)
+                            },
+                            onFailure = {
+                                callback(
+                                    PasswordAuthWireResult(
+                                        failure = LoginStartupFailure.PASSWORD_AUTH_RESULT_INVALID,
+                                    ),
+                                    null,
+                                )
+                            },
+                        )
+                    }
+                }
+            },
+            sessionAuthenticator = NetworkSessionAuthenticator { byJwt, newNetwork, completion ->
+                authenticateNetworkSession(byJwt, newNetwork, completion)
+            },
+            dispatch = ::dispatchLoginAction,
+        )
+    }
+
+    private fun dispatchLoginAction(action: () -> Unit) {
+        if (android.os.Looper.myLooper() == mainLooper) action() else mainHandler.post(action)
+    }
+
+    internal fun dispatchLoginResult(action: () -> Unit) = dispatchLoginAction(action)
+
     @Inject
     lateinit var deviceManager: DeviceManager
 
@@ -166,6 +284,9 @@ class MainApplication : Application() {
 
     @Inject
     lateinit var mockLocationController: MockLocationController
+
+    @Inject
+    lateinit var mockLocationFeeder: MockLocationFeeder
 
     var vpnRequestStart: Boolean = false
         private set
@@ -395,6 +516,10 @@ class MainApplication : Application() {
         }
     }
 
+    /**
+     * Initializes core application singletons, SDK memory limits, mock location
+     * controllers, and network space managers once credential storage is unlocked.
+     */
     private fun initializeApplicationState() {
         addTunnelLifecycleObservers()
 
@@ -471,6 +596,7 @@ class MainApplication : Application() {
         // from the feature UI) so a previous process's leftovers are cleared
         // even when the user never opens the provider locations sheet.
         mockLocationController.start()
+        mockLocationFeeder.start()
 
         networkSpaceManagerProvider.init(filesDir.absolutePath)
 
@@ -744,7 +870,7 @@ class MainApplication : Application() {
                     api?.byJwt = null
                 } else {
                     // the device wraps the api and sets the jwt
-                    if (!initDevice(byClientJwt)) {
+                    if (initDevice(byClientJwt) !is DeviceInitResult.Ready) {
                         logoutStaleLocalState(localState)
                         api?.byJwt = null
                     }
@@ -1176,35 +1302,21 @@ class MainApplication : Application() {
             return
         }
 
-        // SEVERE matches the apple extension's .serious/.critical threshold:
-        // the point where the OS throttles enough that control pings answer
-        // slowly. The listener also fires once with the current status at
-        // registration, which initializes thermalDegraded.
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        val listener = object : PowerManager.OnThermalStatusChangedListener {
-            override fun onThermalStatusChanged(status: Int) {
-                if (thermalStatusListener !== this) {
-                    return
-                }
-                thermalDegraded = status >= PowerManager.THERMAL_STATUS_SEVERE
-                updatePerformanceDegraded()
+        val registrationGeneration = thermalStatusGeneration
+        thermalStatusRegistration = Api29ThermalStatusCompat.register(this) { degraded ->
+            if (registrationGeneration != thermalStatusGeneration) {
+                return@register
             }
+            thermalDegraded = degraded
+            updatePerformanceDegraded()
         }
-        thermalStatusListener = listener
-        powerManager.addThermalStatusListener(mainExecutor, listener)
     }
 
     fun removeThermalStatusListener() {
-        thermalStatusListener?.let {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                try {
-                    powerManager.removeThermalStatusListener(it)
-                } catch (_: IllegalArgumentException) {
-                }
-            }
-        }
-        thermalStatusListener = null
+        thermalStatusGeneration += 1
+        val registration = thermalStatusRegistration
+        thermalStatusRegistration = null
+        registration?.close()
         thermalDegraded = false
     }
 
@@ -1286,25 +1398,139 @@ class MainApplication : Application() {
      * signing in: the SDK reads a missing flag as "may prompt", so the flag
      * is written explicitly on every login, before the device reads it.
      */
-    fun login(byJwt: String, newNetwork: Boolean = false) {
-        asyncLocalState?.localState?.let { localState ->
+    internal fun authenticateWithPassword(
+        userAuth: String,
+        password: String,
+        completion: (PasswordLoginCompletion) -> Unit,
+    ): Long = passwordLoginCoordinator.authenticate(userAuth, password, completion)
+
+    internal fun authenticateNetworkSession(
+        byJwt: String,
+        newNetwork: Boolean,
+        completion: (LoginClientCompletion) -> Unit,
+    ) {
+        dispatchLoginAction {
+            if (!login(byJwt, newNetwork)) {
+                val state = loginStartupState.value
+                val failure = (state as? LoginStartupState.Failed)?.failure
+                    ?: LoginStartupFailure.NETWORK_SESSION_PERSISTENCE_FAILED
+                completion(LoginClientCompletion.Failed(failure))
+                return@dispatchLoginAction
+            }
+            authenticateLoginClient(completion)
+        }
+    }
+
+    internal fun persistNetworkSession(
+        byJwt: String,
+        newNetwork: Boolean,
+        completion: (Boolean) -> Unit,
+    ) {
+        dispatchLoginAction { completion(login(byJwt, newNetwork)) }
+    }
+
+    fun login(byJwt: String, newNetwork: Boolean = false): Boolean {
+        val attemptId = loginStartupTracker.ensureAttempt(LoginStartupStage.NETWORK_SESSION_PERSISTENCE)
+        val localState = asyncLocalState?.localState
+        val currentApi = api
+        if (localState == null || currentApi == null || byJwt.isEmpty()) {
+            localState?.let(::logoutStaleLocalState)
+            runCatching { currentApi?.byJwt = null }
+            loginStartupTracker.fail(
+                attemptId,
+                LoginStartupStage.NETWORK_SESSION_PERSISTENCE,
+                LoginStartupFailure.NETWORK_SESSION_PERSISTENCE_FAILED,
+            )
+            return false
+        }
+        val persisted = runCatching {
             localState.byJwt = byJwt
             localState.canPromptIntroFunnel = newNetwork
+            currentApi.byJwt = byJwt
+        }.isSuccess
+        if (!persisted) {
+            logoutStaleLocalState(localState)
+            runCatching { currentApi.byJwt = null }
+            loginStartupTracker.fail(
+                attemptId,
+                LoginStartupStage.NETWORK_SESSION_PERSISTENCE,
+                LoginStartupFailure.NETWORK_SESSION_PERSISTENCE_FAILED,
+            )
         }
-        api?.byJwt = byJwt
+        return persisted
     }
 
     fun loginClient(byClientJwt: String): Boolean {
-        return asyncLocalState?.localState?.let { localState ->
-            localState.byClientJwt = byClientJwt
-            if (initDevice(byClientJwt)) {
-                true
-            } else {
-                logoutStaleLocalState(localState)
-                api?.byJwt = null
+        val attemptId = loginStartupTracker.ensureAttempt(LoginStartupStage.CLIENT_JWT_VALIDATION)
+        val identity = ClientJwtIdentity.decode(byClientJwt) as? ClientJwtIdentity.Valid
+        if (identity == null) {
+            loginStartupTracker.fail(
+                attemptId,
+                LoginStartupStage.CLIENT_JWT_VALIDATION,
+                LoginStartupFailure.CLIENT_JWT_INVALID,
+            )
+            return false
+        }
+        loginStartupTracker.recordAllocation(attemptId, identity.clientId)
+        return when (val result = startClientSession(byClientJwt)) {
+            ClientSessionStartResult.Ready -> loginStartupTracker.ready(attemptId, identity.clientId)
+            is ClientSessionStartResult.Failed -> {
+                loginStartupTracker.fail(
+                    attemptId,
+                    loginStageFor(result.failure),
+                    result.failure,
+                    identity.clientId,
+                )
                 false
             }
-        } ?: false
+        }
+    }
+
+    internal fun authenticateLoginClient(callback: (LoginClientCompletion) -> Unit) {
+        val current = loginStartupState.value
+        if (current !is LoginStartupState.Pending) {
+            val failure = (current as? LoginStartupState.Failed)?.failure
+                ?: LoginStartupFailure.STALE_ATTEMPT
+            callback(LoginClientCompletion.Failed(failure, clientId = current.clientId))
+            return
+        }
+        val attemptId = loginStartupTracker.ensureAttempt(LoginStartupStage.AUTH_CLIENT)
+        loginClientCoordinator.authenticate(attemptId, callback)
+    }
+
+    fun addLoginClientAllocationListener(listener: (LoginClientAllocation) -> Unit): () -> Unit =
+        loginStartupTracker.addAllocationListener(listener)
+
+    private fun startClientSession(byClientJwt: String): ClientSessionStartResult {
+        val attemptId = loginStartupState.value.attemptId
+            ?: return ClientSessionStartResult.Failed(LoginStartupFailure.STALE_ATTEMPT)
+        if (!loginStartupTracker.pending(attemptId, LoginStartupStage.CLIENT_JWT_PERSISTENCE)) {
+            return ClientSessionStartResult.Failed(LoginStartupFailure.STALE_ATTEMPT)
+        }
+        val localState = asyncLocalState?.localState
+            ?: return ClientSessionStartResult.Failed(
+                LoginStartupFailure.CLIENT_JWT_PERSISTENCE_FAILED,
+            )
+        if (runCatching { localState.byClientJwt = byClientJwt }.isFailure) {
+            return ClientSessionStartResult.Failed(
+                LoginStartupFailure.CLIENT_JWT_PERSISTENCE_FAILED,
+            )
+        }
+        loginStartupTracker.pending(attemptId, LoginStartupStage.DEVICE_LOCAL_INITIALIZATION)
+        val deviceInitResult = try {
+            initDevice(byClientJwt)
+        } catch (_: Throwable) {
+            runCatching { deviceManager.clearDevice() }
+            DeviceInitResult.Failed(DeviceInitFailure.DEVICE_LOCAL_CONFIGURATION_FAILED)
+        }
+        return when (val result = deviceInitResult) {
+            DeviceInitResult.Ready -> ClientSessionStartResult.Ready
+            is DeviceInitResult.Failed -> {
+                logoutStaleLocalState(localState)
+                api?.byJwt = null
+                ClientSessionStartResult.Failed(result.failure.asLoginStartupFailure())
+            }
+        }
     }
 
     // Clear a stale or partial auth state WITHOUT rotating the device
@@ -1316,13 +1542,18 @@ class MainApplication : Application() {
     // deliberately severs and rotates the identity.
     private fun logoutStaleLocalState(localState: LocalState) {
         val keyMaterial = runCatching { localState.deviceLocalKeyMaterial }.getOrNull()
-        localState.logout()
+        runCatching { localState.logout() }
         keyMaterial?.let {
             runCatching { localState.deviceLocalKeyMaterial = it }
         }
     }
 
     fun logout() {
+        loginStartupTracker.loggedOut()
+        logoutInternal()
+    }
+
+    private fun logoutInternal() {
         stop()
         widgetSnapshotWriter?.clear()
 
@@ -1331,6 +1562,10 @@ class MainApplication : Application() {
         api?.byJwt = null
     }
 
+    /**
+     * Tears down the active device, stops the VPN service, unregisters hardware/network
+     * callbacks, and resets transient connection and contract state.
+     */
     fun stop() {
         // Invalidate a reconcile already queued by a listener before tearing
         // down the device; it must not restart the service after logout.
@@ -1364,6 +1599,7 @@ class MainApplication : Application() {
         tunnelChangeSub = null
         contractStatusChangeSub?.close()
         contractStatusChangeSub = null
+        lastLoggedContractStatus = null
 
 //        provideEnabled = false
 //        connectEnabled = false
@@ -1377,26 +1613,28 @@ class MainApplication : Application() {
     }
 
 
-    private fun initDevice(byClientJwt: String): Boolean {
+    private fun initDevice(byClientJwt: String): DeviceInitResult {
         // the sdk fires this when the jwt refresh finds the client no longer
         // exists on the server (e.g. the client was removed): the sdk has
         // already cleared its local auth state; log the user out and return
         // to the login flow
         deviceManager.onAuthLogout = {
             Handler(mainLooper).post {
-                logout()
+                loginStartupTracker.authLoggedOut()
+                logoutInternal()
                 val intent = Intent(applicationContext, LoginActivity::class.java)
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK.or(Intent.FLAG_ACTIVITY_TASK_ON_HOME))
                 startActivity(intent)
             }
         }
-        if (!deviceManager.initDevice(
+        val deviceInitResult = deviceManager.initDevice(
             networkSpaceManagerProvider.getNetworkSpace(),
             byClientJwt,
             deviceDescription,
             deviceSpec
-        )) {
-            return false
+        )
+        if (deviceInitResult !is DeviceInitResult.Ready) {
+            return deviceInitResult
         }
 
         // A callback queued for a former DeviceLocal must never reset the new
@@ -1483,13 +1721,34 @@ class MainApplication : Application() {
         addThermalStatusListener()
 
         updateTunnelStarted()
+        lastLoggedContractStatus = null
         updateContractStatus()
         service?.get()?.onDeviceAvailable()
         updateVpnService()
 
-        return true
+        return DeviceInitResult.Ready
     }
 
+    private fun DeviceInitFailure.asLoginStartupFailure(): LoginStartupFailure = when (this) {
+        DeviceInitFailure.MISSING_NETWORK_SPACE -> LoginStartupFailure.DEVICE_NETWORK_SPACE_MISSING
+        DeviceInitFailure.MISSING_LOCAL_STATE -> LoginStartupFailure.DEVICE_LOCAL_STATE_MISSING
+        DeviceInitFailure.MISSING_INSTANCE_ID -> LoginStartupFailure.DEVICE_INSTANCE_ID_MISSING
+        DeviceInitFailure.DEVICE_LOCAL_CREATION_FAILED ->
+            LoginStartupFailure.DEVICE_LOCAL_CREATION_FAILED
+        DeviceInitFailure.DEVICE_LOCAL_CONFIGURATION_FAILED ->
+            LoginStartupFailure.DEVICE_LOCAL_CONFIGURATION_FAILED
+    }
+
+    private fun loginStageFor(failure: LoginStartupFailure): LoginStartupStage = when (failure) {
+        LoginStartupFailure.CLIENT_JWT_PERSISTENCE_FAILED ->
+            LoginStartupStage.CLIENT_JWT_PERSISTENCE
+        LoginStartupFailure.AUTH_LOGOUT -> LoginStartupStage.LOGOUT
+        else -> LoginStartupStage.DEVICE_LOCAL_INITIALIZATION
+    }
+
+    /**
+     * Logs transitions in device tunnel state.
+     */
     private fun updateTunnelStarted() {
         device?.tunnelStarted?.let { tunnelStarted ->
             Log.i(TAG, "[tunnel]started=$tunnelStarted")
@@ -1498,10 +1757,22 @@ class MainApplication : Application() {
         }
     }
 
+    private var lastLoggedContractStatus: String? = null
+
+    /**
+     * Updates and logs changes in network contract status, deduplicating identical
+     * state transitions to prevent logcat flooding during rapid network renegotiations.
+     */
     private fun updateContractStatus() {
-        device?.contractStatus?.let { contractStatus ->
-            Log.i(TAG, "[contract]insufficent=${contractStatus.insufficientBalance} nopermission=${contractStatus.noPermission} premium=${contractStatus.premium}")
-        } ?: run {
+        val contractStatus = device?.contractStatus
+        if (contractStatus != null) {
+            val statusSummary = "insufficent=${contractStatus.insufficientBalance} nopermission=${contractStatus.noPermission} premium=${contractStatus.premium}"
+            if (statusSummary != lastLoggedContractStatus) {
+                lastLoggedContractStatus = statusSummary
+                Log.i(TAG, "[contract]$statusSummary")
+            }
+        } else if (lastLoggedContractStatus != null) {
+            lastLoggedContractStatus = null
             Log.i(TAG, "[contract]no contract status")
         }
     }

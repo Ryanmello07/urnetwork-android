@@ -56,7 +56,14 @@ class CreateNetworkInstantViewModel @Inject constructor(
         )
     }
 
-    fun createNetwork(termsAgreed: Boolean, appLogin: (byJwt: String, newNetwork: Boolean) -> Unit) {
+    fun createNetwork(
+        termsAgreed: Boolean,
+        appLogin: (
+            byJwt: String,
+            newNetwork: Boolean,
+            completion: (Boolean) -> Unit,
+        ) -> Unit,
+    ) {
         if (_inProgress.value || _seedphrase.value != null) {
             return
         }
@@ -83,6 +90,31 @@ class CreateNetworkInstantViewModel @Inject constructor(
         }
 
         api.networkCreate(args) { result, err ->
+            val createdSeedphrase = if (err == null && result?.error == null) {
+                result?.seedphrase?.takeIf(String::isNotEmpty)
+            } else {
+                null
+            }
+            val byJwt = if (createdSeedphrase != null) {
+                result?.network?.byJwt?.takeIf(String::isNotEmpty)
+            } else {
+                null
+            }
+            if (byJwt != null) {
+                // Persist before handing the one-time phrase back to UI-owned
+                // state. This callback must remain effective after onCleared.
+                appLogin(byJwt, true) { persisted ->
+                    viewModelScope.launch {
+                        _inProgress.value = false
+                        if (persisted) {
+                            _seedphrase.value = createdSeedphrase
+                        } else {
+                            _error.value = "Failed to create account"
+                        }
+                    }
+                }
+                return@networkCreate
+            }
             viewModelScope.launch {
                 _inProgress.value = false
 
@@ -95,17 +127,7 @@ class CreateNetworkInstantViewModel @Inject constructor(
                     return@launch
                 }
 
-                // gomobile binds Go strings as non-null Java strings ("" when the
-                // server omits them), so these need emptiness checks, not null ones
-                val createdSeedphrase = result?.seedphrase
-                val byJwt = result?.network?.byJwt
-                if (createdSeedphrase.isNullOrEmpty() || byJwt.isNullOrEmpty()) {
-                    _error.value = "Failed to create account"
-                    return@launch
-                }
-
-                appLogin(byJwt, true)
-                _seedphrase.value = createdSeedphrase
+                _error.value = "Failed to create account"
             }
         }
     }

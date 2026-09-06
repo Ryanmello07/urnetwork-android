@@ -2,16 +2,15 @@ package com.bringyour.network.acceptance
 
 import android.content.Intent
 import android.os.Debug
+import android.os.Process
 import android.os.SystemClock
-import android.util.Base64
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.Until
 import com.bringyour.network.BuildConfig
 import com.bringyour.network.LoginActivity
+import com.bringyour.network.LoginStartupState
 import com.bringyour.network.MainActivity
 import com.bringyour.network.MainApplication
 import com.bringyour.network.ui.shared.models.ProvideControlMode
@@ -27,10 +26,12 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -47,9 +48,13 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class PhysicalLowbarSessionTest {
+    @get:Rule
+    val compose = createEmptyComposeRule()
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val uiDevice = UiDevice.getInstance(instrumentation)
+    private val passwordLoginUi = ComposePasswordLoginUi(compose)
     private val acceptanceDir = File(context.filesDir, "acceptance")
     private val credentialsFile = File(acceptanceDir, "credentials")
     private val commandFile = File(acceptanceDir, "physical-command")
@@ -57,7 +62,9 @@ class PhysicalLowbarSessionTest {
     private val samplesFile = File(acceptanceDir, "physical-memory.ndjson")
     private val summaryFile = File(acceptanceDir, "physical-summary.json")
     private val activeClientFile = File(acceptanceDir, "physical-active-client-id")
+    private val activeClientLedger = ActiveClientLedger(File(acceptanceDir, "active-client-ids"))
     private val expectedPeerFile = File(acceptanceDir, "physical-expected-peer-id")
+    private val startupGoroutinesFile = File(acceptanceDir, "physical-startup-goroutines.txt")
 
     @Volatile
     private var phase = "startup"
@@ -92,74 +99,66 @@ class PhysicalLowbarSessionTest {
                 },
             )
         }
-        waitFor("password-login user field") { editableFields().isNotEmpty() }
     }
 
-    private fun editableFields(): List<UiObject2> =
-        uiDevice.findObjects(By.clazz("android.widget.EditText"))
-            // Compose can replace a semantics node between findObjects and
-            // isEnabled while the login screen advances. A stale candidate is
-            // simply no longer an editable field; the surrounding wait loop
-            // will query the current tree again.
-            .mapNotNull { field ->
-                runCatching { field.takeIf { it.isEnabled } }.getOrNull()
-            }
-
-    private fun clickText(text: String, timeoutMillis: Long = UI_TIMEOUT_MILLIS) {
-        val objectToClick = uiDevice.wait(Until.findObject(By.text(text)), timeoutMillis)
-            ?: throw AssertionError("Timed out waiting for text $text")
-        objectToClick.click()
-    }
-
-    private fun loginWithPassword(application: MainApplication) {
+    private fun loginWithPassword(
+        application: MainApplication,
+        ledgerFailure: AtomicReference<Throwable?>,
+    ) {
         val lines = credentialsFile.readLines()
         check(lines.size == 2 && lines.all { it.isNotBlank() }) {
             "physical credentials were not installed"
         }
-        val userField = editableFields().firstOrNull()
-            ?: throw AssertionError("password-login user field is unavailable")
-        userField.text = lines[0]
-        clickText("Get started")
-        waitFor("password field", AUTH_TIMEOUT_MILLIS) {
-            editableFields().any { it.text != lines[0] }
+        performPasswordLogin(
+            ui = passwordLoginUi,
+            user = lines[0],
+            password = lines[1],
+            uiTimeoutMillis = UI_TIMEOUT_MILLIS,
+            authTimeoutMillis = AUTH_TIMEOUT_MILLIS,
+        )
+        val deadline = SystemClock.elapsedRealtime() + AUTH_TIMEOUT_MILLIS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            ledgerFailure.get()?.let { throw it }
+            when (val state = application.loginStartupState.value) {
+                is LoginStartupState.Failed -> throw LoginStartupFailureException(state)
+                is LoginStartupState.LoggedOut -> error("login terminated during logout")
+                is LoginStartupState.Ready -> {
+                    check(application.device != null) { "ready login has no DeviceLocal" }
+                    retainActiveClient(state.clientId)
+                    instrumentation.runOnMainSync {
+                        context.startActivity(
+                            Intent(context, MainActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            },
+                        )
+                    }
+                    return
+                }
+                else -> Unit
+            }
+            SystemClock.sleep(100)
         }
-        val passwordField = editableFields().lastOrNull { it.text != lines[0] }
-            ?: throw AssertionError("password field is unavailable")
-        passwordField.text = lines[1]
-        clickText("Continue")
-        waitFor("authenticated DeviceLocal", AUTH_TIMEOUT_MILLIS) { application.device != null }
-        instrumentation.runOnMainSync {
-            context.startActivity(
-                Intent(context, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                },
-            )
+        val state = application.loginStartupState.value
+        throwLoginStartupTimeout(
+            state,
+            AssertionError(
+                "Timed out waiting for authenticated DeviceLocal; login state=${state.javaClass.simpleName}",
+            ),
+        ) {
+            Sdk.writeGoroutineStacks(startupGoroutinesFile.absolutePath)
         }
-        retainActiveClient(application)
     }
 
-    private fun retainActiveClient(application: MainApplication) {
-        val clientJwt = application.asyncLocalState?.localState?.byClientJwt.orEmpty()
-        val parts = clientJwt.split(".")
-        check(parts.size == 3) { "password login returned an invalid client JWT" }
-        val payload = String(
-            Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
-            Charsets.UTF_8,
-        )
-        val clientId = JSONObject(payload).getString("client_id")
-        check(clientId.matches(Regex("[A-Za-z0-9._-]+"))) {
-            "password login returned an invalid client ID"
-        }
+    private fun retainActiveClient(clientId: String) {
+        activeClientLedger.retain(clientId)
         writePrivate(activeClientFile, "$clientId\n")
     }
 
-    private fun handleVpnConsentIfPresent() {
-        val button = uiDevice.wait(
-            Until.findObject(By.text(java.util.regex.Pattern.compile("(?i)^(allow|ok)$"))),
-            8_000,
-        ) ?: uiDevice.findObject(By.res("android:id/button1"))
-        button?.click()
-    }
+    private class LoginStartupFailureException(val state: LoginStartupState.Failed) :
+        IllegalStateException("login startup failed at ${state.stage.wireValue}: ${state.failure.wireValue}")
+
+    private class CleanupLedgerFailureException(cause: Throwable) :
+        IllegalStateException("client cleanup ownership could not be persisted", cause)
 
     private fun peerEgressProbe(): String {
         return EgressProbeRequest.queryPublicIp(instrumentation, EGRESS_TIMEOUT_MILLIS).also {
@@ -239,6 +238,7 @@ class PhysicalLowbarSessionTest {
         val device = application.device
         val result = JSONObject()
             .put("type", "sample")
+            .put("pid", Process.myPid())
             .put("elapsedMs", SystemClock.elapsedRealtime() - startElapsedMs)
             .put("timeUnixMs", System.currentTimeMillis())
             .put("phase", phase)
@@ -681,12 +681,52 @@ class PhysicalLowbarSessionTest {
         startElapsedMs: Long,
         extra: JSONObject = JSONObject(),
     ) {
-        val value = snapshot(application, startElapsedMs)
+        val value = runCatching { snapshot(application, startElapsedMs) }.getOrElse { error ->
+            JSONObject()
+                .put("elapsedMs", SystemClock.elapsedRealtime() - startElapsedMs)
+                .put("timeUnixMs", System.currentTimeMillis())
+                .put("phase", phase)
+                .put("pid", Process.myPid())
+                .put("snapshotErrorType", error.javaClass.simpleName)
+        }
             .put("type", "status")
             .put("commandId", id)
             .put("state", state)
             .put("extra", extra)
         writePrivate(statusFile, "${value}\n")
+    }
+
+    private fun failureStatus(
+        id: String,
+        application: MainApplication,
+        startElapsedMs: Long,
+        error: Throwable,
+    ) {
+        val extra = JSONObject().put("errorType", error.javaClass.simpleName)
+        val startupState = application.loginStartupState.value
+        val startupFailure = when (error) {
+            is LoginStartupFailureException -> error.state
+            else -> startupState as? LoginStartupState.Failed
+        }
+        when {
+            error is CleanupLedgerFailureException -> {
+                extra.put("stage", "client-allocation")
+                extra.put("failure", "cleanup-ledger-persistence-failed")
+            }
+            startupFailure != null -> {
+                extra.put("stage", startupFailure.stage.wireValue)
+                extra.put("failure", startupFailure.failure.wireValue)
+            }
+            startupState is LoginStartupState.Pending -> {
+                extra.put("stage", startupState.stage.wireValue)
+                extra.put("failure", "startup-timeout")
+            }
+            startupState is LoginStartupState.LoggedOut -> {
+                extra.put("stage", "logout")
+                extra.put("failure", "auth-logout")
+            }
+        }
+        status(id, "error", application, startElapsedMs, extra)
     }
 
     private fun stopClient(connectVc: ConnectViewController, device: DeviceLocal) {
@@ -729,7 +769,7 @@ class PhysicalLowbarSessionTest {
         stopProvider(application, device)
         configureClientMode(device, mode)
         connectVc.connectBestAvailable()
-        handleVpnConsentIfPresent()
+        uiDevice.clickVerifiedVpnConsentIfPresent()
         waitFor("public VPN connection", CONNECT_TIMEOUT_MILLIS) {
             connectVc.connected && device.connectEnabled && device.tunnelStarted
         }
@@ -744,7 +784,7 @@ class PhysicalLowbarSessionTest {
         application.deviceManager.provideNetworkMode = ProvideNetworkMode.ALL
         application.deviceManager.provideControlMode = ProvideControlMode.NETWORK
         device.providePaused = false
-        handleVpnConsentIfPresent()
+        uiDevice.clickVerifiedVpnConsentIfPresent()
         waitFor("same-network provider", CONNECT_TIMEOUT_MILLIS) {
             device.provideEnabled &&
                 device.provideMode == Sdk.ProvideModeNetwork &&
@@ -797,7 +837,7 @@ class PhysicalLowbarSessionTest {
             peerLocation(peerVc, networkPeer) != null
         }
         connectVc.connect(checkNotNull(peerLocation(peerVc, networkPeer)))
-        handleVpnConsentIfPresent()
+        uiDevice.clickVerifiedVpnConsentIfPresent()
         waitFor("same-network peer VPN connection", CONNECT_TIMEOUT_MILLIS) {
             connectVc.connected && device.connectEnabled && device.tunnelStarted
         }
@@ -942,9 +982,16 @@ class PhysicalLowbarSessionTest {
         statusFile.delete()
         samplesFile.delete()
         summaryFile.delete()
-        activeClientFile.delete()
+        startupGoroutinesFile.delete()
 
         val application = context.applicationContext as MainApplication
+        val ledgerFailure = AtomicReference<Throwable?>()
+        val removeAllocationListener = application.addLoginClientAllocationListener { allocation ->
+            runCatching { activeClientLedger.retain(allocation.clientId) }
+                .onFailure {
+                    ledgerFailure.compareAndSet(null, CleanupLedgerFailureException(it))
+                }
+        }
         val stopped = AtomicBoolean(false)
         val summary = SampleSummary()
         val startElapsedMs = SystemClock.elapsedRealtime()
@@ -952,10 +999,11 @@ class PhysicalLowbarSessionTest {
         var connectVc: ConnectViewController? = null
         var peerVc: PeerViewController? = null
         var sampler: Thread? = null
+        var activeCommandId = "0"
 
         try {
             launchLoggedOutApp(application)
-            loginWithPassword(application)
+            loginWithPassword(application, ledgerFailure)
             val device = checkNotNull(application.device)
             connectVc = device.openConnectViewController().also { it.start() }
             peerVc = device.openPeerViewController().also { it.start() }
@@ -968,35 +1016,35 @@ class PhysicalLowbarSessionTest {
             var finished = false
             while (!finished && SystemClock.elapsedRealtime() < deadline) {
                 val text = runCatching { commandFile.readText().trim() }.getOrDefault("")
+                if (text.isNotEmpty()) activeCommandId = text.substringBefore('|')
+                ledgerFailure.get()?.let { throw it }
+                (application.loginStartupState.value as? LoginStartupState.Failed)?.let {
+                    throw LoginStartupFailureException(it)
+                }
                 if (text.isNotEmpty()) {
                     val id = text.substringBefore('|')
                     if (id != lastCommandId) {
                         lastCommandId = id
-                        try {
-                            finished = commandResult(
-                                text,
-                                application,
-                                device,
-                                checkNotNull(connectVc),
-                                checkNotNull(peerVc),
-                                startElapsedMs,
-                            )
-                        } catch (error: Throwable) {
-                            status(
-                                id,
-                                "error",
-                                application,
-                                startElapsedMs,
-                                JSONObject().put("errorType", error.javaClass.simpleName),
-                            )
-                            throw error
-                        }
+                        activeCommandId = id
+                        finished = commandResult(
+                            text,
+                            application,
+                            device,
+                            checkNotNull(connectVc),
+                            checkNotNull(peerVc),
+                            startElapsedMs,
+                        )
                     }
                 }
                 SystemClock.sleep(COMMAND_POLL_MILLIS)
             }
             assertTrue("physical session reached its safety timeout", finished)
+        } catch (error: Throwable) {
+            runCatching { failureStatus(activeCommandId, application, startElapsedMs, error) }
+                .onFailure(error::addSuppressed)
+            throw error
         } finally {
+            removeAllocationListener()
             stopped.set(true)
             sampler?.join(5_000)
             val device = application.device
