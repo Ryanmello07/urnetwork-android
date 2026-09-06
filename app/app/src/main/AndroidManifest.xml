@@ -45,11 +45,11 @@
         android:name="android.software.leanback"
         android:required="false" />
 
-    <!-- prevent these from ever being added by a dependency -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove"/>
-    <uses-feature android:name="android.hardware.location.gps"
-        android:required="false" tools:node="remove"/>
+    <!-- Location permissions required by Google Play Services Fused Location Provider to support mock mode -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
 
 
 

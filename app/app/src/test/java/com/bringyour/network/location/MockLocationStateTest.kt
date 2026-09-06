@@ -22,6 +22,8 @@ class MockLocationStateTest {
         tunnelUp: Boolean = true,
         target: MockLocationTarget? = tokyo,
         orphaned: Boolean = false,
+        requiresLocationPermission: Boolean = false,
+        locationPermissionGranted: Boolean = false,
     ): MockLocationStatus {
         return resolveMockLocationStatus(
             enabled = enabled,
@@ -31,6 +33,8 @@ class MockLocationStateTest {
             tunnelUp = tunnelUp,
             target = target,
             orphaned = orphaned,
+            requiresLocationPermission = requiresLocationPermission,
+            locationPermissionGranted = locationPermissionGranted,
         )
     }
 
@@ -108,6 +112,33 @@ class MockLocationStateTest {
     }
 
     @Test
+    fun locationPermissionGateComesFourthWhenRequired() {
+        assertEquals(
+            MockLocationStatus.NEEDS_LOCATION_PERMISSION,
+            resolve(
+                requiresLocationPermission = true,
+                locationPermissionGranted = false,
+            ),
+        )
+        // when permission is granted, gate passes
+        assertEquals(
+            MockLocationStatus.ACTIVE,
+            resolve(
+                requiresLocationPermission = true,
+                locationPermissionGranted = true,
+            ),
+        )
+        // when permission is not required, gate is bypassed
+        assertEquals(
+            MockLocationStatus.ACTIVE,
+            resolve(
+                requiresLocationPermission = false,
+                locationPermissionGranted = false,
+            ),
+        )
+    }
+
+    @Test
     fun eligibleWhenNoTunnelAndNoTarget() {
         assertEquals(
             MockLocationStatus.ELIGIBLE,
@@ -134,6 +165,8 @@ class MockLocationStateTest {
         devOptionsEnabled: Boolean = true,
         mockAppSelected: Boolean = true,
         locationServicesEnabled: Boolean = true,
+        locationPermissionGranted: Boolean = true,
+        requiresLocationPermission: Boolean = false,
     ) = MockLocationState(
         status = MockLocationStatus.DISABLED,
         enabled = false,
@@ -141,6 +174,8 @@ class MockLocationStateTest {
         devOptionsEnabled = devOptionsEnabled,
         mockAppSelected = mockAppSelected,
         locationServicesEnabled = locationServicesEnabled,
+        locationPermissionGranted = locationPermissionGranted,
+        requiresLocationPermission = requiresLocationPermission,
     )
 
     // The toggle opens the setup guide only when setup is incomplete, and the
@@ -159,5 +194,11 @@ class MockLocationStateTest {
         assertFalse(state(devOptionsEnabled = false).setupComplete)
         assertFalse(state(mockAppSelected = false).setupComplete)
         assertFalse(state(locationServicesEnabled = false).setupComplete)
+        assertFalse(
+            state(
+                requiresLocationPermission = true,
+                locationPermissionGranted = false,
+            ).setupComplete
+        )
     }
 }

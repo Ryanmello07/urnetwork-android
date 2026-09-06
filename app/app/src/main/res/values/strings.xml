@@ -439,6 +439,9 @@
     <string name="mock_location_disclosure_device_wide">This changes the location reported to every app on your device, not just URnetwork.</string>
     <string name="mock_location_disclosure_turn_off_first">Turn this off in URnetwork before you turn off developer options, deselect URnetwork, or uninstall the app — otherwise your device location can stay frozen until you restart.</string>
     <string name="mock_location_error_cleanup_required">URnetwork could not remove the simulated location. Re-select URnetwork under developer options and turn this off, or restart your device.</string>
+    <string name="mock_location_status_stuck">GPS frozen — action needed</string>
+    <string name="mock_location_error_stuck_title">Simulated location is stuck</string>
+    <string name="mock_location_error_stuck_detail">URnetwork was deselected while active, so Android locked the simulated GPS. Re-select URnetwork in Developer options to restore your real GPS, or restart your phone.</string>
     <string name="mock_location_guide_intro">When enabled, apps on this device see the location of the provider you have been connected to the longest, instead of your real location.</string>
     <string name="mock_location_guide_title">Sync device location</string>
     <string name="mock_location_needs_setup">Setup required</string>
@@ -449,6 +452,8 @@
     <string name="mock_location_settings_row">Device location sync</string>
     <string name="mock_location_step_developer_options">Turn on developer options: open About phone and tap Build number seven times.</string>
     <string name="mock_location_step_location_services">Turn on Location in system settings so apps can receive the location.</string>
+    <string name="mock_location_step_location_permission">Allow approximate location access so Google Play Services can sync simulated location with Chrome and apps.</string>
+    <string name="mock_location_grant_permission">Grant permission</string>
     <string name="mock_location_step_select_app">In developer options, tap Select mock location app and choose URnetwork.</string>
     <string name="mock_location_waiting_for_provider">Waiting for a provider location</string>
     <string name="multiple_ips">Multiple IPs</string>

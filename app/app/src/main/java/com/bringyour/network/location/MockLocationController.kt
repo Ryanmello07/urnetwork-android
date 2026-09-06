@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
-import com.bringyour.network.TAG
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,6 +39,7 @@ class MockLocationController @Inject constructor(
 ) {
 
     companion object {
+        private const val TAG = "MockLocationController"
         const val PREFS_NAME = "mock_location"
         const val PREF_KEY_ENABLED = "enabled"
         const val PREF_KEY_REGISTERED_PROVIDERS = "registered_providers"
@@ -84,6 +84,8 @@ class MockLocationController @Inject constructor(
     private var devOptionsEnabled = false
     private var selectedMockApp = false
     private var locationServicesEnabled = false
+    private var locationPermissionGranted = false
+    private var requiresLocationPermission = false
 
     private val _state = MutableStateFlow(
         MockLocationState(MockLocationStatus.DISABLED, enabled = false, target = null)
@@ -122,6 +124,7 @@ class MockLocationController @Inject constructor(
                 return@post
             }
             target = newTarget
+            Log.i(TAG, "mock location target updated present=${newTarget != null}")
             errorTransient = false
             if (posting && newTarget != null) {
                 teleport = true
@@ -209,6 +212,8 @@ class MockLocationController @Inject constructor(
         devOptionsEnabled = isDeveloperOptionsEnabled(context)
         selectedMockApp = isSelectedMockLocationApp(context)
         locationServicesEnabled = isLocationServicesEnabled(context)
+        requiresLocationPermission = supportsFusedMockLocation(context)
+        locationPermissionGranted = hasLocationPermission(context)
     }
 
     private fun resolveStatus(): MockLocationStatus {
@@ -220,6 +225,8 @@ class MockLocationController @Inject constructor(
             tunnelUp = tunnelUp,
             target = target,
             orphaned = orphaned,
+            requiresLocationPermission = requiresLocationPermission,
+            locationPermissionGranted = locationPermissionGranted,
         )
     }
 
@@ -251,6 +258,8 @@ class MockLocationController @Inject constructor(
             devOptionsEnabled = devOptionsEnabled,
             mockAppSelected = selectedMockApp,
             locationServicesEnabled = locationServicesEnabled,
+            locationPermissionGranted = locationPermissionGranted,
+            requiresLocationPermission = requiresLocationPermission,
         )
     }
 
@@ -360,6 +369,7 @@ class MockLocationController @Inject constructor(
         posting = false
         fusedActive = false
         removeAllTestProviders()
+        Log.i(TAG, "mock location disarmed")
     }
 
     // Best-effort removal of every provider this app may have registered

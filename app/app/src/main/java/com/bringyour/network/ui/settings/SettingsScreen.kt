@@ -125,8 +125,27 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bringyour.network.TAG
 import com.bringyour.network.ui.components.ProvideCellPicker
 import com.bringyour.network.ui.components.ProvideControlModePicker
+import com.bringyour.network.location.MockLocationStatus
+import com.bringyour.network.location.MockLocationTarget
+import com.bringyour.network.ui.connect.providerlocations.MockLocationViewModel
 import com.bringyour.network.ui.login.SeedphraseDisplayScreen
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
+/**
+ * Stateful root composable for the Settings screen, observing view model states
+ * and binding UI callbacks for account management, network modes, permissions,
+ * seed phrase verification, and mock location synchronization.
+ *
+ * @param navController Navigation controller for routing to nested screens and external flows.
+ * @param accountViewModel ViewModel managing authenticated user profile and client identity.
+ * @param planViewModel ViewModel managing subscription tier and upgrade options.
+ * @param settingsViewModel ViewModel managing application configuration and hardware preferences.
+ * @param overlayViewModel ViewModel managing global overlay dialogs and sheets.
+ * @param activityResultSender Sender for Mobile Wallet Adapter (MWA) activity results.
+ * @param earningsViewModel ViewModel managing earnings, rewards, and Seeker token holder status.
+ * @param isPro True if the current account holds an active supporter subscription tier.
+ * @param mockLocationViewModel ViewModel managing mock location simulation preferences and status.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -137,8 +156,25 @@ fun SettingsScreen(
     overlayViewModel: OverlayViewModel,
     activityResultSender: ActivityResultSender?,
     earningsViewModel: EarningsViewModel,
-    isPro: Boolean
+    isPro: Boolean,
+    mockLocationViewModel: MockLocationViewModel = hiltViewModel(),
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mockLocationState by mockLocationViewModel.state.collectAsState()
+
+    LaunchedEffect(Unit) {
+        mockLocationViewModel.refreshEligibility()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mockLocationViewModel.refreshEligibility()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val notificationsAllowed = settingsViewModel.permissionGranted.collectAsState().value
     val showDeleteAccountDialog = settingsViewModel.showDeleteAccountDialog.collectAsState().value
@@ -289,6 +325,24 @@ fun SettingsScreen(
         isGeneratingSeedphrase = isGeneratingSeedphrase,
         isRegeneratingSeedphrase = isRegeneratingSeedphrase,
         onSeedphraseActionClick = { action -> pendingSeedphraseAction = action },
+        mockLocationEnabled = mockLocationState.enabled,
+        mockLocationSetupComplete = mockLocationState.setupComplete,
+        mockLocationStatus = mockLocationState.status,
+        mockLocationTarget = mockLocationState.target,
+        onToggleMockLocation = {
+            // NOTE: reads mockLocationState.enabled from the snapshot captured by
+            // the last composition — between the click and the ViewModel update,
+            // another caller could toggle it. Acceptable here because the toggle
+            // is debounced and setEnabled() is idempotent.
+            val enabled = !mockLocationState.enabled
+            mockLocationViewModel.setEnabled(enabled)
+            if (mockLocationState.status == MockLocationStatus.ORPHANED || (enabled && !mockLocationState.setupComplete)) {
+                navController.navigate(Route.MockLocationGuide)
+            }
+        },
+        onOpenMockLocationGuide = {
+            navController.navigate(Route.MockLocationGuide)
+        },
     )
 
     if (isPresentingRenameDevice) {
@@ -466,6 +520,55 @@ fun SettingsScreen(
 
 }
 
+/**
+ * Stateless presentation composable for the Settings screen layout.
+ *
+ * @param navController Navigation controller for in-app navigation routes.
+ * @param clientId Unique identifier for the client installation.
+ * @param currentPlan Active subscription tier (Basic or Supporter).
+ * @param notificationsAllowed True if OS notification permissions are granted.
+ * @param notificationsPermanentlyDenied True if notification permissions were permanently declined.
+ * @param requestAllowNotifications Callback to request system notification permission.
+ * @param allowProductUpdates True if product update telemetry is enabled.
+ * @param toggleAllowProductUpdates Callback to toggle product update telemetry.
+ * @param provideControlMode Current relay/provider routing mode.
+ * @param setProvideControlMode Callback to select a new relay/provider mode.
+ * @param deviceName User-assigned label for this device.
+ * @param deviceSpec Hardware specifications string.
+ * @param onEditDeviceName Callback to initiate device renaming dialog.
+ * @param setShowDeleteAccountDialog Callback to control delete account dialog visibility.
+ * @param showDeleteAccountDialog True if the delete account dialog is visible.
+ * @param deleteAccount Callback to execute account deletion with success/failure handlers.
+ * @param isDeletingAccount True if account deletion is currently in progress.
+ * @param routeLocal True if LAN local routing is enabled.
+ * @param toggleRouteLocal Callback to toggle LAN local routing.
+ * @param snackbarHostState State manager for snackbar notifications.
+ * @param signAndVerifySeekerHolder Callback to trigger Seeker token wallet verification.
+ * @param isSeekerHolder True if the device has verified ownership of a Seeker token.
+ * @param version Application build version string.
+ * @param allowProvideCell True if relaying is allowed over cellular connections.
+ * @param toggleProvideCell Callback to toggle cellular relaying.
+ * @param authCodeCreate Callback to generate a new device pairing auth code.
+ * @param authCode Current pairing auth code, if generated.
+ * @param isCreatingAuthCode True if an auth code is being generated.
+ * @param setDisplayAuthCodeDialog Callback to control auth code dialog display.
+ * @param provideIndicatorColor Status color for the relay mode indicator.
+ * @param provideIndicatorRingColor Optional ring accent color for the relay indicator.
+ * @param stripePortalUrl Customer billing portal URL, if available.
+ * @param authMethods List of active authentication methods linked to the account.
+ * @param onRemoveAuthMethod Callback to remove an authentication method.
+ * @param onAddAuthMethodClick Callback to present add authentication sheet.
+ * @param hasSeedphrase True if a seed phrase authentication method is configured.
+ * @param isGeneratingSeedphrase True if seed phrase generation is underway.
+ * @param isRegeneratingSeedphrase True if seed phrase regeneration is underway.
+ * @param onSeedphraseActionClick Callback for seed phrase actions (export/regenerate).
+ * @param mockLocationEnabled True if mock location synchronization is toggled on.
+ * @param mockLocationSetupComplete True if all Android OS mock location prerequisites are met.
+ * @param mockLocationStatus Current lifecycle state of mock location synchronization.
+ * @param mockLocationTarget Current exit provider coordinates being simulated, if active.
+ * @param onToggleMockLocation Callback invoked when user toggles mock location sync switch.
+ * @param onOpenMockLocationGuide Callback to navigate to the mock location setup guide.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(
@@ -508,6 +611,12 @@ private fun SettingsScreen(
     isGeneratingSeedphrase: Boolean,
     isRegeneratingSeedphrase: Boolean,
     onSeedphraseActionClick: (SeedphraseAction) -> Unit,
+    mockLocationEnabled: Boolean = false,
+    mockLocationSetupComplete: Boolean = false,
+    mockLocationStatus: MockLocationStatus = MockLocationStatus.DISABLED,
+    mockLocationTarget: MockLocationTarget? = null,
+    onToggleMockLocation: () -> Unit = {},
+    onOpenMockLocationGuide: () -> Unit = {},
 ) {
 
     val context = LocalContext.current
@@ -919,26 +1028,65 @@ private fun SettingsScreen(
             /**
              * Device location sync (the mock location provider setup guide)
              */
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        navController.navigate(Route.MockLocationGuide)
-                    }
-                    .padding(vertical = 6.dp)
-                ,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    stringResource(id = R.string.mock_location_settings_row),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                onOpenMockLocationGuide()
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            stringResource(id = R.string.mock_location_settings_row),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Keyboard Arrow Right",
-                    tint = TextMuted
-                )
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Keyboard Arrow Right",
+                            tint = TextMuted
+                        )
+                    }
+
+                    URSwitch(
+                        checked = mockLocationEnabled,
+                        toggle = onToggleMockLocation,
+                    )
+                }
+
+                val statusSubtitle = when {
+                    mockLocationStatus == MockLocationStatus.ORPHANED ->
+                        stringResource(id = R.string.mock_location_status_stuck)
+                    mockLocationEnabled && !mockLocationSetupComplete ->
+                        stringResource(id = R.string.mock_location_needs_setup)
+                    mockLocationStatus == MockLocationStatus.ACTIVE && mockLocationTarget != null ->
+                        stringResource(id = R.string.mock_location_active, mockLocationTarget.label)
+                    mockLocationStatus == MockLocationStatus.ELIGIBLE && mockLocationEnabled ->
+                        stringResource(id = R.string.mock_location_waiting_for_provider)
+                    else -> null
+                }
+
+                if (statusSubtitle != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        statusSubtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (mockLocationStatus == MockLocationStatus.ORPHANED)
+                            MaterialTheme.colorScheme.error
+                        else
+                            TextMuted
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(18.dp))

@@ -4,11 +4,13 @@ import android.app.Activity
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 
 // Thin Android-facing eligibility reads and Settings intent launchers for the
 // mock location engine. No side effects beyond startActivity. See
@@ -48,6 +50,15 @@ fun isLocationServicesEnabled(context: Context): Boolean {
         locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
                 locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     }
+}
+
+// True when the app holds runtime location permission (COARSE).
+// Required by Google Play Services FusedLocationProviderClient to permit mock mode.
+fun hasLocationPermission(context: Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+    ) == PackageManager.PERMISSION_GRANTED
 }
 
 // Watches the MOCK_LOCATION app op for this package (fires when the user

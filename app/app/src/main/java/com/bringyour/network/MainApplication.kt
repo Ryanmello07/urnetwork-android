@@ -24,6 +24,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.WorkManager
 import com.bringyour.network.location.MockLocationController
+import com.bringyour.network.location.MockLocationFeeder
 import com.bringyour.network.ui.shared.models.ProvideNetworkMode
 import com.bringyour.sdk.DeviceLocal
 import com.bringyour.sdk.LocalState
@@ -166,6 +167,9 @@ class MainApplication : Application() {
 
     @Inject
     lateinit var mockLocationController: MockLocationController
+
+    @Inject
+    lateinit var mockLocationFeeder: MockLocationFeeder
 
     var vpnRequestStart: Boolean = false
         private set
@@ -395,6 +399,10 @@ class MainApplication : Application() {
         }
     }
 
+    /**
+     * Initializes core application singletons, SDK memory limits, mock location
+     * controllers, and network space managers once credential storage is unlocked.
+     */
     private fun initializeApplicationState() {
         addTunnelLifecycleObservers()
 
@@ -471,6 +479,7 @@ class MainApplication : Application() {
         // from the feature UI) so a previous process's leftovers are cleared
         // even when the user never opens the provider locations sheet.
         mockLocationController.start()
+        mockLocationFeeder.start()
 
         networkSpaceManagerProvider.init(filesDir.absolutePath)
 
@@ -1331,6 +1340,10 @@ class MainApplication : Application() {
         api?.byJwt = null
     }
 
+    /**
+     * Tears down the active device, stops the VPN service, unregisters hardware/network
+     * callbacks, and resets transient connection and contract state.
+     */
     fun stop() {
         // Invalidate a reconcile already queued by a listener before tearing
         // down the device; it must not restart the service after logout.
@@ -1364,6 +1377,7 @@ class MainApplication : Application() {
         tunnelChangeSub = null
         contractStatusChangeSub?.close()
         contractStatusChangeSub = null
+        lastLoggedContractStatus = null
 
 //        provideEnabled = false
 //        connectEnabled = false
@@ -1483,6 +1497,7 @@ class MainApplication : Application() {
         addThermalStatusListener()
 
         updateTunnelStarted()
+        lastLoggedContractStatus = null
         updateContractStatus()
         service?.get()?.onDeviceAvailable()
         updateVpnService()
@@ -1490,6 +1505,9 @@ class MainApplication : Application() {
         return true
     }
 
+    /**
+     * Logs transitions in device tunnel state.
+     */
     private fun updateTunnelStarted() {
         device?.tunnelStarted?.let { tunnelStarted ->
             Log.i(TAG, "[tunnel]started=$tunnelStarted")
@@ -1498,10 +1516,22 @@ class MainApplication : Application() {
         }
     }
 
+    private var lastLoggedContractStatus: String? = null
+
+    /**
+     * Updates and logs changes in network contract status, deduplicating identical
+     * state transitions to prevent logcat flooding during rapid network renegotiations.
+     */
     private fun updateContractStatus() {
-        device?.contractStatus?.let { contractStatus ->
-            Log.i(TAG, "[contract]insufficent=${contractStatus.insufficientBalance} nopermission=${contractStatus.noPermission} premium=${contractStatus.premium}")
-        } ?: run {
+        val contractStatus = device?.contractStatus
+        if (contractStatus != null) {
+            val statusSummary = "insufficent=${contractStatus.insufficientBalance} nopermission=${contractStatus.noPermission} premium=${contractStatus.premium}"
+            if (statusSummary != lastLoggedContractStatus) {
+                lastLoggedContractStatus = statusSummary
+                Log.i(TAG, "[contract]$statusSummary")
+            }
+        } else if (lastLoggedContractStatus != null) {
+            lastLoggedContractStatus = null
             Log.i(TAG, "[contract]no contract status")
         }
     }

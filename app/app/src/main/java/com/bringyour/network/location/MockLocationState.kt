@@ -20,6 +20,10 @@ enum class MockLocationStatus {
     // would succeed but nothing would be delivered to any app
     NEEDS_LOCATION_ON,
 
+    // on GMS devices, Google Play Services FusedLocationProviderClient requires
+    // ACCESS_COARSE_LOCATION to accept mock mode/locations
+    NEEDS_LOCATION_PERMISSION,
+
     // all preconditions met; waiting for tunnel up + a located provider
     ELIGIBLE,
 
@@ -58,9 +62,12 @@ data class MockLocationState(
     val devOptionsEnabled: Boolean = false,
     val mockAppSelected: Boolean = false,
     val locationServicesEnabled: Boolean = false,
+    val locationPermissionGranted: Boolean = false,
+    val requiresLocationPermission: Boolean = false,
 ) {
     val setupComplete: Boolean
-        get() = devOptionsEnabled && mockAppSelected && locationServicesEnabled
+        get() = devOptionsEnabled && mockAppSelected && locationServicesEnabled &&
+                (!requiresLocationPermission || locationPermissionGranted)
 }
 
 // Resolves the user-visible status from the engine inputs.
@@ -70,8 +77,8 @@ data class MockLocationState(
 // controller clears it only after a successful cleanup — at which point a
 // disabled toggle resolves to DISABLED (MOCKLOCATION.md §6.4). The remaining
 // gates apply in setup order: developer options -> mock app selection ->
-// location services; then ACTIVE only while the tunnel is up and a located
-// provider target exists, ELIGIBLE otherwise.
+// location services -> location permission (when required); then ACTIVE only
+// while the tunnel is up and a located provider target exists, ELIGIBLE otherwise.
 fun resolveMockLocationStatus(
     enabled: Boolean,
     devOptionsEnabled: Boolean,
@@ -80,6 +87,8 @@ fun resolveMockLocationStatus(
     tunnelUp: Boolean,
     target: MockLocationTarget?,
     orphaned: Boolean,
+    requiresLocationPermission: Boolean = false,
+    locationPermissionGranted: Boolean = false,
 ): MockLocationStatus {
     if (orphaned) {
         return MockLocationStatus.ORPHANED
@@ -95,6 +104,9 @@ fun resolveMockLocationStatus(
     }
     if (!locationServicesEnabled) {
         return MockLocationStatus.NEEDS_LOCATION_ON
+    }
+    if (requiresLocationPermission && !locationPermissionGranted) {
+        return MockLocationStatus.NEEDS_LOCATION_PERMISSION
     }
     return if (tunnelUp && target != null) {
         MockLocationStatus.ACTIVE

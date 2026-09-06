@@ -1,5 +1,8 @@
 package com.bringyour.network.ui.connect.providerlocations
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -48,6 +52,7 @@ import com.bringyour.network.location.openAboutPhone
 import com.bringyour.network.location.openDeveloperOptions
 import com.bringyour.network.location.openLocationSettings
 import com.bringyour.network.ui.components.URButton
+import com.bringyour.network.ui.components.URSwitch
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.theme.MainTintedBackgroundBase
@@ -56,9 +61,13 @@ import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.bringyour.network.utils.lighten
 
 /**
- * Walks the user through making URnetwork the Android mock location app. The
- * state machine decides which step is current — there is no OS callback for
+ * Walks the user through making URnetwork the Android mock location app.
+ *
+ * The state machine decides which step is current — there is no OS callback for
  * the selection, so state is re-read every time this screen resumes.
+ *
+ * @param navController Navigation controller used to handle navigation and back-stack transitions.
+ * @param viewModel ViewModel providing mock location state and actions.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +78,12 @@ fun MockLocationGuideScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        viewModel.refreshEligibility()
+    }
 
     // navigating here does not pause the activity, so no ON_RESUME arrives on
     // entry; the observer below covers the important case of returning from
@@ -123,6 +138,43 @@ fun MockLocationGuideScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            if (state.status == MockLocationStatus.ORPHANED) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        .padding(16.dp),
+                ) {
+                    Column {
+                        Text(
+                            stringResource(id = R.string.mock_location_error_stuck_title),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            stringResource(id = R.string.mock_location_error_stuck_detail),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        URButton(
+                            onClick = { openDeveloperOptions(context) },
+                        ) { buttonTextStyle ->
+                            Text(
+                                stringResource(id = R.string.mock_location_open_developer_options),
+                                style = buttonTextStyle,
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
             // Steps read the raw setup signals, not `status`: with the toggle
             // off `status` is DISABLED regardless of how the device is
             // configured, which would mark every step done and hide the
@@ -141,7 +193,8 @@ fun MockLocationGuideScreen(
                 text = stringResource(id = R.string.mock_location_step_select_app),
                 done = state.mockAppSelected,
                 actionLabel = stringResource(id = R.string.mock_location_open_developer_options),
-                current = state.devOptionsEnabled && !state.mockAppSelected,
+                current = state.devOptionsEnabled && !state.mockAppSelected &&
+                        state.status != MockLocationStatus.ORPHANED,
                 onAction = { openDeveloperOptions(context) },
             )
 
@@ -156,23 +209,55 @@ fun MockLocationGuideScreen(
                 onAction = { openLocationSettings(context) },
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            if (state.requiresLocationPermission) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-            if (state.setupComplete) {
-                Text(
-                    stringResource(id = R.string.mock_location_ready),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Green,
+                GuideStep(
+                    text = stringResource(id = R.string.mock_location_step_location_permission),
+                    done = state.locationPermissionGranted,
+                    actionLabel = stringResource(id = R.string.mock_location_grant_permission),
+                    current = state.devOptionsEnabled && state.mockAppSelected &&
+                            state.locationServicesEnabled && !state.locationPermissionGranted,
+                    onAction = {
+                        permissionLauncher.launch(
+                            arrayOf(
+                                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                            )
+                        )
+                    },
                 )
-                Spacer(modifier = Modifier.height(24.dp))
             }
 
-            if (state.status == MockLocationStatus.ORPHANED) {
-                Text(
-                    stringResource(id = R.string.mock_location_error_cleanup_required),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (state.setupComplete && state.status != MockLocationStatus.ORPHANED) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val target = state.target
+                    val statusText = when {
+                        state.status == MockLocationStatus.ACTIVE && target != null ->
+                            stringResource(id = R.string.mock_location_active, target.label)
+                        state.enabled ->
+                            stringResource(id = R.string.mock_location_waiting_for_provider)
+                        else ->
+                            stringResource(id = R.string.mock_location_ready)
+                    }
+
+                    Text(
+                        statusText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Green,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    URSwitch(
+                        checked = state.enabled,
+                        toggle = { viewModel.setEnabled(!state.enabled) },
+                    )
+                }
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
@@ -199,6 +284,15 @@ fun MockLocationGuideScreen(
     }
 }
 
+/**
+ * Renders an individual setup step card in the mock location configuration guide.
+ *
+ * @param text Instructional text describing the required configuration step.
+ * @param done True if the step's prerequisite has been satisfied.
+ * @param current True if this step is the immediate next action required from the user.
+ * @param actionLabel Label for the primary action button on the card.
+ * @param onAction Callback invoked when the user clicks the action button.
+ */
 @Composable
 private fun GuideStep(
     text: String,
