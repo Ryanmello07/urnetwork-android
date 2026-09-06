@@ -112,12 +112,16 @@ fun MockLocationSection(
                 }
             }
 
+            // ORPHANED is not a togglable state: the test providers are stuck until
+            // the op comes back, so the preference cannot express what the user wants.
+            // The recovery row below is the way out of it from this screen.
             URSwitch(
-                checked = state.enabled,
+                checked = state.enabled && state.status != MockLocationStatus.ORPHANED,
+                enabled = state.status != MockLocationStatus.ORPHANED,
                 toggle = {
                     val enabled = !state.enabled
                     viewModel.setEnabled(enabled)
-                    if (state.status == MockLocationStatus.ORPHANED || (enabled && !state.setupComplete)) {
+                    if (enabled && !state.setupComplete) {
                         navController.navigate(Route.MockLocationGuide)
                     }
                 },
@@ -169,6 +173,9 @@ fun MockLocationSection(
                     stringResource(id = R.string.mock_location_error_stuck_detail),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                    // without the weight the text takes the whole row and the
+                    // chevron below measures to zero width
+                    modifier = Modifier.weight(1f),
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Icon(

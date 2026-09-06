@@ -20,8 +20,10 @@ enum class MockLocationStatus {
     // would succeed but nothing would be delivered to any app
     NEEDS_LOCATION_ON,
 
-    // on GMS devices, Google Play Services FusedLocationProviderClient requires
-    // ACCESS_COARSE_LOCATION to accept mock mode/locations
+    // advisory only: on GMS devices the optional FusedLocationProviderClient
+    // mirror needs ACCESS_COARSE_LOCATION, but the AOSP test providers never
+    // do (§8) — never returned by resolveMockLocationStatus. The UI reads
+    // requiresLocationPermission/locationPermissionGranted off the state.
     NEEDS_LOCATION_PERMISSION,
 
     // all preconditions met; waiting for tunnel up + a located provider
@@ -66,8 +68,9 @@ data class MockLocationState(
     val requiresLocationPermission: Boolean = false,
 ) {
     val setupComplete: Boolean
-        get() = devOptionsEnabled && mockAppSelected && locationServicesEnabled &&
-                (!requiresLocationPermission || locationPermissionGranted)
+        // the COARSE grant is deliberately absent: it buys the optional FLP
+        // mirror only (§3.2), so it must never hold the toggle hostage
+        get() = devOptionsEnabled && mockAppSelected && locationServicesEnabled
 }
 
 // Resolves the user-visible status from the engine inputs.
@@ -77,8 +80,13 @@ data class MockLocationState(
 // controller clears it only after a successful cleanup — at which point a
 // disabled toggle resolves to DISABLED (MOCKLOCATION.md §6.4). The remaining
 // gates apply in setup order: developer options -> mock app selection ->
-// location services -> location permission (when required); then ACTIVE only
-// while the tunnel is up and a located provider target exists, ELIGIBLE otherwise.
+// location services; then ACTIVE only while the tunnel is up and a located
+// provider target exists, ELIGIBLE otherwise.
+//
+// The COARSE grant is NOT a gate: the AOSP test providers need no runtime
+// permission (§8), so gating here would kill the feature on every GMS
+// device without it. Only the optional FLP mirror is gated, in the
+// controller (§3.2).
 fun resolveMockLocationStatus(
     enabled: Boolean,
     devOptionsEnabled: Boolean,
@@ -87,8 +95,6 @@ fun resolveMockLocationStatus(
     tunnelUp: Boolean,
     target: MockLocationTarget?,
     orphaned: Boolean,
-    requiresLocationPermission: Boolean = false,
-    locationPermissionGranted: Boolean = false,
 ): MockLocationStatus {
     if (orphaned) {
         return MockLocationStatus.ORPHANED
@@ -104,9 +110,6 @@ fun resolveMockLocationStatus(
     }
     if (!locationServicesEnabled) {
         return MockLocationStatus.NEEDS_LOCATION_ON
-    }
-    if (requiresLocationPermission && !locationPermissionGranted) {
-        return MockLocationStatus.NEEDS_LOCATION_PERMISSION
     }
     return if (tunnelUp && target != null) {
         MockLocationStatus.ACTIVE

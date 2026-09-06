@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.connect.providerlocations
 
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +34,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +53,7 @@ import androidx.navigation.NavController
 import com.bringyour.network.R
 import com.bringyour.network.location.MockLocationStatus
 import com.bringyour.network.location.openAboutPhone
+import com.bringyour.network.location.openAppSettings
 import com.bringyour.network.location.openDeveloperOptions
 import com.bringyour.network.location.openLocationSettings
 import com.bringyour.network.ui.components.URButton
@@ -79,9 +84,22 @@ fun MockLocationGuideScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    val activity = context as? Activity
+    // survives the activity recreation some OEMs do around the permission
+    // dialog, which is exactly when the flag is needed
+    var permissionBlocked by rememberSaveable { mutableStateOf(false) }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
-    ) {
+    ) { results ->
+        // same idiom as SettingsViewModel.onPermissionResult: once a request has
+        // been made and there is still no rationale to show, the system dialog
+        // will never appear again, so the button has to become App info or it is
+        // dead. A null activity keeps this false and the button keeps asking.
+        permissionBlocked = results[android.Manifest.permission.ACCESS_COARSE_LOCATION] != true &&
+                activity?.shouldShowRequestPermissionRationale(
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == false
         viewModel.refreshEligibility()
     }
 
@@ -215,15 +233,22 @@ fun MockLocationGuideScreen(
                 GuideStep(
                     text = stringResource(id = R.string.mock_location_step_location_permission),
                     done = state.locationPermissionGranted,
-                    actionLabel = stringResource(id = R.string.mock_location_grant_permission),
-                    current = state.devOptionsEnabled && state.mockAppSelected &&
-                            state.locationServicesEnabled && !state.locationPermissionGranted,
+                    actionLabel = if (permissionBlocked)
+                        stringResource(id = R.string.mock_location_open_app_settings)
+                    else
+                        stringResource(id = R.string.mock_location_grant_permission),
+                    // not gated on the steps above: this one only buys the
+                    // optional Google Play mirror, so it is an offer that stands
+                    // whenever the grant is missing, not the next blocking step
+                    current = !state.locationPermissionGranted,
                     onAction = {
-                        permissionLauncher.launch(
-                            arrayOf(
-                                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                        if (permissionBlocked) {
+                            openAppSettings(context)
+                        } else {
+                            permissionLauncher.launch(
+                                arrayOf(android.Manifest.permission.ACCESS_COARSE_LOCATION)
                             )
-                        )
+                        }
                     },
                 )
             }

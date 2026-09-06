@@ -9,12 +9,22 @@ with exit provider" feature in the URnetwork Android VPN app (minSdk 26, targetS
 foreground VpnService).
 
 **Verdict up front:** the feature is fully implementable with public SDK APIs, requires
-**no runtime location permission and no location foreground-service type**, and has clear
-commercial precedent (Surfshark). The two things that will bite are (a) **test providers
-are never auto-removed** — not on process death, not on force-stop, not on uninstall —
-and (b) if the user deselects the app in Developer options while mocking is active, **the
-app permanently loses the ability to clean up until re-selection or reboot**. Both are
-verified in AOSP source below and drive most of the blueprint.
+**no runtime location permission and no location foreground-service type** for its core
+AOSP path, and has clear commercial precedent (Surfshark). The two things that will bite
+are (a) **test providers are never auto-removed** — not on process death, not on
+force-stop, not on uninstall — and (b) if the user deselects the app in Developer options
+while mocking is active, **the app permanently loses the ability to clean up until
+re-selection or reboot**. Both are verified in AOSP source below and drive most of the
+blueprint.
+
+**Amendment, as shipped:** the *optional* Google Play services mirror of §3.2 — compiled
+only into the GMS flavors, never into the F-Droid build — turned out to want a runtime
+location grant, so those flavors now declare `ACCESS_COARSE_LOCATION` and ask for it once,
+from one explicit button in the setup guide. Nothing else moved: the AOSP test providers
+still need no runtime permission (§8), the `github`/F-Droid build still declares no
+location permission at all, and the app still never reads a device location. §1.4 covers
+the Play policy consequences and §3.2 covers why the requirement is asserted defensively
+rather than proven.
 
 ---
 
@@ -111,12 +121,57 @@ apply:
   document this in their Google Play listing and encrypt all data from the device to the
   VPN tunnel endpoint." Already satisfied.
 - **Location Permissions Policy**: applies to `ACCESS_COARSE/FINE/BACKGROUND_LOCATION`.
-  **The mock-only design requests none of these**, so it is out of scope — a strong
-  argument for *not* building a "mirror the real location" pass-through (§8, §10.4).
+  **The mock-only *core* design requests none of these** — a strong argument for *not*
+  building a "mirror the real location" pass-through (§8, §10.4). As shipped this is now
+  only half true: the GMS flavors declare `ACCESS_COARSE_LOCATION` for the optional FLP
+  mirror and are therefore **in scope** of that policy. See immediately below.
 - Google's own developer docs bless the feature: "**Select mock location app**: Use this
   option to fake the GPS location of the device to test whether your app behaves the same
   in other locations. To use this option, download and install a GPS mock location app."
   — [Configure on-device developer options](https://developer.android.com/studio/debug/dev-options)
+
+**As shipped: the GMS flavors are in scope of the Location Permissions policy, the
+F-Droid flavor is not.**
+
+| flavor | source set | `play-services-location` | `ACCESS_COARSE_LOCATION` |
+|---|---|---|---|
+| `play`, `solana_dapp`, `ethos_dapp` | `src/google`, `src/solana_dapp`, `src/ethos_dapp` | yes (21.3.0) | **declared**, inherited from `src/main` |
+| `github` (F-Droid) | `src/ungoogle` | no | **removed** in `src/github/AndroidManifest.xml` |
+
+`src/main` merges into all four flavors, so the declaration lives there and the F-Droid
+manifest strips it out again at its own (higher) merge priority. `src/ungoogle`'s
+`supportsFusedMockLocation()` is a hardcoded `false` and no GMS dependency is added for
+that flavor, so the F-Droid build could never use the grant and must not ask for it.
+`ACCESS_FINE_LOCATION` and the `android.hardware.location.gps` feature stay
+`tools:node="remove"` in `src/main` for every flavor, so no dependency can drag them in.
+
+**Necessity justification — the text a Play review needs.** The declaration is easy to
+defend because it is not a location *access* at all:
+
+- The app declares **approximate location only**. Never `ACCESS_FINE_LOCATION`, never
+  `ACCESS_BACKGROUND_LOCATION`, and no `location` foreground-service type (§8).
+- Its sole purpose is to satisfy `FusedLocationProviderClient.setMockMode()` /
+  `setMockLocation()`, i.e. to *write* a simulated fix into Google Play services. It buys
+  nothing else and gates nothing else (§3.2).
+- **The app never reads device location.** There is no `requestLocationUpdates`, no
+  `getLastKnownLocation`, no `getCurrentLocation`, no `getLastLocation` and no location
+  listener anywhere in the app — verified by grep across `src/main` and all four flavor
+  source sets; the only occurrences of those names are prose in comments citing this
+  report. Nor could there be: while `gps`/`network`/`fused` are mocked the real providers
+  are stopped and unreadable even by us (§7.1).
+- The prompt comes from **one explicit user action** — the optional fourth step of the
+  setup guide, behind a button the user taps, on a screen that has already explained the
+  feature. It is never requested at launch and never from the settings list. Its own copy
+  says it is optional and says what it buys.
+- Denying it (or permanently denying it) leaves every other part of the feature working;
+  the step then offers the app-info deep link instead of a dialog that will never appear
+  (§5).
+- Prominent disclosure is carried by the guide screen and the toggle's disclosure bullets
+  (§10.6), which already state that the simulated location is device-wide and detectable.
+
+What has *not* changed: `ACCESS_MOCK_LOCATION` is still ungrantable and still appears on
+no declaration form (§1.1), and no Play policy regulates mock-location apps as such. The
+one approximate-location declaration above is the whole of the new policy exposure.
 
 ### 1.5 Precedent
 
@@ -348,6 +403,60 @@ the platform path already covers the overwhelming majority of consumers. If adde
 `setMockMode(false)` on teardown is mandatory (it's device-global and affects other
 processes).
 
+**Does the FLP leg need a runtime location permission? Open question — the two pieces of
+evidence disagree.**
+
+- The **vendor prose quoted above names only `ACCESS_MOCK_LOCATION`** plus the
+  Developer-options selection ("Successfully using this API on devices running Android M+
+  requires the client to request the `android.permission.ACCESS_MOCK_LOCATION` permission
+  and to be selected as the mock location app within the device developer settings").
+  Read literally, the FLP path needs exactly what the platform path needs and nothing
+  more.
+- The **shipped binary annotates both calls as requiring a runtime location permission**:
+  in `com.google.android.gms:play-services-location:21.3.0`,
+  `FusedLocationProviderClient.setMockMode(boolean)` and `.setMockLocation(Location)` each
+  carry `@RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})`.
+  Verified directly against the artifact rather than the docs: the annotation is present
+  on both method entries in `classes.jar`, and it is stored in the
+  **`RuntimeInvisibleAnnotations`** attribute — `androidx.annotation.RequiresPermission`
+  has `CLASS` retention, so it is not even readable at runtime. It is a lint/tooling hint
+  about what Google expects callers to hold. **It is not, by itself, enforcement.**
+
+**So we do not know whether GMS actually enforces it at runtime, and this report does not
+claim that it does.** The call crosses a binder into the Play services process, whose
+implementation is not readable; the annotation tells us what the SDK's own tooling
+expects, not what the service checks. Declaring the permission is therefore a
+**defensive** choice — and it is deliberately arranged so that being wrong in either
+direction costs nothing:
+
+- If the grant *is* required, the mirror works for users who accept the optional prompt
+  and is simply absent for everyone else.
+- If it is *not* required, the residue is one approximate-location permission on the GMS
+  flavors that nothing in the app ever reads (§1.4), and one guide step that can later be
+  deleted.
+
+**What makes both outcomes harmless is that the grant gates only this leg.** The
+controller registers the AOSP test providers first and unconditionally, then sets
+`fusedActive = supportsFusedMockLocation(context) && locationPermissionGranted`; the 1 Hz
+poster mirrors into FLP only while that flag holds. A device without the grant loses the
+mirror and keeps the entire feature.
+
+This is why the "**optional, reflection-free, gracefully-degrading enhancement**" wording
+above is load-bearing rather than stylistic. **The permission must never become a
+precondition of the feature.** Promote it into the eligibility ladder — anywhere, but
+especially above the `ACTIVE`/`ELIGIBLE` decision (§10.3) — and mock location dies
+outright on every GMS device whose user declined a prompt they had just been told was
+optional, taking the AOSP path that never needed it down with it.
+
+**To settle it empirically**, the test is one debug build away: on a GMS device that has
+been selected as the mock location app but has *not* been granted approximate location,
+drop the `&& locationPermissionGranted` clause and watch `setMockMode(true)`'s `Task`
+outcome, which is logged on both success and failure. A failure means the service enforces
+the annotation; a success means the vendor prose is the accurate description. Note the
+obvious version cannot be run: revoking a runtime permission from Settings kills the
+process, so there is no "revoke it while armed and see what breaks". Until someone runs
+the debug-build version, treat the requirement as unproven.
+
 ### 3.3 Geocoder and geofencing
 
 - **`Geocoder` is unaffected.** It's a separate service (`ProxyGeocodeProvider`, bound
@@ -480,6 +589,22 @@ Two useful refinements:
   `Settings > About phone > Build number`; then "Tap the Build Number option seven times
   until you see the message *You are now a developer!*".
 
+**App info, for the optional runtime permission** (§1.4, §3.2): once
+`ACCESS_COARSE_LOCATION` has been denied to the point where the system dialog no longer
+appears, `launch()` returns immediately and the button is dead. The only route left is the
+app's own detail page, which *is* public and reliable:
+```java
+Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);  // "android.settings.APPLICATION_DETAILS_SETTINGS"
+i.setData(Uri.fromParts("package", ctx.getPackageName(), null));
+```
+Detect the permanent denial the standard way — after a request result comes back denied,
+`shouldShowRequestPermissionRationale()` returning `false` means the dialog will not show
+again — and swap the step's label and action to this. Guard it with `resolveActivity()`
+like every other deep link here. Note the failure direction that matters: if the activity
+reference needed for the rationale check is unavailable, fall back to *asking again*, not
+to the app-info button, so the worst case is a redundant tap rather than a user stranded
+on a screen that cannot help them.
+
 **OEM caveats** (lower-confidence, secondary sources): Samsung One UI nests the entry
 under **Developer options → Debugging → Mock location app**, and older One UI calls it
 "Allow mock locations"
@@ -560,6 +685,23 @@ Mitigation (mandatory in the blueprint): **on every app/service start, if the fe
 not supposed to be active, defensively call `removeTestProvider` for each of our provider
 names inside try/catch.** It's a no-op on S+ when nothing is registered.
 
+**As shipped, "not supposed to be active" means `resolveStatus() != ACTIVE`, not "the
+toggle is off".** A persisted toggle left ON says only that the *user* wants the feature;
+it says nothing about whether *this* process registered anything, and on a cold start it
+cannot have. Keying the startup sweep on `!enabled` therefore skipped it on exactly the
+devices most likely to be carrying leftovers — feature on, tunnel not yet up — leaving
+providers registered with no live owner and no path that would reclaim them. At the point
+the controller runs the sweep the persisted signals are loaded but the tunnel is still
+down and the target is still null (the feeder is started after the controller, §10.1), so
+the resolved status can never be `ACTIVE` there and the sweep is effectively
+unconditional — which is the intent. It is also the only path that sweeps the *default*
+provider names after a "Clear data" has wiped the persisted registered-provider set.
+
+One expected consequence, and it is correct rather than a regression: on a device holding
+leftovers whose app op has since been revoked, startup now discovers the failure and
+reports `ORPHANED` (§6.4) where the old condition stayed silent whenever the toggle
+happened to be on.
+
 ### 6.4 Deselection while active is unrecoverable
 
 If the user picks a different mock app (or clears the selection) while mocking is active:
@@ -576,6 +718,26 @@ API to recover. The UX must therefore:
 Turning Developer options **off** has the same effect (op revoked, providers linger) —
 worth a line in the guide: *turn this feature off in URnetwork before turning off
 Developer options.*
+
+**The reclaim must key on "might we have registered anything", not on "are we posting".**
+Automatic cleanup is what step 3 above depends on, and it is reached from an ordinary
+reconcile. As shipped the teardown branch fires on
+`posting || mayHaveRegisteredProviders()`, where the helper is the union of the in-memory
+provider-name set and the persisted one — because **`arm()` persists the claimed set
+before it registers anything**. A process that died mid-arm, and a cleanup that threw,
+both leave providers registered while `posting` is false. Under the narrower
+`!shouldPost && posting` condition those two states were unreachable by any retry: the
+providers stayed registered, nothing in the app could reclaim them, and the device's
+location stayed frozen for every app on it. That is the same user-visible failure as
+§6.3, arrived at from the opposite direction.
+
+The retry is safe to run repeatedly: `removeTestProvider` on a name that is not registered
+is a no-op on S+ and throws a caught `IllegalArgumentException` before it, exiting mock
+mode is idempotent, and the persisted set is cleared only on a clean pass. So the reclaim
+simply runs again on the next reconcile — every op-watcher callback, and every `onResume`
+of a screen that refreshes eligibility — until it succeeds. Log only the reclaims that
+actually stopped a running post loop; the retries must be silent, or an unrecoverable
+`ORPHANED` device writes a line every time the user opens a settings screen.
 
 ### 6.5 Teardown order, and does real location resume?
 
@@ -617,6 +779,44 @@ disabled and no app receives the fixes, even though every API call succeeds. Det
 `LocationManager.isLocationEnabled()` (API 28+) and surface it in the setup guide with a
 link to `Settings.ACTION_LOCATION_SOURCE_SETTINGS`. On API 26–27 fall back to
 `isProviderEnabled(GPS_PROVIDER) || isProviderEnabled(NETWORK_PROVIDER)`.
+
+### 6.7 The exit-target grace window
+
+The target is fed from the SDK's connected-provider telemetry, and that list can go
+momentarily empty while the tunnel is still up: a provider handover, a re-dial, a
+telemetry gap. Taken literally an empty list means "no exit city", which tears the
+providers down — and §6.5 is emphatic about what tearing down does. The real provider is
+restored **instantly** and the mock last-known cache is purged. So a one-second flap does
+not degrade to a slightly stale mock fix; it leaks a genuine hardware fix to every app on
+the device for as long as the reconnect takes. That is precisely the outcome the feature
+exists to prevent, produced by the feature's own plumbing.
+
+**Rule: an empty provider list while the tunnel is up holds the last known target for
+`TARGET_GRACE_PERIOD_MILLIS` (10 s) before clearing it.** A tunnel that genuinely goes
+down, a device swap, and shutdown all clear immediately and open no window — the window
+exists for provider churn, not for a connection the user or the SDK ended.
+
+Why 10 s, bounded from both sides:
+
+- **Ceiling.** The held target keeps being re-posted at 1 Hz (§6.2) and so stays well
+  inside `getCurrentLocation()`'s 30 s freshness rule (§6.1); holding it can never strand
+  a consumer on a fix the platform is about to discard.
+- **Floor.** Every flap shorter than the window would otherwise leak a real fix (§6.5).
+  10 s covers a provider handover or a network re-dial with room to spare.
+
+Two details that are easy to get wrong:
+
+- **Do not restart the window on every flap.** A dip that arrives while a window is
+  already running must let the running window own the clear. Restarting it means a
+  provider list that flaps once a second extends the hold without bound.
+- **A queued expiry has to be able to lose its race.** Anything that supersedes it — a
+  fresh target, tunnel-down, a device swap — must invalidate it, or a callback that fires
+  after the target was legitimately replaced will clear the *new* one. As shipped that is
+  a monotonic generation counter handed to the scheduled callback and re-checked when it
+  runs.
+
+The decision logic is deliberately free of Android types so it is unit-testable on the
+JVM; the Android side owns only the looper and the SDK subscriptions (§10.1).
 
 ---
 
@@ -724,9 +924,21 @@ background-location justification/video review, "central to core functionality" 
 The mock-only design needs **none** of it.
 
 **Practically:** run the 1 Hz poster from the existing VPN foreground service (or a
-lifecycle object it owns). No new manifest permission beyond `ACCESS_MOCK_LOCATION`, no
-new FGS type, no new runtime prompt. The only user-visible prerequisite is the
-Developer-options selection.
+lifecycle object it owns). For the platform path — which is the entire feature on
+`github`/F-Droid and the load-bearing part of it everywhere else — this stays exact: no
+new manifest permission beyond `ACCESS_MOCK_LOCATION`, no new FGS type, no new runtime
+prompt, and the only user-visible prerequisite is the Developer-options selection.
+
+**One qualification, for the GMS flavors only.** The optional FLP mirror (§3.2) is
+annotated as wanting a runtime location permission, so `play`, `solana_dapp` and
+`ethos_dapp` declare `ACCESS_COARSE_LOCATION` and offer a single optional prompt from the
+setup guide (§1.4). None of this section's reasoning changes: it is still not
+`ACCESS_FINE_LOCATION`, still not `ACCESS_BACKGROUND_LOCATION`, still no `location`
+foreground-service type, and there is still no while-in-use restriction to work around,
+because nothing in the app ever *reads* a location. Declining the prompt costs the mirror
+and nothing else — the four `LocationManager` test-provider calls above still perform
+exactly one authorization step, and it is still the app op. The pass-through design's
+permission bill is unchanged and is still the reason not to build it (§10.4).
 
 ---
 
@@ -772,10 +984,11 @@ for the deselection-while-active trap.
 | Class | Responsibility |
 |---|---|
 | **`MockLocationController`** | Sole owner of all `LocationManager` test-provider calls. Holds the state machine, the active provider-name set, the current target lat/lon, and the repost ticker. Single-threaded (own `Handler`), no locking. Exposes `StateFlow<MockLocationState>`. |
-| **`MockLocationEligibility`** (small, could be static methods on the controller) | Pure reads: `isDeveloperOptionsEnabled()`, `isSelectedMockApp()`, `isLocationServicesEnabled()`, `devSettingsIntent()`. No side effects. |
-| **VPN service integration** | Calls `controller.onExitProviderChanged(city)` / `onTunnelDown()` / `onTunnelUp()`. Owns the controller's lifetime; starts it in `onCreate`, `shutdown()`s in `onDestroy`. |
-| **Settings UI + setup sheet** | Renders state; drives the guide; hosts the toggle. Never touches `LocationManager` directly. |
-| **`MockLocationStartupCleaner`** (can be one method on the controller) | On process start: if the persisted preference is OFF, best-effort `removeTestProvider` ×N to clear leftovers from a previous process. |
+| **`MockLocationEligibility`** (small, could be static methods on the controller) | Pure reads plus the Settings deep links (§5): `isDeveloperOptionsEnabled()`, `isSelectedMockLocationApp()`, `isLocationServicesEnabled()`, `hasLocationPermission()`, the app-op watcher, and the `open*Settings` launchers. No side effects beyond `startActivity`. |
+| **`MockLocationFeeder`** | The tunnel/target feed. Subscribes to the SDK device's connect, tunnel and connected-provider-location events, extracts the exit provider's coordinates, and calls `controller.onTunnelChanged()` / `onTargetChanged()`. Owns the looper and the subscriptions; owns no grace-window rules. Started from the application after the controller, which is what makes the controller's startup sweep provably see a down tunnel (§6.3). |
+| **`MockLocationGracePolicy`** | Pure decision logic for the exit-target grace window (§6.7): push / hold / already-holding / clear, plus the generation counter that lets a queued expiry lose its race. No Android types, so it is unit-testable on the JVM. |
+| **Settings UI + setup sheet** | Renders state; drives the guide; hosts the toggle; owns the optional permission prompt and its permanently-denied fallback (§5). Never touches `LocationManager` directly. |
+| **Startup cleanup** | Not a separate class as shipped — the controller does it on start, sweeping unless the resolved status is already `ACTIVE` (§6.3), and the reclaim then retries from every later reconcile (§6.4). |
 
 ### 10.2 Exact calls, per version branch
 
@@ -835,6 +1048,18 @@ dependency, and only guarded by
 `flp.setMockMode(false)` on teardown, including from `onDestroy` and from the startup
 cleaner.
 
+As shipped this leg is additionally gated on the `ACCESS_COARSE_LOCATION` grant (§3.2):
+`fusedActive = supportsFusedMockLocation(context) && locationPermissionGranted`, evaluated
+when arming and re-checked on reconcile so that a grant arriving *while already armed* can
+engage the mirror without re-registering the platform providers. Two asymmetries are
+deliberate:
+
+- the teardown `setMockMode(false)` is gated on **nothing** — exiting a device-global mode
+  has to run on every path, including the one where the grant was revoked mid-session;
+- the per-tick `setMockLocation` runs at 1 Hz, so its failure listener is deduplicated and
+  backed off rather than logged per tick. A persistent failure otherwise writes a line
+  every second for as long as the tunnel is up.
+
 ### 10.3 State machine
 
 ```
@@ -880,6 +1105,20 @@ Additional error state **`ERROR_TRANSIENT`** for unexpected `IllegalArgumentExce
 the settings screen, on the op-watcher callback, and on
 `ACTION_LOCATION_MODE_CHANGED`/`PROVIDERS_CHANGED` broadcasts.
 
+**`NEEDS_LOCATION_PERMISSION` is not a rung in this ladder.** The shipped enum carries the
+constant, but the resolver never returns it. The optional `ACCESS_COARSE_LOCATION` grant
+sits outside the state machine entirely: it is published as two plain booleans on the
+state — "does this build have an FLP mirror to gate" and "is it granted" — which the setup
+guide renders as an optional extra step, shown whenever the grant is missing rather than
+in setup order. `setupComplete` deliberately does not include it either.
+
+The reason is worth stating plainly, because the shape is tempting and the failure is
+silent: adding the grant as a gate here makes it a precondition of *everything*, and since
+arming registers the permission-free AOSP providers **before** the optional mirror (§3.2,
+§10.2), a device where the user declined an explicitly optional prompt would lose the
+whole feature — including the leg that never needed the permission. Gate the mirror in the
+controller; leave the ladder alone.
+
 ### 10.4 Pass-through when disabled: remove vs. mirror
 
 **Recommendation: remove the test providers. Do not mirror.** The mirroring option is not
@@ -888,8 +1127,8 @@ merely worse, it is largely unbuildable:
 | | **A. Remove test providers (recommended)** | **B. Mirror real location through the mock provider** |
 |---|---|---|
 | Can it even work? | Yes. Real providers are automatically restored (`setProviderLocked(mRealProvider)`), stale mock last-knowns are purged. | **Structurally broken.** While `"gps"` is mocked, the real GPS implementation is stopped (`setRequest(EMPTY)` + `stop()`) and *nobody*, including us, can read it. There is no un-mocked source to mirror from once gps+network+fused are covered. |
-| Permissions | None. | `ACCESS_FINE_LOCATION` + `ACCESS_BACKGROUND_LOCATION` + `FOREGROUND_SERVICE_LOCATION` + `location` FGS type. |
-| Play policy | Out of scope of Location Permissions policy. | Background-location justification, prominent disclosure, review. |
+| Permissions | None on the AOSP path, and none at all on `github`/F-Droid. The GMS flavors declare `ACCESS_COARSE_LOCATION` for the optional FLP mirror only; declining it costs the mirror, not the feature (§1.4, §3.2). | `ACCESS_FINE_LOCATION` + `ACCESS_BACKGROUND_LOCATION` + `FOREGROUND_SERVICE_LOCATION` + `location` FGS type. |
+| Play policy | In scope of the Location Permissions policy on the GMS flavors, with a short justification: approximate only, one optional prompt from one explicit user action, and no device location ever read (§1.4). Out of scope entirely on `github`/F-Droid. | Background-location justification, prominent disclosure, review. |
 | Correctness for other apps | Real fixes are genuinely real: `isMock=false`. Banking/rideshare/games behave normally. | Every "real" fix is stamped `isMock=true` — silently breaks those apps while the user believes location is off. |
 | Battery | Real GNSS runs only when some app actually requests it. | Must hold a continuous location request to have something to mirror; duty-cycles GNSS permanently. |
 | Latency after toggle-off | Seconds (normal GNSS reacquisition). | N/A |
@@ -909,7 +1148,7 @@ detectable, and still taints fixes as mock.
 | **Exit provider changes mid-session** | Just update the target coordinates; the next tick posts the new city. Do **not** re-add providers, do not interpolate — a teleport is expected of a VPN feature. Consider resetting `speed`/`bearing` to 0 and briefly widening `accuracy` so consumers treat it as a new fix rather than an implausible 900 km/h move (many apps filter on implied velocity). |
 | **VPN disconnects / tunnel down** | Tear down (remove providers) so the device isn't left reporting a city it isn't exiting through. Re-arm automatically when the tunnel returns and the feature is still on. Never leave a mock fix live without a corresponding tunnel. |
 | **Exit provider city unknown / no geo data** | Stay in `ELIGIBLE`, don't register providers. Surface "waiting for provider location" rather than posting a guess. |
-| **App process death / force-stop / crash** | Providers linger (§6.3). At every process start: if the persisted toggle is OFF → best-effort `removeTestProvider` ×N; if ON → re-add and resume (on S+ `addTestProvider` cleanly replaces the orphan). Persist the toggle *and* the provider-name set registered. |
+| **App process death / force-stop / crash** | Providers linger (§6.3). At every process start, sweep unless the resolved status is already `ACTIVE` — which on a cold start it never is, because the tunnel is not up yet — then re-arm normally if the feature is on (on S+ `addTestProvider` cleanly replaces the orphan). Persist the toggle *and* the provider-name set, and persist the set **before** registering, so a death mid-arm still leaves a reclaimable record (§6.4). |
 | **Uninstall while active** | Providers linger until reboot; nothing fixable from code. Mention it in the guide: *turn the feature off before uninstalling.* |
 | **User deselects the app in Developer options while active** | `SecurityException` on the next call; cleanup impossible (§6.4). Transition to `ORPHANED`, show the recovery instructions, and retry cleanup automatically via the `startWatchingMode` callback if the op is ever restored. |
 | **User turns Developer options off entirely** | Same as deselection (Settings resets the op via `onDeveloperOptionsDisabled`). Same `ORPHANED` handling. |
@@ -918,7 +1157,10 @@ detectable, and still taints fixes as mock.
 | **Multi-user / work profile** | The op is per-uid-per-user; the picker only lists apps in the current user. Nothing special to do, but don't assume a single global state. |
 | **Direct boot / pre-unlock** | Don't attempt anything before user unlock; `LocationManagerService`'s provider set is still settling during boot. Arm from the existing post-unlock VPN startup path. |
 | **API 26–30 device** | No `fused` mocking (pointless pre-31 anyway); legacy `addTestProvider` overload; must remove-before-add; `isLocationEnabled()` unavailable on 26–27 → fall back to `isProviderEnabled`. |
-| **Non-GMS device (GrapheneOS, Huawei)** | Platform path works unchanged; skip the optional FLP layer behind a `GoogleApiAvailability` check. |
+| **Non-GMS device (GrapheneOS, Huawei)** | Platform path works unchanged; skip the optional FLP layer behind a `GoogleApiAvailability` check. On `github`/F-Droid there is no FLP layer compiled in at all, and the flavor manifest removes the location permission the other flavors declare (§1.4). |
+| **User declines the optional location permission (GMS flavors)** | Nothing breaks: the AOSP providers are armed first and unconditionally, and only the FLP mirror is skipped (§3.2). Never block the toggle, the guide's "Ready" state, or `setupComplete` on it. Re-read the grant on resume and on the app-op watcher, so a grant made outside the app's own prompt still reaches the controller. |
+| **Optional permission permanently denied** | The system dialog stops appearing and `launch()` returns instantly, so the step's button must switch to the app-info deep link or it is dead (§5). Detect via `shouldShowRequestPermissionRationale()` after a denied result; when the check cannot be made, keep asking rather than sending the user to a settings page they may not need. |
+| **Exit provider list dips while the tunnel stays up** | Do not disarm on the first empty list. Hold the last target for the grace window (§6.7); disarming instantly restores the real provider and leaks a hardware fix for the length of the flap (§6.5). |
 | **Aggressive OEM battery management (Xiaomi/Huawei/Oppo)** | The poster lives in the VPN foreground service, so it survives; still worth a "disable battery optimization for URnetwork" hint if users report frozen locations. |
 
 ### 10.6 Disclosure text worth shipping with the toggle
@@ -931,6 +1173,15 @@ Short, three bullets, shown in the setup sheet:
 3. *Turn this feature off inside URnetwork **before** turning off Developer options,
    deselecting URnetwork, or uninstalling — otherwise your device's location may stay
    frozen until you restart it.*
+
+All three ship on the setup guide, which is also the only screen that can request the
+optional location permission — so on the GMS flavors they are what carries prominent
+disclosure for the `ACCESS_COARSE_LOCATION` declaration (§1.4): same screen, same flow,
+describing the device-wide effect the permission contributes to. (The first two are
+repeated on the feature's settings section, where the toggle lives.) The permission step's
+own copy states that it is optional and says what it buys, and must keep doing so — a step
+that reads like a requirement is both untrue (§3.2) and the thing that tempts the next
+implementer to make it one (§10.3).
 
 ---
 

@@ -45,10 +45,24 @@
         android:name="android.software.leanback"
         android:required="false" />
 
-    <!-- Location permissions required by Google Play Services Fused Location Provider to support mock mode -->
+    <!-- prevent these from ever being added by a dependency -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.location.gps"
+        android:required="false" tools:node="remove"/>
+
+    <!-- the one location permission we do declare, and only the optional Fused
+         Location Provider mirror uses it (MOCKLOCATION.md 3.2): the AOSP test
+         providers that carry the feature need no runtime grant, and nothing
+         here wants real fixes. This file merges into all four flavors, so
+         src/github removes it again - that build compiles src/ungoogle, whose
+         supportsFusedMockLocation() is a hardcoded false. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-feature
-        android:name="android.hardware.location.gps"
+
+    <!-- ACCESS_COARSE_LOCATION implies android.hardware.location as *required*,
+         which Play would then use to filter out TVs and other devices with no
+         location hardware. The mirror is optional and the app works without it,
+         so declare the feature not required, as with the tv features above. -->
+    <uses-feature android:name="android.hardware.location"
         android:required="false" />
 
 

@@ -434,26 +434,44 @@
     <string name="longest_streak">Longest streak</string>
     <string name="manage_subscription">Manage subscription</string>
     <string name="member">Member</string>
+    <!-- PENDING STORE SYNC. Seven of the mock_location_* strings below (and their
+         values-*/ translations) are hand-written, not generated. build.sh runs
+         `npm run gen:android` from ../localizations before every pipeline build, so
+         until they exist in ../localizations/keys a regeneration drops them and
+         R.string.mock_location_open_app_settings (MockLocationGuideScreen.kt) and
+         R.string.mock_location_status_retrying (SettingsScreen.kt) stop resolving.
+         Owed to the store: add mock_location_error_stuck_detail,
+         mock_location_error_stuck_title, mock_location_grant_permission,
+         mock_location_open_app_settings, mock_location_status_retrying,
+         mock_location_status_stuck and the rewritten
+         mock_location_step_location_permission; drop the now-dead
+         mock_location_error_cleanup_required, or regeneration re-adds it. Do not run
+         the release pipeline against this branch before that lands. -->
     <string name="mock_location_active">Syncing with %1$s</string>
     <string name="mock_location_disclosure_detectable">Apps can tell the location is simulated. Banking, ride-hailing, delivery and some game apps may refuse to work while this is on.</string>
     <string name="mock_location_disclosure_device_wide">This changes the location reported to every app on your device, not just URnetwork.</string>
     <string name="mock_location_disclosure_turn_off_first">Turn this off in URnetwork before you turn off developer options, deselect URnetwork, or uninstall the app — otherwise your device location can stay frozen until you restart.</string>
+    <!-- dead in kotlin since the ORPHANED copy moved to the _stuck_ strings, but kept
+         until the store drops it: all 18 values-*/ still carry a translation, and a
+         translation with no default is an ExtraTranslation lint error. -->
     <string name="mock_location_error_cleanup_required">URnetwork could not remove the simulated location. Re-select URnetwork under developer options and turn this off, or restart your device.</string>
-    <string name="mock_location_status_stuck">GPS frozen — action needed</string>
-    <string name="mock_location_error_stuck_title">Simulated location is stuck</string>
     <string name="mock_location_error_stuck_detail">URnetwork was deselected while active, so Android locked the simulated GPS. Re-select URnetwork in Developer options to restore your real GPS, or restart your phone.</string>
+    <string name="mock_location_error_stuck_title">Simulated location is stuck</string>
+    <string name="mock_location_grant_permission">Grant permission</string>
     <string name="mock_location_guide_intro">When enabled, apps on this device see the location of the provider you have been connected to the longest, instead of your real location.</string>
     <string name="mock_location_guide_title">Sync device location</string>
     <string name="mock_location_needs_setup">Setup required</string>
     <string name="mock_location_open_about_phone">Open About phone</string>
+    <string name="mock_location_open_app_settings">Open app settings</string>
     <string name="mock_location_open_developer_options">Open developer options</string>
     <string name="mock_location_open_location_settings">Open location settings</string>
     <string name="mock_location_ready">Ready. Turn on the toggle to sync your device location with the oldest provider.</string>
     <string name="mock_location_settings_row">Device location sync</string>
+    <string name="mock_location_status_retrying">Retrying — simulated location paused</string>
+    <string name="mock_location_status_stuck">GPS frozen — action needed</string>
     <string name="mock_location_step_developer_options">Turn on developer options: open About phone and tap Build number seven times.</string>
+    <string name="mock_location_step_location_permission">Optional: allow approximate location so Chrome and other Google Play apps follow the simulated location too. Everything else works without it.</string>
     <string name="mock_location_step_location_services">Turn on Location in system settings so apps can receive the location.</string>
-    <string name="mock_location_step_location_permission">Allow approximate location access so Google Play Services can sync simulated location with Chrome and apps.</string>
-    <string name="mock_location_grant_permission">Grant permission</string>
     <string name="mock_location_step_select_app">In developer options, tap Select mock location app and choose URnetwork.</string>
     <string name="mock_location_waiting_for_provider">Waiting for a provider location</string>
     <string name="multiple_ips">Multiple IPs</string>

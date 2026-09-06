@@ -15,7 +15,9 @@ import javax.inject.Singleton
  *
  * Employs a debounce grace period during transient provider reconnections so that momentary
  * drops in connected provider telemetry do not immediately disarm test providers and leak
- * raw hardware GPS fixes.
+ * raw hardware GPS fixes. The window itself is decided by [MockLocationGracePolicy]; this
+ * class owns only the looper and the SDK subscriptions, which is what keeps the grace rules
+ * testable on the JVM.
  */
 @Singleton
 class MockLocationFeeder @Inject constructor(
@@ -24,15 +26,13 @@ class MockLocationFeeder @Inject constructor(
 ) {
     companion object {
         private const val TAG = "MockLocationFeeder"
-
-        /**
-         * Grace period to retain the last known valid provider location during transient
-         * provider telemetry handovers or network re-dials before falling back to null.
-         */
-        private const val TARGET_GRACE_PERIOD_MILLIS = 10_000L
     }
 
     private val handler = Handler(Looper.getMainLooper())
+
+    // holds lastKnownTarget and the generation counter; only ever touched under
+    // this object's monitor, which is the lock those fields already lived under
+    private val gracePolicy = MockLocationGracePolicy()
 
     @Volatile
     private var removeDeviceChangeListener: (() -> Unit)? = null
@@ -45,11 +45,7 @@ class MockLocationFeeder @Inject constructor(
     @Volatile
     private var currentDevice: DeviceLocal? = null
     @Volatile
-    private var lastKnownTarget: MockLocationTarget? = null
-    @Volatile
     private var pendingClearRunnable: Runnable? = null
-    @Volatile
-    private var graceGeneration: Long = 0L
 
     /**
      * Subscribes to device manager changes and initializes mock location feeding
@@ -72,17 +68,25 @@ class MockLocationFeeder @Inject constructor(
         removeDeviceChangeListener?.invoke()
         removeDeviceChangeListener = null
         cancelPendingTargetClear()
-        lastKnownTarget = null
         attach(null)
     }
 
     /**
-     * Cancels any pending scheduled target clear runnable if active and increments the
-     * grace generation counter to invalidate any callbacks currently queued on the looper.
+     * Cancels any pending scheduled target clear runnable if active and drops the last known
+     * target. The policy's generation bump invalidates any callback currently queued on the
+     * looper, so a clear that is already in flight cannot fire against the new state.
      */
     @Synchronized
     private fun cancelPendingTargetClear() {
-        graceGeneration++
+        gracePolicy.cancel()
+        dropPendingClearRunnable()
+    }
+
+    // the queued expiry is unqueued without touching the policy: callers that
+    // must also invalidate it go through cancelPendingTargetClear, and a fresh
+    // target already bumped the generation when the policy accepted it
+    @Synchronized
+    private fun dropPendingClearRunnable() {
         pendingClearRunnable?.let { handler.removeCallbacks(it) }
         pendingClearRunnable = null
     }
@@ -98,7 +102,6 @@ class MockLocationFeeder @Inject constructor(
     private fun attach(device: DeviceLocal?) {
         if (currentDevice !== device) {
             cancelPendingTargetClear()
-            lastKnownTarget = null
             controller.onTargetChanged(null)
         }
         connectSub?.close()
@@ -121,7 +124,6 @@ class MockLocationFeeder @Inject constructor(
                     pushTarget(device)
                 } else {
                     cancelPendingTargetClear()
-                    lastKnownTarget = null
                     controller.onTargetChanged(null)
                 }
             }
@@ -150,7 +152,6 @@ class MockLocationFeeder @Inject constructor(
             updateClientTunnelState()
         } else {
             cancelPendingTargetClear()
-            lastKnownTarget = null
             controller.onTunnelChanged(false)
             controller.onTargetChanged(null)
         }
@@ -158,11 +159,12 @@ class MockLocationFeeder @Inject constructor(
 
     /**
      * Extracts coordinates and geographic metadata from the first valid connected exit provider
-     * on [device] and pushes the target location to the [controller].
+     * on [device] and hands the result to [MockLocationGracePolicy], which decides whether it is
+     * pushed, held for [TARGET_GRACE_PERIOD_MILLIS] or cleared.
      *
-     * If provider locations are momentarily empty while the tunnel remains active, retains
-     * [lastKnownTarget] for a grace window of [TARGET_GRACE_PERIOD_MILLIS] before clearing,
-     * guarding against transient provider flaps.
+     * If provider locations are momentarily empty while the tunnel remains active, the last known
+     * target is retained for the grace window before clearing, guarding against transient
+     * provider flaps.
      *
      * @param device The active [DeviceLocal] instance containing connected provider locations.
      */
@@ -200,21 +202,21 @@ class MockLocationFeeder @Inject constructor(
             }
         }
 
-        if (target != null) {
-            cancelPendingTargetClear()
-            lastKnownTarget = target
-            controller.onTargetChanged(target)
-        } else if (lastKnownTarget != null) {
-            // Providers list momentarily dipped while tunnel is active. Retain last target
-            // for the grace period rather than eagerly disarming and exposing hardware GPS.
-            if (pendingClearRunnable == null) {
-                val generation = ++graceGeneration
+        val decision = gracePolicy.onTargetResolved(target)
+        when (decision.action) {
+            MockTargetAction.PUSH -> {
+                dropPendingClearRunnable()
+                controller.onTargetChanged(decision.target)
+            }
+            MockTargetAction.HOLD -> {
+                // Providers list momentarily dipped while tunnel is active. Retain last target
+                // for the grace period rather than eagerly disarming and exposing hardware GPS.
+                val generation = decision.generation
                 val runnable = object : Runnable {
                     override fun run() {
                         synchronized(this@MockLocationFeeder) {
-                            if (pendingClearRunnable === this && graceGeneration == generation) {
+                            if (pendingClearRunnable === this && gracePolicy.graceExpired(generation)) {
                                 pendingClearRunnable = null
-                                lastKnownTarget = null
                                 controller.onTargetChanged(null)
                                 Log.i(TAG, "Provider grace period expired; cleared mock target")
                             }
@@ -222,11 +224,12 @@ class MockLocationFeeder @Inject constructor(
                     }
                 }
                 pendingClearRunnable = runnable
-                handler.postDelayed(runnable, TARGET_GRACE_PERIOD_MILLIS)
-                Log.i(TAG, "Provider locations momentarily empty; holding exit target for ${TARGET_GRACE_PERIOD_MILLIS}ms grace window")
+                handler.postDelayed(runnable, decision.delayMillis)
+                Log.i(TAG, "Provider locations momentarily empty; holding exit target for ${decision.delayMillis}ms grace window")
             }
-        } else {
-            controller.onTargetChanged(null)
+            // the window already running owns the clear
+            MockTargetAction.ALREADY_HOLDING -> Unit
+            MockTargetAction.CLEAR -> controller.onTargetChanged(null)
         }
     }
 }

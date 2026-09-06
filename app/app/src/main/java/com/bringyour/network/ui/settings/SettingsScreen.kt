@@ -330,10 +330,6 @@ fun SettingsScreen(
         mockLocationStatus = mockLocationState.status,
         mockLocationTarget = mockLocationState.target,
         onToggleMockLocation = {
-            // NOTE: reads mockLocationState.enabled from the snapshot captured by
-            // the last composition — between the click and the ViewModel update,
-            // another caller could toggle it. Acceptable here because the toggle
-            // is debounced and setEnabled() is idempotent.
             val enabled = !mockLocationState.enabled
             mockLocationViewModel.setEnabled(enabled)
             if (mockLocationState.status == MockLocationStatus.ORPHANED || (enabled && !mockLocationState.setupComplete)) {
@@ -520,55 +516,9 @@ fun SettingsScreen(
 
 }
 
-/**
- * Stateless presentation composable for the Settings screen layout.
- *
- * @param navController Navigation controller for in-app navigation routes.
- * @param clientId Unique identifier for the client installation.
- * @param currentPlan Active subscription tier (Basic or Supporter).
- * @param notificationsAllowed True if OS notification permissions are granted.
- * @param notificationsPermanentlyDenied True if notification permissions were permanently declined.
- * @param requestAllowNotifications Callback to request system notification permission.
- * @param allowProductUpdates True if product update telemetry is enabled.
- * @param toggleAllowProductUpdates Callback to toggle product update telemetry.
- * @param provideControlMode Current relay/provider routing mode.
- * @param setProvideControlMode Callback to select a new relay/provider mode.
- * @param deviceName User-assigned label for this device.
- * @param deviceSpec Hardware specifications string.
- * @param onEditDeviceName Callback to initiate device renaming dialog.
- * @param setShowDeleteAccountDialog Callback to control delete account dialog visibility.
- * @param showDeleteAccountDialog True if the delete account dialog is visible.
- * @param deleteAccount Callback to execute account deletion with success/failure handlers.
- * @param isDeletingAccount True if account deletion is currently in progress.
- * @param routeLocal True if LAN local routing is enabled.
- * @param toggleRouteLocal Callback to toggle LAN local routing.
- * @param snackbarHostState State manager for snackbar notifications.
- * @param signAndVerifySeekerHolder Callback to trigger Seeker token wallet verification.
- * @param isSeekerHolder True if the device has verified ownership of a Seeker token.
- * @param version Application build version string.
- * @param allowProvideCell True if relaying is allowed over cellular connections.
- * @param toggleProvideCell Callback to toggle cellular relaying.
- * @param authCodeCreate Callback to generate a new device pairing auth code.
- * @param authCode Current pairing auth code, if generated.
- * @param isCreatingAuthCode True if an auth code is being generated.
- * @param setDisplayAuthCodeDialog Callback to control auth code dialog display.
- * @param provideIndicatorColor Status color for the relay mode indicator.
- * @param provideIndicatorRingColor Optional ring accent color for the relay indicator.
- * @param stripePortalUrl Customer billing portal URL, if available.
- * @param authMethods List of active authentication methods linked to the account.
- * @param onRemoveAuthMethod Callback to remove an authentication method.
- * @param onAddAuthMethodClick Callback to present add authentication sheet.
- * @param hasSeedphrase True if a seed phrase authentication method is configured.
- * @param isGeneratingSeedphrase True if seed phrase generation is underway.
- * @param isRegeneratingSeedphrase True if seed phrase regeneration is underway.
- * @param onSeedphraseActionClick Callback for seed phrase actions (export/regenerate).
- * @param mockLocationEnabled True if mock location synchronization is toggled on.
- * @param mockLocationSetupComplete True if all Android OS mock location prerequisites are met.
- * @param mockLocationStatus Current lifecycle state of mock location synchronization.
- * @param mockLocationTarget Current exit provider coordinates being simulated, if active.
- * @param onToggleMockLocation Callback invoked when user toggles mock location sync switch.
- * @param onOpenMockLocationGuide Callback to navigate to the mock location setup guide.
- */
+// stateless presentation half of the settings screen: every value and
+// callback is hoisted into the stateful composable above, which is what makes
+// the previews at the bottom of this file possible
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(
@@ -1058,8 +1008,15 @@ private fun SettingsScreen(
                         )
                     }
 
+                    // ORPHANED is not a togglable state: the test providers are
+                    // stuck until URnetwork is re-selected in developer options
+                    // and cleanup retries itself, so a switch that still reads ON
+                    // would be lying. Every other state stays tappable — an
+                    // incomplete setup reaches the guide through this switch.
                     URSwitch(
-                        checked = mockLocationEnabled,
+                        checked = mockLocationEnabled &&
+                                mockLocationStatus != MockLocationStatus.ORPHANED,
+                        enabled = mockLocationStatus != MockLocationStatus.ORPHANED,
                         toggle = onToggleMockLocation,
                     )
                 }
@@ -1067,6 +1024,8 @@ private fun SettingsScreen(
                 val statusSubtitle = when {
                     mockLocationStatus == MockLocationStatus.ORPHANED ->
                         stringResource(id = R.string.mock_location_status_stuck)
+                    mockLocationStatus == MockLocationStatus.ERROR_TRANSIENT ->
+                        stringResource(id = R.string.mock_location_status_retrying)
                     mockLocationEnabled && !mockLocationSetupComplete ->
                         stringResource(id = R.string.mock_location_needs_setup)
                     mockLocationStatus == MockLocationStatus.ACTIVE && mockLocationTarget != null ->
@@ -1077,11 +1036,15 @@ private fun SettingsScreen(
                 }
 
                 if (statusSubtitle != null) {
+                    // the two failure states are the only red ones; the rest of
+                    // the chain is progress, not a problem
+                    val statusIsError = mockLocationStatus == MockLocationStatus.ORPHANED ||
+                            mockLocationStatus == MockLocationStatus.ERROR_TRANSIENT
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         statusSubtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (mockLocationStatus == MockLocationStatus.ORPHANED)
+                        color = if (statusIsError)
                             MaterialTheme.colorScheme.error
                         else
                             TextMuted
@@ -1146,6 +1109,8 @@ private fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // product updates is an account email preference — it flips a flag
+            // on the network account and collects nothing from the device
             URTextInputLabel(text = stringResource(id = R.string.stay_in_touch))
 
             Row(

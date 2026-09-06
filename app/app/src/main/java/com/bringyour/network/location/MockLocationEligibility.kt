@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -62,10 +63,10 @@ fun hasLocationPermission(context: Context): Boolean {
 }
 
 // Watches the MOCK_LOCATION app op for this package (fires when the user
-// selects or deselects the app in Developer options). Watching your own uid
-// needs no permission. Returns an unwatch lambda. Note the callback may
-// arrive on an arbitrary binder thread — hop to your own thread before
-// touching state.
+// selects or deselects the app in Developer options) and, best effort, the
+// COARSE_LOCATION op. Watching your own uid needs no permission. Returns a
+// single unwatch lambda covering both. Note the callback may arrive on an
+// arbitrary binder thread — hop to your own thread before touching state.
 fun startWatchingMockLocationOp(context: Context, onChanged: () -> Unit): () -> Unit {
     val appOps = context.getSystemService(AppOpsManager::class.java) ?: return {}
     val listener = AppOpsManager.OnOpChangedListener { _, _ -> onChanged() }
@@ -78,6 +79,20 @@ fun startWatchingMockLocationOp(context: Context, onChanged: () -> Unit): () -> 
     } catch (e: Throwable) {
         return {}
     }
+    try {
+        // the optional FLP mirror is gated on the COARSE grant (§3.2), so a
+        // grant made outside our own launcher has to reach the controller
+        // too. Best effort: not every build reports runtime-permission op
+        // changes, and ON_RESUME still re-reads the signals.
+        appOps.startWatchingMode(
+            AppOpsManager.OPSTR_COARSE_LOCATION,
+            context.packageName,
+            listener,
+        )
+    } catch (e: Throwable) {
+        // op not watchable here; the mock-location watch above still stands
+    }
+    // one listener, one unwatch: stopWatchingMode drops it from every op
     return {
         try {
             appOps.stopWatchingMode(listener)
@@ -108,6 +123,14 @@ fun openAboutPhone(context: Context) {
 
 fun openLocationSettings(context: Context) {
     startSettingsActivity(context, Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+}
+
+// App info for this package — the only route left once COARSE is
+// permanently denied and the system dialog no longer shows.
+fun openAppSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+    intent.data = Uri.fromParts("package", context.packageName, null)
+    startSettingsActivity(context, intent)
 }
 
 private fun startSettingsActivity(context: Context, intent: Intent) {

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- src/main declares COARSE for the optional GMS fused mock mirror. This
+         flavor compiles src/ungoogle, where supportsFusedMockLocation() is a
+         hardcoded false and no play-services-location dependency is added, so
+         the F-Droid build can never use the grant and must not ask for it. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        tools:node="remove" />
+</manifest>
