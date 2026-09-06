@@ -1,5 +1,9 @@
 package com.bringyour.network.widgets
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import android.content.Context
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -57,7 +61,11 @@ data class WidgetProviderSnapshot(
     val plottable: Boolean get() = lat != null && lon != null
 }
 
-/** One fixed-width bucket of bytes moved, per side. */
+/**
+ * One fixed-width bucket of bytes and packets moved, per side. The packet
+ * counts default to zero so a snapshot written before they existed still
+ * decodes (the chart then shows a flat packet line for those buckets).
+ */
 @Serializable
 data class WidgetThroughputBucket(
     /** Bucket start, unix seconds. */
@@ -68,6 +76,11 @@ data class WidgetThroughputBucket(
     /** Traffic relayed for others while providing (the provider counters' local + block routes). */
     val providerEgress: Long = 0,
     val providerIngress: Long = 0,
+    /** The same two routes counted in packets, drawn as the chart's second (pink) line. */
+    val clientEgressPackets: Long = 0,
+    val clientIngressPackets: Long = 0,
+    val providerEgressPackets: Long = 0,
+    val providerIngressPackets: Long = 0,
 )
 
 @Serializable
@@ -113,11 +126,14 @@ data class WidgetContractPeerSnapshot(
 
 @Serializable
 data class WidgetTunnelSnapshot(
-    val version: Int = 1,
+    /** 2: throughput buckets carry packet counts next to the byte counts. */
+    val version: Int = 2,
     val updatedAtMillis: Long,
     /** The tunnel was up when this was written. */
     val tunnelActive: Boolean,
     val providing: Boolean,
+    /** The provide control mode ("auto", "always", "network", "never"); empty when unknown. */
+    val provideMode: String = "",
     val location: WidgetLocationSnapshot? = null,
     /** Connected providers in the app's display order (west to east, unplottable last). */
     val providers: List<WidgetProviderSnapshot> = emptyList(),
@@ -165,6 +181,10 @@ class WidgetThroughputAccumulator(resuming: WidgetThroughputSnapshot? = null) {
     private var lastClientIngress: Long? = null
     private var lastProviderEgress: Long? = null
     private var lastProviderIngress: Long? = null
+    private var lastClientEgressPackets: Long? = null
+    private var lastClientIngressPackets: Long? = null
+    private var lastProviderEgressPackets: Long? = null
+    private var lastProviderIngressPackets: Long? = null
 
     init {
         if (resuming != null && resuming.bucketSeconds == BUCKET_SECONDS) {
@@ -176,32 +196,56 @@ class WidgetThroughputAccumulator(resuming: WidgetThroughputSnapshot? = null) {
         get() = WidgetThroughputSnapshot(BUCKET_SECONDS, buckets.toList())
 
     @Synchronized
-    fun recordClient(egress: Long, ingress: Long, nowMillis: Long = System.currentTimeMillis()) {
+    fun recordClient(
+        egress: Long,
+        ingress: Long,
+        egressPackets: Long = 0,
+        ingressPackets: Long = 0,
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
         val dEgress = delta(lastClientEgress, egress)
         val dIngress = delta(lastClientIngress, ingress)
+        val dEgressPackets = delta(lastClientEgressPackets, egressPackets)
+        val dIngressPackets = delta(lastClientIngressPackets, ingressPackets)
         lastClientEgress = egress
         lastClientIngress = ingress
-        if (dEgress <= 0 && dIngress <= 0) return
+        lastClientEgressPackets = egressPackets
+        lastClientIngressPackets = ingressPackets
+        if (dEgress <= 0 && dIngress <= 0 && dEgressPackets <= 0 && dIngressPackets <= 0) return
         val index = currentBucketIndex(nowMillis)
         val bucket = buckets[index]
         buckets[index] = bucket.copy(
             clientEgress = bucket.clientEgress + dEgress,
             clientIngress = bucket.clientIngress + dIngress,
+            clientEgressPackets = bucket.clientEgressPackets + dEgressPackets,
+            clientIngressPackets = bucket.clientIngressPackets + dIngressPackets,
         )
     }
 
     @Synchronized
-    fun recordProvider(egress: Long, ingress: Long, nowMillis: Long = System.currentTimeMillis()) {
+    fun recordProvider(
+        egress: Long,
+        ingress: Long,
+        egressPackets: Long = 0,
+        ingressPackets: Long = 0,
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
         val dEgress = delta(lastProviderEgress, egress)
         val dIngress = delta(lastProviderIngress, ingress)
+        val dEgressPackets = delta(lastProviderEgressPackets, egressPackets)
+        val dIngressPackets = delta(lastProviderIngressPackets, ingressPackets)
         lastProviderEgress = egress
         lastProviderIngress = ingress
-        if (dEgress <= 0 && dIngress <= 0) return
+        lastProviderEgressPackets = egressPackets
+        lastProviderIngressPackets = ingressPackets
+        if (dEgress <= 0 && dIngress <= 0 && dEgressPackets <= 0 && dIngressPackets <= 0) return
         val index = currentBucketIndex(nowMillis)
         val bucket = buckets[index]
         buckets[index] = bucket.copy(
             providerEgress = bucket.providerEgress + dEgress,
             providerIngress = bucket.providerIngress + dIngress,
+            providerEgressPackets = bucket.providerEgressPackets + dEgressPackets,
+            providerIngressPackets = bucket.providerIngressPackets + dIngressPackets,
         )
     }
 
@@ -242,6 +286,17 @@ object WidgetSnapshotStore {
 
     private fun directory(context: Context): File = File(context.filesDir, DIRECTORY)
 
+    /**
+     * Bumps on every snapshot the widgets read (tunnel, balance, the logout
+     * clear). Account > Widgets follows it to redraw its previews the moment
+     * a pinned widget would be reloaded, from the same data.
+     */
+    private val changeCount = MutableStateFlow(0L)
+    val changes: StateFlow<Long> = changeCount.asStateFlow()
+
+    /** Whether a tunnel snapshot has been written since install or the last logout. */
+    fun hasTunnelSnapshot(context: Context): Boolean = File(directory(context), TUNNEL_FILE).exists()
+
     fun loadTunnel(context: Context): WidgetTunnelSnapshot? =
         load(context, TUNNEL_FILE) { json.decodeFromString<WidgetTunnelSnapshot>(it) }
 
@@ -258,6 +313,7 @@ object WidgetSnapshotStore {
     fun clear(context: Context) {
         File(directory(context), TUNNEL_FILE).delete()
         File(directory(context), BALANCE_FILE).delete()
+        changeCount.update { it + 1 }
     }
 
     private fun <T> load(context: Context, name: String, decode: (String) -> T): T? {
@@ -267,7 +323,7 @@ object WidgetSnapshotStore {
     }
 
     private fun save(context: Context, name: String, text: String): Boolean {
-        return runCatching {
+        val saved = runCatching {
             val dir = directory(context)
             dir.mkdirs()
             // whole-file, atomic: write next to it and rename over
@@ -275,5 +331,7 @@ object WidgetSnapshotStore {
             tmp.writeText(text)
             tmp.renameTo(File(dir, name))
         }.getOrDefault(false)
+        if (saved) changeCount.update { it + 1 }
+        return saved
     }
 }

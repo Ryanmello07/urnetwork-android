@@ -18,17 +18,25 @@ import androidx.lifecycle.lifecycleScope
 import com.bringyour.sdk.AuthNetworkClientArgs
 import com.bringyour.sdk.WalletAuthArgs
 import com.bringyour.network.ui.LoginNavHost
+import com.bringyour.network.ui.login.BITTENSOR_SIGN_PURPOSE_CONNECT
 import com.bringyour.network.ui.login.BITTENSOR_SIGN_PURPOSE_CREATE
 import com.bringyour.network.ui.login.BITTENSOR_SIGN_PURPOSE_LOGIN
 import com.bringyour.network.ui.login.LoginCreateNetworkParams
 import com.bringyour.network.ui.login.LoginViewModel
 import com.bringyour.network.ui.login.launchBittensorSignMessage
+import com.bringyour.network.ui.login.AUTH_JWT_TYPE_APPLE
+import com.bringyour.network.ui.login.AppleOAuthSession
+import com.bringyour.network.ui.login.appleOAuthUserName
+import com.bringyour.network.ui.login.isAppleOAuthReturn
+import com.bringyour.network.ui.login.ssoJwtPayload
 import com.bringyour.network.ui.login.requestBittensorChallenge
+import com.bringyour.network.ui.wallet.SnWalletConnectExtras
 import com.bringyour.network.ui.theme.URNetworkTheme
 import com.bringyour.sdk.AuthCodeLoginArgs
 import com.bringyour.sdk.AuthLoginArgs
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 
@@ -51,7 +59,12 @@ class LoginActivity : AppCompatActivity() {
     private var defaultLocation: String? = null
     private var startInstantCreate by mutableStateOf(false)
     private var isLoadingAuthCode by mutableStateOf(false)
+
+    // the entrance animation before the main activity opens, for the sign-ins
+    // that complete in this activity rather than on a login screen
+    private var welcomeOverlayVisible by mutableStateOf(false)
     private var walletCreateNetworkParams by mutableStateOf<LoginCreateNetworkParams.LoginCreateWalletParams?>(null)
+    private var jwtCreateNetworkParams by mutableStateOf<LoginCreateNetworkParams.LoginCreateAuthJwtParams?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -75,7 +88,16 @@ class LoginActivity : AppCompatActivity() {
         if (Intent.ACTION_VIEW == action) {
             Log.i(TAG, "Login Activity hitting Intent.ACTION_VIEW == action")
             intent?.data?.let { u ->
-                if (u.scheme == "ur" && u.host == "bittensor-sign-message") {
+                if (isAppleOAuthReturn(u)) {
+                    Log.i(TAG, "appleOAuthLogin $u")
+                    appleOAuthLogin(u)
+                } else if (u.scheme == "ur" && u.host == "bittensor-sign-message") {
+                    if (u.getQueryParameter("purpose") == BITTENSOR_SIGN_PURPOSE_CONNECT && app.device != null) {
+                        // the earnings screen's wallet connect: the main activity owns that flow
+                        Log.i(TAG, "forwardWalletConnectToMain $u")
+                        forwardWalletConnectToMain(u)
+                        return
+                    }
                     Log.i(TAG, "bittensorSignMessageLogin $u")
                     bittensorSignMessageLogin(u)
                 } else if ((u.scheme == "https" && u.host == "ur.io" && u.path == "/c") || u.scheme == "ur") {
@@ -107,9 +129,11 @@ class LoginActivity : AppCompatActivity() {
                     currentNetworkName = currentNetworkName,
                     startInstantCreate = startInstantCreate,
                     isLoadingAuthCode = isLoadingAuthCode,
+                    welcomeOverlayVisible = welcomeOverlayVisible,
                     referralCode = referralCode,
                     activityResultSender = activityResultSender,
-                    walletCreateNetworkParams = walletCreateNetworkParams
+                    walletCreateNetworkParams = walletCreateNetworkParams,
+                    jwtCreateNetworkParams = jwtCreateNetworkParams
                 )
             }
         }
@@ -185,7 +209,7 @@ class LoginActivity : AppCompatActivity() {
                                             Log.i(TAG, "authCodeLogin: local byJwt parse failed")
                                             app.logout()
                                             app.login(loginJwt)
-                                            authClientAndFinish(
+                                            welcomeThenAuthClientAndFinish(
                                                 callback = { error ->
                                                     if (error != null) {
                                                         Log.i(TAG, "authClientAndFinish error: $error")
@@ -200,7 +224,7 @@ class LoginActivity : AppCompatActivity() {
                                 Log.i(TAG, "authCodeLogin: local state missing")
                                 app.logout()
                                 app.login(loginJwt)
-                                authClientAndFinish(
+                                welcomeThenAuthClientAndFinish(
                                     callback = { error ->
                                         if (error != null) {
                                             Log.i(TAG, "authClientAndFinish error: $error")
@@ -214,7 +238,7 @@ class LoginActivity : AppCompatActivity() {
 
                             app.login(loginJwt)
 
-                            authClientAndFinish(
+                            welcomeThenAuthClientAndFinish(
                                 callback = { err ->
                                     if (err != null) {
                                         Log.i(TAG, "authClientAndFinish error: $err")
@@ -258,6 +282,117 @@ class LoginActivity : AppCompatActivity() {
             upgradeSubscriptionSuccessStartMain()
         } else if (app.device != null) {
             setLinksAndStartMain(targetUrl, defaultLocation)
+        }
+    }
+
+    // the earnings screen asked the ur.io bridge to sign a wallet-connect challenge;
+    // the main activity owns the earnings view model, so hand the signed result over
+    private fun forwardWalletConnectToMain(uri: Uri) {
+        val errorCode = uri.getQueryParameter("errorCode")
+        val errorMessage = uri.getQueryParameter("errorMessage")
+        val address = uri.getQueryParameter("address")
+        val signature = uri.getQueryParameter("signature")
+        val message = uri.getQueryParameter("message")
+
+        val intent = Intent(this@LoginActivity, MainActivity::class.java)
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_TASK_ON_HOME)
+        if (errorCode == null && !address.isNullOrEmpty() && !signature.isNullOrEmpty() && !message.isNullOrEmpty()) {
+            intent.putExtra(SnWalletConnectExtras.ADDRESS, address)
+            intent.putExtra(SnWalletConnectExtras.SIGNATURE, signature)
+            intent.putExtra(SnWalletConnectExtras.MESSAGE, message)
+        } else {
+            Log.i(TAG, "wallet connect: error: code=$errorCode message=$errorMessage")
+            intent.putExtra(SnWalletConnectExtras.ERROR, errorMessage ?: getString(R.string.login_error))
+        }
+        startActivity(intent)
+        finish()
+    }
+
+    // handles the return from Sign in with Apple (LoginUtils.kt: Apple's web
+    // flow in a Custom Tab, posted to the api's /auth/apple/callback, which
+    // redirects here): ur://oauth/apple?state=<state>&id_token=<identity token>[&code=…&user=…]
+    // or ur://oauth/apple?state=<state>&error=<message>
+    private fun appleOAuthLogin(uri: Uri) {
+        val app = app ?: return
+
+        val authJwt = uri.getQueryParameter("id_token")
+        val state = uri.getQueryParameter("state")
+        val error = uri.getQueryParameter("error")
+        val provider = AUTH_JWT_TYPE_APPLE
+
+        // the attempt this round trip belongs to: a fresh state per launch, consumed
+        // here, so a stale or forged return cannot sign anyone in
+        val pending = AppleOAuthSession.take(this, state)
+        if (pending == null) {
+            Log.i(TAG, "appleOAuthLogin: no pending attempt for this state")
+            loginViewModel.setLoginError(getString(R.string.login_error))
+            return
+        }
+        if (error != null || authJwt.isNullOrEmpty()) {
+            Log.i(TAG, "appleOAuthLogin: error: $error")
+            loginViewModel.setLoginError(error ?: getString(R.string.login_error))
+            return
+        }
+        // the token must carry the nonce this launch asked Apple for
+        val claims = ssoJwtPayload(authJwt)
+        if (claims == null || claims.optString("nonce") != pending.nonce) {
+            Log.i(TAG, "appleOAuthLogin: nonce mismatch")
+            loginViewModel.setLoginError(getString(R.string.login_error))
+            return
+        }
+        val email = claims.optString("email").ifEmpty { "" }
+        // the name Apple sends with the first authorization only
+        val appleUserName = appleOAuthUserName(uri.getQueryParameter("user"))
+
+        isLoadingAuthCode = true
+
+        val args = AuthLoginArgs()
+        args.authJwt = authJwt
+        args.authJwtType = provider
+
+        app.api?.authLogin(args) { result, err ->
+            lifecycleScope.launch {
+                if (err != null) {
+                    isLoadingAuthCode = false
+                    loginViewModel.setLoginError(err.message)
+                } else if (result.error != null) {
+                    isLoadingAuthCode = false
+                    loginViewModel.setLoginError(result.error.message)
+                } else if (result.network != null && result.network.byJwt.isNotEmpty()) {
+                    loginViewModel.setLoginError(null)
+
+                    app.login(result.network.byJwt)
+
+                    welcomeThenAuthClientAndFinish(
+                        callback = { finishError ->
+                            if (finishError != null) {
+                                Log.i(TAG, "authClientAndFinish error: $finishError")
+                            }
+                            isLoadingAuthCode = false
+                        },
+                    )
+                } else if (result.authAllowed != null) {
+                    val authAllowed = mutableListOf<String>()
+                    for (i in 0 until result.authAllowed.len()) {
+                        authAllowed.add(result.authAllowed.get(i))
+                    }
+                    isLoadingAuthCode = false
+                    loginViewModel.setLoginError(getString(R.string.login_error_auth_allowed, authAllowed.joinToString(",")))
+                } else {
+                    // a new user: continue into create network with the identity token
+                    loginViewModel.setLoginError(null)
+                    isLoadingAuthCode = false
+                    jwtCreateNetworkParams = LoginCreateNetworkParams.LoginCreateAuthJwtParams(
+                        authJwt = authJwt,
+                        authJwtType = provider,
+                        userName = (result.userName ?: "").ifEmpty { appleUserName },
+                        userAuth = email,
+                        referralCode = referralCode
+                    )
+                }
+            }
+        } ?: run {
+            isLoadingAuthCode = false
         }
     }
 
@@ -322,7 +457,7 @@ class LoginActivity : AppCompatActivity() {
 
                     app.login(result.network.byJwt)
 
-                    authClientAndFinish(
+                    welcomeThenAuthClientAndFinish(
                         callback = { error ->
                             if (error != null) {
                                 Log.i(TAG, "authClientAndFinish error: $error")
@@ -412,6 +547,27 @@ class LoginActivity : AppCompatActivity() {
         startActivity(intent)
 
         finish()
+    }
+
+    /**
+     * Plays the welcome animation the login screens play, then finishes into
+     * the main activity. For the sign-ins that complete here (an auth code
+     * link, the Apple and bittensor returns) instead of on a screen that has
+     * its own overlay; a failed finish takes the overlay down for the retry.
+     */
+    private fun welcomeThenAuthClientAndFinish(
+        callback: (String?) -> Unit,
+    ) {
+        welcomeOverlayVisible = true
+        lifecycleScope.launch(Dispatchers.Main) {
+            delay(2250)
+            authClientAndFinish { error ->
+                if (error != null) {
+                    welcomeOverlayVisible = false
+                }
+                callback(error)
+            }
+        }
     }
 
     fun authClientAndFinish(

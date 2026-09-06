@@ -90,6 +90,7 @@ class WidgetSnapshotWriter(
     private var providers: List<WidgetProviderSnapshot> = emptyList()
     private var contracts: List<WidgetContractPeerSnapshot> = emptyList()
     private var providing = false
+    private var provideMode = ""
     private var connectEnabled = false
     private var lastWritten: WidgetTunnelSnapshot? = null
     private var contractRefreshPending = false
@@ -161,6 +162,7 @@ class WidgetSnapshotWriter(
         this.device = device
         connectEnabled = device.connectEnabled
         providing = device.provideEnabled
+        provideMode = device.provideControlMode ?: ""
         location = locationSnapshot(device.connectLocation)
         device.packetStats?.let { accumulator.recordClient(it.remoteEgressByteCount, it.remoteIngressByteCount) }
         device.providerPacketStats?.let {
@@ -198,6 +200,15 @@ class WidgetSnapshotWriter(
                 routineReload.request(urgent = true)
             }
         }
+        subs += device.addProvideControlModeChangeListener { mode ->
+            handler.post {
+                val next = mode ?: ""
+                if (this.device !== device || provideMode == next) return@post
+                provideMode = next
+                write()
+                routineReload.request(urgent = true)
+            }
+        }
         subs += device.addConnectedProviderLocationChangeListener {
             handler.post {
                 if (this.device !== device) return@post
@@ -208,18 +219,22 @@ class WidgetSnapshotWriter(
             if (stats == null) return@addPacketStatsChangeListener
             val egress = stats.remoteEgressByteCount
             val ingress = stats.remoteIngressByteCount
+            val egressPackets = stats.remoteEgressPacketCount
+            val ingressPackets = stats.remoteIngressPacketCount
             handler.post {
                 if (this.device !== device) return@post
-                accumulator.recordClient(egress, ingress)
+                accumulator.recordClient(egress, ingress, egressPackets, ingressPackets)
             }
         }
         subs += device.addProviderPacketStatsChangeListener { stats ->
             if (stats == null) return@addProviderPacketStatsChangeListener
             val egress = stats.localEgressByteCount + stats.blockEgressByteCount
             val ingress = stats.localIngressByteCount + stats.blockIngressByteCount
+            val egressPackets = stats.localEgressPacketCount + stats.blockEgressPacketCount
+            val ingressPackets = stats.localIngressPacketCount + stats.blockIngressPacketCount
             handler.post {
                 if (this.device !== device) return@post
-                accumulator.recordProvider(egress, ingress)
+                accumulator.recordProvider(egress, ingress, egressPackets, ingressPackets)
             }
         }
 
@@ -244,11 +259,27 @@ class WidgetSnapshotWriter(
         device = null
     }
 
-    // MARK: controllers, opened only for placed widgets
+    /**
+     * Account > Widgets is on screen with the live previews: while it is,
+     * every widget counts as placed, so the controllers a placed widget would
+     * need (providers, contracts) are open and every publish reaches it.
+     */
+    fun setPreviewVisible(visible: Boolean) {
+        handler.post {
+            if (previewVisible == visible) return@post
+            previewVisible = visible
+            if (device == null) return@post
+            ensureControllers()
+            write()
+        }
+    }
+    private var previewVisible = false
+
+    // MARK: controllers, opened only for placed widgets (or the live previews)
 
     private fun ensureControllers() {
         val device = this.device ?: return
-        val wantGlobe = refresh.hasWidgets(WidgetKinds.PROVIDER_GLOBE)
+        val wantGlobe = previewVisible || refresh.hasWidgets(WidgetKinds.PROVIDER_GLOBE)
         if (wantGlobe && providerVc == null) {
             providerVc = device.openProviderLocationsViewController()?.also { vc ->
                 providerSelectionSub = vc.addSelectedProviderLocationChangeListener {
@@ -260,7 +291,7 @@ class WidgetSnapshotWriter(
             closeProviderController()
         }
 
-        val wantContracts = refresh.hasWidgets(WidgetKinds.CONTRACTS)
+        val wantContracts = previewVisible || refresh.hasWidgets(WidgetKinds.CONTRACTS)
         if (wantContracts && contractsVc == null) {
             contractsVc = device.openClientContractDetailsViewController()?.also { vc ->
                 contractRowsSub = vc.addContractRowsListener {
@@ -345,6 +376,7 @@ class WidgetSnapshotWriter(
             updatedAtMillis = System.currentTimeMillis(),
             tunnelActive = tunnelActive,
             providing = providing,
+            provideMode = provideMode,
             location = location,
             providers = providers,
             throughput = accumulator.snapshot,

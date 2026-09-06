@@ -1,5 +1,6 @@
 package com.bringyour.network
 
+import com.bringyour.network.ui.shared.viewmodels.offerForPlan
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -34,13 +35,9 @@ import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.bringyour.network.ui.shared.viewmodels.PlanViewModel
 import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
 import com.bringyour.network.ui.theme.URNetworkTheme
-import com.bringyour.network.ui.wallet.WalletViewModel
+import com.bringyour.network.ui.wallet.EarningsViewModel
+import com.bringyour.network.ui.wallet.SnWalletConnectExtras
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
-import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
-import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
-import com.solana.mobilewalletadapter.clientlib.Solana
-import com.solana.mobilewalletadapter.clientlib.TransactionResult
-import com.solana.publickey.SolanaPublicKey
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,13 +58,11 @@ class MainActivity: AppCompatActivity() {
 
     var subscriptionUpgradeSuccess: Boolean = false
 
-    private val walletViewModel: WalletViewModel by viewModels()
+    private val earningsViewModel: EarningsViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
     private val planViewModel: PlanViewModel by viewModels()
     private val subscriptionBalanceViewModel: SubscriptionBalanceViewModel by viewModels()
     private val overlayViewModel: OverlayViewModel by viewModels()
-
-    private var sagaActivitySender: ActivityResultSender? = null
 
     private fun prepareVpnService() {
         val app = application as MainApplication
@@ -97,8 +92,6 @@ class MainActivity: AppCompatActivity() {
         // immutable shadow
         val app = application as MainApplication
 
-        sagaActivitySender = ActivityResultSender(this)
-
         val bundleStore = app.device?.networkSpace?.store?.let { BundleStore.fromString(value = it) }
 
         // used in settings
@@ -120,6 +113,19 @@ class MainActivity: AppCompatActivity() {
         val animateIn = intent.getBooleanExtra("ANIMATE_IN", false)
         val targetUrl = intent.getStringExtra("TARGET_URL")
         val defaultLocation = intent.getStringExtra("DEFAULT_LOCATION")
+
+        // the ur.io bridge signed a wallet-connect challenge for the earnings screen
+        // (forwarded by the login activity, which receives the ur:// redirect)
+        intent.getStringExtra(SnWalletConnectExtras.ADDRESS)?.let { address ->
+            val signature = intent.getStringExtra(SnWalletConnectExtras.SIGNATURE) ?: ""
+            val message = intent.getStringExtra(SnWalletConnectExtras.MESSAGE) ?: ""
+            intent.removeExtra(SnWalletConnectExtras.ADDRESS)
+            earningsViewModel.onWalletSigned(address, signature, message)
+        }
+        intent.getStringExtra(SnWalletConnectExtras.ERROR)?.let { error ->
+            intent.removeExtra(SnWalletConnectExtras.ERROR)
+            earningsViewModel.onWalletSignFailed(error)
+        }
         subscriptionUpgradeSuccess = intent.getBooleanExtra("UPGRADE_SUBSCRIPTION_SUCCESS", false)
 
         // disable animation in if mobile or tablet
@@ -134,7 +140,7 @@ class MainActivity: AppCompatActivity() {
 
             URNetworkTheme {
                 MainNavHost(
-                    walletViewModel,
+                    earningsViewModel,
                     settingsViewModel,
                     planViewModel,
                     subscriptionBalanceViewModel,
@@ -162,11 +168,6 @@ class MainActivity: AppCompatActivity() {
                             planViewModel.resetPlanUpgradeRequest()
                             handlePlanUpgradeRequest(app)
                         }
-                    }
-                }
-                launch {
-                    walletViewModel.requestSagaWallet.collect {
-                        requestSagaWallet()
                     }
                 }
             }
@@ -225,25 +226,6 @@ class MainActivity: AppCompatActivity() {
         val app = application as MainApplication
 
         app.vpnRequestStartListener = null
-    }
-
-    private fun requestSagaWallet() {
-
-        val solanaWalletAdapter = MobileWalletAdapter(
-            connectionIdentity = ConnectionIdentity(
-                identityUri = Uri.parse("https://ur.io"),
-                iconUri = Uri.parse("favicon.svg"),
-                identityName = "URnetwork"
-            )
-        )
-        solanaWalletAdapter.blockchain = Solana.Mainnet
-
-        if (sagaActivitySender != null) {
-            lifecycleScope.launch {
-                val address = getWalletAddress(solanaWalletAdapter, sagaActivitySender!!)
-                walletViewModel.sagaWalletAddressRetrieved(address)
-            }
-        }
     }
 
     private fun requestNotificationPermissionIfNeeded(shouldRequest: Boolean) {
@@ -305,23 +287,6 @@ class MainActivity: AppCompatActivity() {
         }
     }
 
-    private suspend fun getWalletAddress(walletAdapter: MobileWalletAdapter, activitySender: ActivityResultSender): String? {
-        return when (val result = walletAdapter.connect(activitySender)) {
-            is TransactionResult.Success -> {
-                val pubKey = SolanaPublicKey(result.authResult.publicKey)
-                pubKey.base58()
-            }
-            is TransactionResult.NoWalletFound -> {
-                Log.i("SolanaViewModel", "No MWA compatible wallet app found on device.")
-                null
-            }
-            is TransactionResult.Failure -> {
-                Log.i("SolanaViewModel", "Error connecting to wallet: ${result.e}")
-                null
-            }
-        }
-    }
-
     private suspend fun upgradePlan(networkId: String) {
 
         Log.i("MainActivity", "upgrade plan hit")
@@ -368,8 +333,8 @@ class MainActivity: AppCompatActivity() {
             return
         }
 
-        // just choose the first offer
-        val offer = productDetails.subscriptionOfferDetails?.firstOrNull()
+        // the offer for the plan the user picked (yearly by default)
+        val offer = offerForPlan(productDetails.subscriptionOfferDetails ?: emptyList(), planViewModel.selectedPlan)
 
         if (offer == null) {
 

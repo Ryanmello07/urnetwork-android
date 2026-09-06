@@ -1,6 +1,7 @@
 package com.bringyour.network.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -15,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +25,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.bringyour.network.ui.components.overlays.FullScreenOverlay
+import com.bringyour.network.ui.components.overlays.WelcomeAnimatedOverlayLogin
 import com.bringyour.network.ui.login.AuthCodeLoadingScreen
 import com.bringyour.network.ui.login.CreateNetworkInstant
 import com.bringyour.network.ui.login.CreateNetworkInstantViewModel
@@ -32,7 +35,6 @@ import com.bringyour.network.ui.login.LoginInitial
 import com.bringyour.network.ui.login.LoginPassword
 import com.bringyour.network.ui.login.LoginPasswordReset
 import com.bringyour.network.ui.login.LoginPasswordResetAfterSend
-import com.bringyour.network.ui.login.LoginSeedphrase
 import com.bringyour.network.ui.login.LoginVerify
 import com.bringyour.network.ui.login.LoginViewModel
 import com.bringyour.network.ui.login.SeedphraseDisplayScreen
@@ -40,6 +42,8 @@ import com.bringyour.network.ui.login.SwitchAccountScreen
 import com.bringyour.network.ui.login.toWalletCreateBundle
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginNavHost(
@@ -49,9 +53,13 @@ fun LoginNavHost(
     targetJwt: String? = null,
     startInstantCreate: Boolean = false,
     isLoadingAuthCode: Boolean,
+    // the entrance animation for a sign-in that completes in the activity (an
+    // auth code link, the Apple or bittensor return) rather than on a screen
+    welcomeOverlayVisible: Boolean = false,
     referralCode: String?,
     activityResultSender: ActivityResultSender?,
     walletCreateNetworkParams: LoginCreateNetworkParams.LoginCreateWalletParams? = null,
+    jwtCreateNetworkParams: LoginCreateNetworkParams.LoginCreateAuthJwtParams? = null,
     overlayViewModel: OverlayViewModel = hiltViewModel()
 ) {
     val navController = rememberNavController()
@@ -182,12 +190,13 @@ fun LoginNavHost(
                         }
                     }
 
-                    composable("create-network-jwt/{userAuth}/{authJwt}/{userName}") { backStackEntry ->
+                    composable("create-network-jwt/{authJwtType}/{userAuth}/{authJwt}/{userName}") { backStackEntry ->
 
                         val userAuth = backStackEntry.arguments?.getString("userAuth") ?: ""
                         val authJwt = backStackEntry.arguments?.getString("authJwt") ?: ""
                         val userName = backStackEntry.arguments?.getString("userName") ?: ""
-                        val authJwtType = "google"
+                        // "google" from the native button, "apple" (or "google") from the ur.io sso bridge
+                        val authJwtType = backStackEntry.arguments?.getString("authJwtType")?.ifEmpty { null } ?: "google"
 
                         val createNetworkParams = LoginCreateNetworkParams.LoginCreateAuthJwtParams(
                             userAuth = userAuth,
@@ -233,32 +242,6 @@ fun LoginNavHost(
                         )
                     }
 
-                    composable("login_seedphrase") {
-                        val context = LocalContext.current
-                        val application = context.applicationContext as? com.bringyour.network.MainApplication
-                        val loginActivity = context as? com.bringyour.network.LoginActivity
-
-                        LoginSeedphrase(
-                            // deliberately not handleLoginFlow: its 2.75s of delays
-                            // only exist to time the welcome overlay, which this
-                            // screen doesn't show, and they leave a window where the
-                            // session is already persisted but the login hasn't
-                            // finished -- backing out of it strands a half-logged-in app
-                            onLoginSuccess = { jwt ->
-                                application?.login(jwt)
-                                loginActivity?.authClientAndFinish { error ->
-                                    if (error != null) {
-                                        android.util.Log.e("LoginNavHost", "auth client finish err: $error")
-                                        android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
-                            onBack = {
-                                navController.popBackStack()
-                            }
-                        )
-                    }
-
                     composable("create-network-instant") {
                         val context = LocalContext.current
                         val application = context.applicationContext as? com.bringyour.network.MainApplication
@@ -266,16 +249,37 @@ fun LoginNavHost(
                         val createNetworkInstantViewModel: CreateNetworkInstantViewModel = hiltViewModel()
                         val seedphrase by createNetworkInstantViewModel.seedphrase.collectAsState()
 
+                        val scope = rememberCoroutineScope()
+                        var contentVisible by remember { mutableStateOf(true) }
+                        var welcomeVisible by remember { mutableStateOf(false) }
+
                         // the account exists server side and its jwt is persisted
                         // before the phrase is shown, so there is no way back out of
                         // this screen -- both exits go forward into the app, and a
                         // failed finish leaves the phrase up to retry instead of
-                        // stranding an account whose seedphrase was never seen
+                        // stranding an account whose seedphrase was never seen.
+                        // Entering plays the welcome animation every other sign-in
+                        // plays before the main activity opens on its Enter card
                         val continueIntoApp: () -> Unit = {
-                            loginActivity?.authClientAndFinish { error ->
-                                if (error != null) {
-                                    android.util.Log.e("LoginNavHost", "auth client finish err: $error")
-                                    android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
+                            if (!welcomeVisible) {
+                                scope.launch {
+                                    contentVisible = false
+                                    delay(500)
+                                    welcomeVisible = true
+                                    delay(2250)
+                                    val activity = loginActivity ?: run {
+                                        welcomeVisible = false
+                                        contentVisible = true
+                                        return@launch
+                                    }
+                                    activity.authClientAndFinish { error ->
+                                        if (error != null) {
+                                            android.util.Log.e("LoginNavHost", "auth client finish err: $error")
+                                            android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
+                                            welcomeVisible = false
+                                            contentVisible = true
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -283,18 +287,26 @@ fun LoginNavHost(
                         val createdSeedphrase = seedphrase
                         if (createdSeedphrase == null) {
                             CreateNetworkInstant(
-                                appLogin = { jwt -> application?.login(jwt) },
+                                appLogin = { jwt, newNetwork -> application?.login(jwt, newNetwork = newNetwork) },
                                 onBack = {
                                     navController.popBackStack()
                                 },
                                 createNetworkInstantViewModel = createNetworkInstantViewModel
                             )
                         } else {
-                            SeedphraseDisplayScreen(
-                                seedphrase = createdSeedphrase,
-                                onConfirmed = continueIntoApp,
-                                onBack = continueIntoApp
-                            )
+                            AnimatedVisibility(
+                                visible = contentVisible,
+                                exit = fadeOut(),
+                            ) {
+                                SeedphraseDisplayScreen(
+                                    seedphrase = createdSeedphrase,
+                                    onConfirmed = continueIntoApp,
+                                    onBack = continueIntoApp
+                                )
+                            }
+                            if (welcomeVisible) {
+                                WelcomeAnimatedOverlayLogin()
+                            }
                         }
                     }
                 }
@@ -315,6 +327,18 @@ fun LoginNavHost(
 
                 // an unlinked wallet auth was received by the activity (eg the bittensor
                 // sign message deep link) -> route into the create network flow
+                // an sso identity (apple / google through the ur.io bridge) for a user
+                // with no network yet -> route into the create network flow
+                LaunchedEffect(jwtCreateNetworkParams) {
+                    jwtCreateNetworkParams?.let { params ->
+                        val encodedType = Uri.encode(params.authJwtType)
+                        val encodedUserAuth = Uri.encode(params.userAuth.ifEmpty { "-" })
+                        val encodedAuthJwt = Uri.encode(params.authJwt)
+                        val encodedUserName = Uri.encode(params.userName.ifEmpty { "-" })
+                        navController.navigate("create-network-jwt/${encodedType}/${encodedUserAuth}/${encodedAuthJwt}/${encodedUserName}")
+                    }
+                }
+
                 LaunchedEffect(walletCreateNetworkParams) {
                     walletCreateNetworkParams?.let { params ->
 
@@ -333,6 +357,10 @@ fun LoginNavHost(
                 )
             }
 
+        }
+
+        if (welcomeOverlayVisible) {
+            WelcomeAnimatedOverlayLogin()
         }
 
     }

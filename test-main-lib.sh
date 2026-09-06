@@ -29,6 +29,30 @@ run_android_acceptance_shared_avd_emulator() {
   exec "$emulator" "$@" >"$log_file" 2>&1
 }
 
+# Copy one build's app/test pair into the runner-owned cache before another
+# flavor is built. Gradle may replace its output directory on the next build;
+# peer-to-peer acceptance must never retain those ephemeral paths.
+android_acceptance_cache_apks() {
+  local app_apk="$1" test_apk="$2" cache_dir="$3"
+
+  [ -f "$app_apk" ] && [ -f "$test_apk" ] || return 1
+  mkdir -p "$cache_dir" || return 1
+  cp "$app_apk" "$cache_dir/app.apk" || return 1
+  cp "$test_apk" "$cache_dir/test.apk" || return 1
+  [ -s "$cache_dir/app.apk" ] && [ -s "$cache_dir/test.apk" ]
+}
+
+# Install the app and its instrumentation package as one fail-fast operation.
+# Bash disables errexit for a function invoked as an `if` condition, so every
+# command here must propagate failure explicitly or P2P setup can continue
+# against an absent package and obscure the first useful error.
+android_acceptance_install_apks() {
+  local timeout_command="$1" adb="$2" serial="$3" app_apk="$4" test_apk="$5"
+
+  "$timeout_command" 180 "$adb" -s "$serial" install -r -t "$app_apk" >/dev/null || return 1
+  "$timeout_command" 180 "$adb" -s "$serial" install -r -t "$test_apk" >/dev/null || return 1
+}
+
 # Verifies that the second-UID egress activity can run as the test APK's
 # standalone application. Instrumentation dependencies that are also present
 # in the target APK are not copied into the test APK, so a Kotlin reference in
@@ -82,6 +106,250 @@ android_acceptance_adb_device_ready() {
     return 1
   fi
   [ "$(printf '%s' "$state" | tr -d '\r\n')" = device ]
+}
+
+# Resolve one immutable acceptance fleet from `adb devices -l`. Reserved
+# performance devices are recorded but never selected, even if they are the
+# only attached hardware. Every other visible adb target must be fully
+# authorized and online: silently dropping an offline/unauthorized device
+# would let a fleet run claim coverage it never exercised.
+android_acceptance_select_adb_devices() {
+  local raw_file="$1" selected_file="$2" excluded_file="$3"
+  shift 3
+  local selected_tmp="${selected_file}.tmp.$$"
+  local excluded_tmp="${excluded_file}.tmp.$$"
+  local line serial state reserved candidate
+
+  : >"$selected_tmp" || return 1
+  : >"$excluded_tmp" || { rm -f "$selected_tmp"; return 1; }
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      ""|"List of devices attached"|\**daemon*) continue ;;
+    esac
+    read -r serial state _ <<<"$line"
+    if [ -z "${serial:-}" ] || [ -z "${state:-}" ]; then
+      echo "malformed adb device row: $line" >&2
+      rm -f "$selected_tmp" "$excluded_tmp"
+      return 1
+    fi
+    case "$serial" in
+      *[[:space:]]*)
+        echo "invalid adb device serial" >&2
+        rm -f "$selected_tmp" "$excluded_tmp"
+        return 1
+        ;;
+    esac
+    reserved=0
+    for candidate in "$@"; do
+      if [ "$serial" = "$candidate" ]; then
+        reserved=1
+        break
+      fi
+    done
+    if [ "$reserved" -eq 1 ]; then
+      printf '%s\t%s\treserved-for-performance\n' "$serial" "$state" >>"$excluded_tmp"
+      continue
+    fi
+    if [ "$state" != device ]; then
+      echo "adb device $serial is $state; every non-reserved attached device must be authorized and online" >&2
+      rm -f "$selected_tmp" "$excluded_tmp"
+      return 1
+    fi
+    if grep -Fqx -- "$serial" "$selected_tmp"; then
+      echo "duplicate adb device serial: $serial" >&2
+      rm -f "$selected_tmp" "$excluded_tmp"
+      return 1
+    fi
+    printf '%s\n' "$serial" >>"$selected_tmp"
+  done <"$raw_file"
+
+  LC_ALL=C sort "$selected_tmp" >"${selected_tmp}.sorted" || {
+    rm -f "$selected_tmp" "$selected_tmp.sorted" "$excluded_tmp"
+    return 1
+  }
+  LC_ALL=C sort "$excluded_tmp" >"${excluded_tmp}.sorted" || {
+    rm -f "$selected_tmp" "$selected_tmp.sorted" "$excluded_tmp" "$excluded_tmp.sorted"
+    return 1
+  }
+  mv "${selected_tmp}.sorted" "$selected_file" || return 1
+  mv "${excluded_tmp}.sorted" "$excluded_file" || return 1
+  rm -f "$selected_tmp" "$excluded_tmp"
+}
+
+# Give every selected device a collision-free artifact id without hiding its
+# adb serial. The numeric prefix remains unique even when two serials collapse
+# to the same filesystem-safe spelling.
+android_acceptance_write_device_records() {
+  local serials_file="$1" records_file="$2"
+  local temporary="${records_file}.tmp.$$" serial safe index=0
+
+  : >"$temporary" || return 1
+  while IFS= read -r serial || [ -n "$serial" ]; do
+    [ -n "$serial" ] || continue
+    index=$((index + 1))
+    safe="$(printf '%s' "$serial" | tr -c 'A-Za-z0-9._-' '_')"
+    printf 'device-%03d-%s\t%s\n' "$index" "$safe" "$serial" >>"$temporary" || {
+      rm -f "$temporary"
+      return 1
+    }
+  done <"$serials_file"
+  mv "$temporary" "$records_file"
+}
+
+# This file is both the execution plan and the deterministic proof that the
+# Cartesian product is complete. Target-major order builds each APK once, then
+# runs it sequentially on every selected device.
+android_acceptance_write_device_flavor_plan() {
+  local records_file="$1" plan_file="$2"
+  shift 2
+  local temporary="${plan_file}.tmp.$$" target device_id serial
+
+  : >"$temporary" || return 1
+  for target in "$@"; do
+    while IFS=$'\t' read -r device_id serial extra; do
+      [ -n "$device_id" ] && [ -n "$serial" ] && [ -z "${extra:-}" ] || {
+        rm -f "$temporary"
+        return 1
+      }
+      printf '%s\t%s\t%s\n' "$device_id" "$serial" "$target" >>"$temporary" || {
+        rm -f "$temporary"
+        return 1
+      }
+    done <"$records_file"
+  done
+  mv "$temporary" "$plan_file"
+}
+
+# Require exactly one result for every device/flavor/case cell. This prevents
+# an early loop exit or a duplicate row from being summarized as an aggregate
+# Android pass.
+android_acceptance_verify_device_flavor_results() {
+  local plan_file="$1" results_file="$2"
+  awk -F '\t' '
+    BEGIN {
+      split("email phone instant password data-plane peer-to-peer", required, " ")
+      failed = 0
+    }
+    NR == FNR {
+      if (NF != 3 || $1 == "" || $2 == "" || $3 == "") { failed = 1; next }
+      pair = $1 FS $2 FS $3
+      if (++plans[pair] != 1) failed = 1
+      next
+    }
+    {
+      if (NF != 6) { failed = 1; next }
+      pair = $1 FS $2 FS $3
+      if (!(pair in plans)) { failed = 1; next }
+      valid_case = 0
+      for (i in required) if ($4 == required[i]) valid_case = 1
+      if (!valid_case || ($5 != "PASS" && $5 != "FAIL") || $6 == "") {
+        failed = 1
+        next
+      }
+      cell = pair FS $4
+      if (++seen[cell] != 1) failed = 1
+      if ($5 != "PASS") failed = 1
+    }
+    END {
+      for (pair in plans) {
+        for (i in required) {
+          cell = pair FS required[i]
+          if (seen[cell] != 1) failed = 1
+        }
+      }
+      exit failed
+    }
+  ' "$plan_file" "$results_file"
+}
+
+# The acceptance AVD's launcher can ANR while multiple read-only instances
+# start under software rendering. Its system error dialog then owns the
+# foreground window and hides the app from UI Automator even though the app is
+# healthy. This is a dedicated test AVD, so suppress those unrelated dialogs
+# before any instrumentation starts.
+android_acceptance_suppress_system_error_dialogs() {
+  local adb="$1" serial="$2"
+
+  timeout 15 "$adb" -s "$serial" shell settings put global hide_error_dialogs 1 \
+    </dev/null >/dev/null
+}
+
+# Compose cannot become idle while an app-owned infinite animation advances on
+# every frame. Acceptance uses Android's reduced-motion contract so those
+# animations stay static, then restores all host settings exactly for a reused
+# emulator. An absent setting is represented by Android as "null" and must be
+# deleted rather than restored as that literal string.
+android_acceptance_disable_animations() {
+  local adb="$1" serial="$2" state_file="$3"
+  local temporary="${state_file}.tmp.$$" key value
+
+  : >"$temporary" || return 1
+  chmod 600 "$temporary" || { rm -f "$temporary"; return 1; }
+  for key in \
+    window_animation_scale \
+    transition_animation_scale \
+    animator_duration_scale; do
+    if ! value="$(timeout 15 "$adb" -s "$serial" shell settings get global "$key")"; then
+      rm -f "$temporary"
+      return 1
+    fi
+    value="$(printf '%s' "$value" | tr -d '\r\n')"
+    if ! [[ "$value" =~ ^(null|[0-9]+([.][0-9]+)?|[.][0-9]+)$ ]]; then
+      echo "invalid Android animation scale for $key" >&2
+      rm -f "$temporary"
+      return 1
+    fi
+    printf '%s=%s\n' "$key" "$value" >>"$temporary" || {
+      rm -f "$temporary"
+      return 1
+    }
+  done
+  mv "$temporary" "$state_file" || { rm -f "$temporary"; return 1; }
+
+  for key in \
+    window_animation_scale \
+    transition_animation_scale \
+    animator_duration_scale; do
+    timeout 15 "$adb" -s "$serial" shell settings put global "$key" 0 || return 1
+  done
+}
+
+android_acceptance_restore_animations() {
+  local adb="$1" serial="$2" state_file="$3"
+  local key value seen_window=0 seen_transition=0 seen_animator=0
+
+  [ -f "$state_file" ] || return 0
+  while IFS='=' read -r key value; do
+    case "$key" in
+      window_animation_scale)
+        [ "$seen_window" -eq 0 ] || return 1
+        seen_window=1
+        ;;
+      transition_animation_scale)
+        [ "$seen_transition" -eq 0 ] || return 1
+        seen_transition=1
+        ;;
+      animator_duration_scale)
+        [ "$seen_animator" -eq 0 ] || return 1
+        seen_animator=1
+        ;;
+      *) return 1 ;;
+    esac
+    if [ "$value" = null ]; then
+      # adb may consume stdin even when the remote command does not need it.
+      # Without an explicit redirect it drains the remainder of state_file,
+      # so the loop restores only its first setting and then reaches EOF.
+      timeout 15 "$adb" -s "$serial" shell settings delete global "$key" \
+        </dev/null >/dev/null || return 1
+    elif [[ "$value" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]]; then
+      timeout 15 "$adb" -s "$serial" shell settings put global "$key" "$value" \
+        </dev/null || return 1
+    else
+      return 1
+    fi
+  done <"$state_file"
+  [ "$seen_window" -eq 1 ] && [ "$seen_transition" -eq 1 ] && [ "$seen_animator" -eq 1 ]
 }
 
 # Returns 0 when the app-private file exists, 1 when the device is reachable

@@ -75,6 +75,7 @@ import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.OffBlack
 import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
+import com.bringyour.network.ui.wallet.EarningsFormat
 import com.bringyour.network.ui.theme.URNetworkTheme
 import com.bringyour.network.utils.formatDecimalString
 import kotlinx.coroutines.CoroutineScope
@@ -89,9 +90,8 @@ fun AccountScreen(
     overlayViewModel: OverlayViewModel,
     planViewModel: PlanViewModel,
     subscriptionBalanceViewModel: SubscriptionBalanceViewModel,
-    totalPayoutAmount: Double,
-    totalPayoutAmountInitialized: Boolean,
-    walletCount: Int,
+    totalAccountPoints: Double,
+    accountPointsLoaded: Boolean,
     totalReferrals: Long,
     meanReliabilityWeight: Double,
     isPro: Boolean,
@@ -140,9 +140,8 @@ fun AccountScreen(
                         navController = navController,
                         scope = scope,
                         networkName = networkUser?.networkName,
-                        totalPayoutAmount = totalPayoutAmount,
-                        totalPayoutAmountInitialized = totalPayoutAmountInitialized,
-                        walletCount = walletCount,
+                        totalAccountPoints = totalAccountPoints,
+                        accountPointsLoaded = accountPointsLoaded,
                         currentPlan = if (isPro) Plan.Supporter else Plan.Basic,
                         currentStore = currentStore,
                         launchOverlay = overlayViewModel.launch,
@@ -187,9 +186,8 @@ fun AccountScreenContent(
     navController: NavHostController,
     scope: CoroutineScope,
     networkName: String?,
-    totalPayoutAmount: Double,
-    totalPayoutAmountInitialized: Boolean,
-    walletCount: Int,
+    totalAccountPoints: Double,
+    accountPointsLoaded: Boolean,
     currentPlan: Plan,
     currentStore: String?,
     launchOverlay: (OverlayMode) -> Unit,
@@ -232,7 +230,7 @@ fun AccountScreenContent(
                 networkName = networkName,
                 // Pro members get a glowing gold ring around their avatar
                 isPro = currentPlan == Plan.Supporter,
-                launchOverlay = launchOverlay
+                openReferrals = { navController.navigate(Route.Referrals) }
             )
         }
 
@@ -279,7 +277,11 @@ fun AccountScreenContent(
                     meanReliabilityWeight = meanReliabilityWeight,
                     dailyByteCount = dailyBalanceBytes,
                     onReferralClick = {
-                        launchOverlay(OverlayMode.Refer)
+                        if (loginMode == LoginMode.Authenticated) {
+                            navController.navigate(Route.Referrals)
+                        } else {
+                            context.startActivity(Intent(context, LoginActivity::class.java))
+                        }
                     }
                 )
                 
@@ -321,8 +323,18 @@ fun AccountScreenContent(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // earnings area
-                Box() {
+                // earnings area: points first; the Earnings screen has the protocol layer
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (loginMode == LoginMode.Guest) {
+                                context.startActivity(Intent(context, LoginActivity::class.java))
+                            } else {
+                                navController.navigate(Route.Earnings)
+                            }
+                        }
+                ) {
                     Column {
                         Text(
                             stringResource(id = R.string.earnings),
@@ -330,67 +342,50 @@ fun AccountScreenContent(
                                 color = TextMuted
                             )
                         )
-
-                        Row() {
-                            if (totalPayoutAmountInitialized) {
+                        if (accountPointsLoaded) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom
+                            ) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(42.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Bottom
+                                    verticalAlignment = Alignment.Bottom,
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.Bottom,
-                                    ) {
-
-                                        Text(if (totalPayoutAmount <= 0) "0" else formatDecimalString(totalPayoutAmount, 4),
-                                            style = MaterialTheme.typography.headlineMedium
+                                    Text(
+                                        EarningsFormat.points(totalAccountPoints),
+                                        style = MaterialTheme.typography.headlineMedium
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        stringResource(id = R.string.points_earned),
+                                        modifier = Modifier.offset(y = -8.dp),
+                                        style = TextStyle(
+                                            color = TextMuted
                                         )
-
-                                        Spacer(modifier = Modifier.width(6.dp))
-
-                                        Text("USDC",
-                                            modifier = Modifier.offset(y = -8.dp),
-                                            style = TextStyle(
-                                                color = TextMuted
-                                            )
-                                        )
-                                    }
-
-                                    if (walletCount <= 0) {
-                                        Text(
-                                            text = stringResource(id = R.string.set_up_wallet),
-                                            modifier = Modifier
-                                                .offset(y = (-8).dp)
-                                                .clickable {
-                                                    if (loginMode == LoginMode.Guest) {
-                                                        context.startActivity(Intent(context, LoginActivity::class.java))
-                                                    } else {
-                                                        navController.navigate(Route.Wallets)
-                                                    }
-                                                },
-                                            style = TextStyle(
-                                                color = BlueMedium
-                                            )
-                                        )
-
-                                    }
-                                }
-                            } else {
-                                Row(
-                                    modifier = Modifier.height(42.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier
-                                            .width(16.dp)
-                                            .height(16.dp),
-                                        color = TextMuted,
-                                        trackColor = TextFaint,
-                                        strokeWidth = 2.dp
                                     )
                                 }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = BlueMedium,
+                                    modifier = Modifier.offset(y = (-8).dp)
+                                )
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.height(42.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier
+                                        .width(16.dp)
+                                        .height(16.dp),
+                                    color = TextMuted,
+                                    trackColor = TextFaint,
+                                    strokeWidth = 2.dp
+                                )
                             }
                         }
                     }
@@ -426,10 +421,10 @@ fun AccountScreenContent(
         HorizontalDivider()
         URNavListItem(
             iconResourceId = R.drawable.nav_list_item_wallet,
-            text = stringResource(id = R.string.wallet),
+            text = stringResource(id = R.string.earnings),
             onClick = {
                 if (loginMode == LoginMode.Authenticated) {
-                    navController.navigate(Route.Wallets)
+                    navController.navigate(Route.Earnings)
                 } else {
                     context.startActivity(Intent(context, LoginActivity::class.java))
                 }
@@ -438,13 +433,23 @@ fun AccountScreenContent(
         HorizontalDivider()
         URNavListItem(
             iconResourceId = R.drawable.nav_list_item_refer,
-            text = stringResource(id = R.string.refer_and_earn),
+            text = stringResource(id = R.string.referrals),
             onClick = {
                 if (loginMode == LoginMode.Authenticated) {
-                    launchOverlay(OverlayMode.Refer)
+                    navController.navigate(Route.Referrals)
                 } else {
                     context.startActivity(Intent(context, LoginActivity::class.java))
                 }
+            }
+        )
+        HorizontalDivider()
+        // the quick connect tile and the home screen widgets need no account,
+        // so the row is open to guests too
+        URNavListItem(
+            iconResourceId = R.drawable.nav_list_item_widgets,
+            text = stringResource(id = R.string.widgets),
+            onClick = {
+                navController.navigate(Route.Widgets)
             }
         )
         HorizontalDivider()
@@ -524,9 +529,8 @@ private fun AccountSupporterAuthenticatedPreview() {
                     navController = navController,
                     scope = scope,
                     networkName = "ur_network",
-                    totalPayoutAmount = 120.12387,
-                    totalPayoutAmountInitialized = true,
-                    walletCount = 2,
+                    totalAccountPoints = 120.12387,
+                    accountPointsLoaded = true,
                     currentPlan = Plan.Supporter,
                     launchOverlay = {},
                     isProcessingUpgrade = false,
@@ -570,9 +574,8 @@ private fun AccountBasicAuthenticatedPreview() {
                     navController = navController,
                     scope = scope,
                     networkName = "ur_network",
-                    totalPayoutAmount = 120.12387,
-                    totalPayoutAmountInitialized = true,
-                    walletCount = 2,
+                    totalAccountPoints = 120.12387,
+                    accountPointsLoaded = true,
                     currentPlan = Plan.Basic,
                     launchOverlay = {},
                     isProcessingUpgrade = false,
@@ -615,9 +618,8 @@ private fun AccountGuestPreview() {
                     navController = navController,
                     scope = scope,
                     networkName = "ur_network",
-                    totalPayoutAmount = 0.0,
-                    totalPayoutAmountInitialized = true,
-                    walletCount = 0,
+                    totalAccountPoints = 0.0,
+                    accountPointsLoaded = true,
                     currentPlan = Plan.Basic,
                     launchOverlay = {},
                     isProcessingUpgrade = false,
@@ -659,9 +661,8 @@ private fun AccountGuestNoWalletPreview() {
                     navController = navController,
                     scope = scope,
                     networkName = "ur_network",
-                    totalPayoutAmount = 0.0,
-                    totalPayoutAmountInitialized = false,
-                    walletCount = 0,
+                    totalAccountPoints = 0.0,
+                    accountPointsLoaded = false,
                     currentPlan = Plan.Basic,
                     launchOverlay = {},
                     isProcessingUpgrade = false,

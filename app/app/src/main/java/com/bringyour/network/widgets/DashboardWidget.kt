@@ -1,6 +1,10 @@
 package com.bringyour.network.widgets
 
+import com.bringyour.network.ui.shared.models.ProvideControlMode
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.content.ComponentName
 import android.text.format.DateUtils
 import androidx.compose.runtime.Composable
@@ -42,8 +46,10 @@ import com.bringyour.network.QuickConnectActivity
 import com.bringyour.network.R
 import com.bringyour.network.utils.formatByteCountCompact
 import com.bringyour.network.utils.formatByteRate
+import com.bringyour.network.utils.formatPacketRate
 import com.bringyour.network.widgets.render.BalanceBarRenderer
 import com.bringyour.network.widgets.render.ThroughputChartRenderer
+import com.bringyour.network.widgets.render.WidgetColors
 import kotlin.math.roundToInt
 
 /**
@@ -82,7 +88,7 @@ class DashboardWidget : GlanceAppWidget() {
 internal fun DashboardContent(entry: WidgetEntry) {
     val size = LocalSize.current
     val context = LocalContext.current
-    WidgetSurface {
+    WidgetSurface(entry, QuickConnectActivity.ROUTE_CONNECT) {
         when {
             size.height < DashboardWidget.SHORT.height -> {
                 Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
@@ -127,16 +133,34 @@ internal fun DashboardContent(entry: WidgetEntry) {
     }
 }
 
-/** The widget background: brand black, the launcher's corner radius, edge padding. */
+/**
+ * The widget background: brand black, the launcher's corner radius, edge
+ * padding. A tap anywhere on it opens the app on the widget's screen
+ * (`route`, through the QuickConnectActivity trampoline), or on sign-in when
+ * there is no account; the quick connect button's own click wins inside it.
+ */
 @Composable
-internal fun WidgetSurface(content: @Composable () -> Unit) {
+internal fun WidgetSurface(entry: WidgetEntry, route: String, content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val open = if (entry.isConfigured) {
+        actionStartActivity(
+            ComponentName(context, QuickConnectActivity::class.java),
+            actionParametersOf(
+                QuickConnectActivity.ACTION_PARAMETER to QuickConnectActivity.ACTION_OPEN,
+                QuickConnectActivity.ROUTE_PARAMETER to route,
+            ),
+        )
+    } else {
+        actionStartActivity(ComponentName(context, LoginActivity::class.java))
+    }
     Box(
         modifier = GlanceModifier
             .fillMaxSize()
             .appWidgetBackground()
             .background(WidgetTheme.background)
             .cornerRadius(android.R.dimen.system_app_widget_background_radius)
-            .padding(14.dp),
+            .padding(14.dp)
+            .clickable(open),
     ) {
         content()
     }
@@ -149,12 +173,18 @@ private fun DashboardHeader(entry: WidgetEntry, compact: Boolean) {
         modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // the solid connector mark: white when off, the app's connected green when up
+        // the location's country color as a filled disc, the mark the app's
+        // location list draws; the palette's unknown-country blue for a location
+        // without a country, the faint text color when there is no location at
+        // all (off, not configured) so the title keeps its place. A bitmap, so it
+        // is round on every Android version (Glance corner radii only apply on 12+).
+        val markSize = LOCATION_MARK_SIZE_DP.dp
         Image(
-            provider = ImageProvider(R.drawable.ic_tile_quick_on),
+            provider = ImageProvider(
+                locationMarkBitmap((markSize.value * context.resources.displayMetrics.density).toInt(), locationMarkColor(entry)),
+            ),
             contentDescription = null,
-            modifier = GlanceModifier.size(if (compact) 20.dp else 24.dp),
-            colorFilter = ColorFilter.tint(if (entry.isOn) WidgetTheme.connected else WidgetTheme.text),
+            modifier = GlanceModifier.size(markSize),
         )
         Spacer(GlanceModifier.width(10.dp))
         Column(modifier = GlanceModifier.defaultWeight()) {
@@ -246,41 +276,116 @@ private fun ThroughputChart(title: String, entry: WidgetEntry, provider: Boolean
     val size = LocalSize.current
     val density = context.resources.displayMetrics.density
     val throughput = entry.tunnel.throughput
-    val points = throughput.buckets.map {
-        if (provider) ThroughputChartRenderer.Point(it.start, it.providerEgress, it.providerIngress)
-        else ThroughputChartRenderer.Point(it.start, it.clientEgress, it.clientIngress)
-    }
-    val peak = ThroughputChartRenderer.peak(points)
+    val points = throughputPoints(entry, provider)
+    val peakLabel = throughputPeakLabel(points, throughput.bucketSeconds)
     val widthPx = ((size.width.value - 28f) * density).roundToInt()
     val heightPx = ((height.value - 16f) * density).roundToInt()
+    // the provider block carries the provide mode in its title, and while
+    // providing is off it says so instead of drawing a flat line
+    val heading = if (provider) providerChartHeading(context, entry) else title
+    val providerOff = provider && providerChartOff(entry)
     Column(modifier = GlanceModifier.fillMaxWidth().height(height)) {
         Row(modifier = GlanceModifier.fillMaxWidth()) {
-            Text(title, style = WidgetTheme.caption)
+            Text(heading, style = WidgetTheme.caption, maxLines = 1)
             Spacer(GlanceModifier.defaultWeight())
-            Text(
-                if (provider && !entry.tunnel.providing && peak == 0L) context.getString(R.string.widget_not_providing)
-                else context.getString(R.string.widget_peak_rate, formatByteRate(peak / maxOf(1L, throughput.bucketSeconds))),
-                style = WidgetTheme.label,
-                maxLines = 1,
-            )
+            if (!providerOff) {
+                Text(
+                    context.getString(R.string.widget_peak_rate, peakLabel),
+                    style = WidgetTheme.label,
+                    maxLines = 1,
+                )
+            }
         }
         Spacer(GlanceModifier.height(2.dp))
-        Image(
-            provider = ImageProvider(
-                ThroughputChartRenderer.render(
-                    widthPx, heightPx, points, throughput.bucketSeconds, entry.nowMillis,
-                    if (provider) WidgetTheme.providerSeriesArgb else WidgetTheme.clientSeriesArgb,
-                    density,
+        if (providerOff) {
+            Box(
+                modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    context.getString(R.string.widget_provider_stats_when_enabled),
+                    style = WidgetTheme.faint,
+                    maxLines = 2,
                 )
-            ),
-            contentDescription = null,
-            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
-            contentScale = ContentScale.FillBounds,
-        )
+            }
+        } else {
+            Image(
+                provider = ImageProvider(
+                    ThroughputChartRenderer.render(
+                        widthPx, heightPx, points, throughput.bucketSeconds, entry.nowMillis,
+                        WidgetTheme.byteSeriesArgb, WidgetTheme.packetSeriesArgb,
+                        density,
+                    )
+                ),
+                contentDescription = null,
+                modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+                contentScale = ContentScale.FillBounds,
+            )
+        }
     }
 }
 
-private fun locationTitle(context: Context, entry: WidgetEntry): String {
+/** The chart's points for one side: the client's remote traffic or the provider's local + blocked traffic. */
+internal fun throughputPoints(entry: WidgetEntry, provider: Boolean): List<ThroughputChartRenderer.Point> =
+    entry.tunnel.throughput.buckets.map {
+        if (provider) ThroughputChartRenderer.Point(it.start, it.providerEgress, it.providerIngress, it.providerEgressPackets, it.providerIngressPackets)
+        else ThroughputChartRenderer.Point(it.start, it.clientEgress, it.clientIngress, it.clientEgressPackets, it.clientIngressPackets)
+    }
+
+/** The byte and packet peaks, in the two line colors' order, as one label. */
+internal fun throughputPeakLabel(points: List<ThroughputChartRenderer.Point>, bucketSeconds: Long): String {
+    val seconds = maxOf(1L, bucketSeconds)
+    return formatByteRate(ThroughputChartRenderer.peak(points) / seconds) + " \u00b7 " +
+        formatPacketRate(ThroughputChartRenderer.peakPackets(points) / seconds)
+}
+
+/** The provider block's heading: "Provider \u00b7 <mode>" from the snapshot's provide mode, plain "Provider" when the mode is unknown. */
+internal fun providerChartHeading(context: Context, entry: WidgetEntry): String {
+    val modeLabel = ProvideControlMode.fromString(entry.tunnel.provideMode)
+        ?.let { context.getString(ProvideControlMode.toStringResourceId(it)) }
+    return if (modeLabel != null) context.getString(R.string.widget_provider_mode_title, modeLabel) else context.getString(R.string.widget_provider)
+}
+
+/** While providing is off the provider block says so instead of drawing a flat line. */
+internal fun providerChartOff(entry: WidgetEntry): Boolean = !entry.tunnel.providing
+
+/**
+ * The color of the disc next to the location name, the same rules as the
+ * Apple widget: the location's country color (the SDK palette entry the app's
+ * location list uses for its circle); the palette's unknown-country blue when
+ * the location has no color to show (best available, no country); the faint
+ * text color when there is no location at all (tunnel off, not configured),
+ * keeping its size so the title stays aligned.
+ */
+internal fun locationMarkColor(entry: WidgetEntry): Int {
+    val location = entry.tunnel.location
+    return locationMarkArgb(entry.showsTunnelData && location != null, location?.colorHex)
+}
+
+/** The disc's footprint, shared with the app's widget preview. */
+internal const val LOCATION_MARK_SIZE_DP = 22
+
+/** No location: the faint text color (ui.theme.TextFaint). */
+internal const val LOCATION_MARK_OFF = 0xFF5A5A5A.toInt()
+
+/** A location without a country color: the palette's unknown-country blue. */
+internal const val LOCATION_MARK_UNKNOWN = 0xFF0099FF.toInt()
+
+internal fun locationMarkArgb(hasLocation: Boolean, colorHex: String?): Int {
+    if (!hasLocation) return LOCATION_MARK_OFF
+    return WidgetColors.parseHex(colorHex ?: "", LOCATION_MARK_UNKNOWN)
+}
+
+/** A filled circle of [color], [sizePx] wide, for a Glance image. */
+internal fun locationMarkBitmap(sizePx: Int, color: Int): Bitmap {
+    val size = sizePx.coerceAtLeast(2)
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; style = Paint.Style.FILL }
+    Canvas(bitmap).drawCircle(size / 2f, size / 2f, size / 2f, paint)
+    return bitmap
+}
+
+internal fun locationTitle(context: Context, entry: WidgetEntry): String {
     if (!entry.isConfigured) return context.getString(R.string.widget_not_signed_in)
     if (!entry.isOn) return context.getString(R.string.tile_status_disconnected)
     val location = entry.tunnel.location
@@ -289,7 +394,7 @@ private fun locationTitle(context: Context, entry: WidgetEntry): String {
     return location.name.ifEmpty { context.getString(R.string.tile_status_connected) }
 }
 
-private fun subtitle(context: Context, entry: WidgetEntry): String {
+internal fun subtitle(context: Context, entry: WidgetEntry): String {
     if (entry.showsTunnelData) {
         val count = entry.tunnel.providers.size
         return if (entry.tunnel.providing) {

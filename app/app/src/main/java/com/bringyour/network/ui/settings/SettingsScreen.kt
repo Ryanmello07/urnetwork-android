@@ -48,7 +48,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -102,7 +101,6 @@ import com.bringyour.network.TAG
 import com.bringyour.network.ui.Route
 import com.bringyour.network.ui.components.ButtonStyle
 import com.bringyour.network.ui.components.URButton
-import com.bringyour.network.ui.settings.updateReferralNetworkBottomSheet.UpdateReferralNetworkBottomSheet
 import com.bringyour.network.ui.shared.models.ProvideControlMode
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.bringyour.network.ui.shared.viewmodels.Plan
@@ -110,7 +108,7 @@ import com.bringyour.network.ui.shared.viewmodels.PlanViewModel
 import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
 import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.Green
-import com.bringyour.network.ui.wallet.WalletViewModel
+import com.bringyour.network.ui.wallet.EarningsViewModel
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
@@ -125,7 +123,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bringyour.network.TAG
-import com.bringyour.network.ui.components.CopyReferralCode
 import com.bringyour.network.ui.components.ProvideCellPicker
 import com.bringyour.network.ui.components.ProvideControlModePicker
 import com.bringyour.network.ui.login.SeedphraseDisplayScreen
@@ -139,15 +136,12 @@ fun SettingsScreen(
     settingsViewModel: SettingsViewModel,
     overlayViewModel: OverlayViewModel,
     activityResultSender: ActivityResultSender?,
-    walletViewModel: WalletViewModel,
-    bonusReferralCode: String,
-    isPro: Boolean,
-    totalReferrals: Long = 0L
+    earningsViewModel: EarningsViewModel,
+    isPro: Boolean
 ) {
 
     val notificationsAllowed = settingsViewModel.permissionGranted.collectAsState().value
     val showDeleteAccountDialog = settingsViewModel.showDeleteAccountDialog.collectAsState().value
-    val referralNetwork = settingsViewModel.referralNetwork.collectAsState().value
     val isPresentingAuthCodeDialog = settingsViewModel.isPresentingAuthCodeDialog.collectAsState().value
     val authCode = settingsViewModel.authCode.collectAsState().value
 
@@ -179,11 +173,6 @@ fun SettingsScreen(
 
     val scope = rememberCoroutineScope()
 
-    val updateReferralNetworkSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var isPresentingUpdateReferralNetworkSheet by remember { mutableStateOf(false) }
-    val setIsPresentingUpdateReferralNetworkSheet: (Boolean) -> Unit = { isPresenting ->
-        isPresentingUpdateReferralNetworkSheet = isPresenting
-    }
 
     val solanaUri = Uri.parse("https://ur.io")
     val iconUri = Uri.parse("favicon.ico")
@@ -192,12 +181,6 @@ fun SettingsScreen(
 
     val clipboardManager = LocalClipboardManager.current
 
-    val expandUpdateNetworkReferralSheet: () -> Unit = {
-        scope.launch {
-            updateReferralNetworkSheetState.expand()
-            setIsPresentingUpdateReferralNetworkSheet(true)
-        }
-    }
 
     var isPresentingRenameDevice by remember { mutableStateOf(false) }
     var editingDeviceName by remember { mutableStateOf(TextFieldValue("")) }
@@ -235,7 +218,7 @@ fun SettingsScreen(
                         // val message = result.successPayload?.messages?.first()?.message?.decodeToString()
                         val pk = SolanaPublicKey(result.authResult.accounts.first().publicKey)
 
-                        walletViewModel.verifySeekerHolder(
+                        earningsViewModel.verifySeekerHolder(
                             pk,
                             message,
                             signatureBase64
@@ -288,10 +271,7 @@ fun SettingsScreen(
         toggleRouteLocal = settingsViewModel.toggleRouteLocal,
         snackbarHostState = snackbarHostState,
         signAndVerifySeekerHolder = signAndVerifySeekerHolder,
-        isSeekerHolder = walletViewModel.isSeekerHolder.collectAsState().value,
-        bonusReferralCode = bonusReferralCode,
-        referralNetworkName = referralNetwork?.name,
-        expandUpdateNetworkReferralSheet = expandUpdateNetworkReferralSheet,
+        isSeekerHolder = earningsViewModel.isSeekerHolder.collectAsState().value,
         version = settingsViewModel.version,
         allowProvideCell = settingsViewModel.allowProvideOnCell.collectAsState().value,
         toggleProvideCell = settingsViewModel.toggleAllowProvideOnCell,
@@ -302,7 +282,6 @@ fun SettingsScreen(
         provideIndicatorColor = settingsViewModel.provideIndicatorColor,
         provideIndicatorRingColor = settingsViewModel.provideIndicatorRingColor,
         stripePortalUrl = settingsViewModel.stripePortalUrl.collectAsState().value,
-        totalReferrals = totalReferrals,
         authMethods = authMethods,
         onRemoveAuthMethod = { method -> pendingRemoveMethod = method },
         onAddAuthMethodClick = { presentAddAuthSheet = true },
@@ -363,34 +342,6 @@ fun SettingsScreen(
                 clipboardManager.setText(AnnotatedString(authCode ?: ""))
                 settingsViewModel.setIsPresentingAuthCodeDialog(false)
             }
-        )
-    }
-
-    if (isPresentingUpdateReferralNetworkSheet) {
-        UpdateReferralNetworkBottomSheet(
-            sheetState = updateReferralNetworkSheetState,
-            setIsPresenting = setIsPresentingUpdateReferralNetworkSheet,
-            onSuccess = {
-                setIsPresentingUpdateReferralNetworkSheet(false)
-                settingsViewModel.fetchReferralNetwork()
-                scope.launch {
-                    snackbarHostState.showSnackbar(
-                        message = "Referral network updated",
-                        withDismissAction = true,
-                         duration = SnackbarDuration.Short
-                    )
-                }
-            },
-            onError = { errMsg ->
-                scope.launch {
-                    snackbarHostState.showSnackbar(
-                        message = errMsg,
-                        withDismissAction = true,
-                        duration = SnackbarDuration.Short
-                    )
-                }
-            },
-            referralNetworkName = referralNetwork?.name
         )
     }
 
@@ -540,9 +491,6 @@ private fun SettingsScreen(
     snackbarHostState: SnackbarHostState,
     signAndVerifySeekerHolder: () -> Unit,
     isSeekerHolder: Boolean,
-    bonusReferralCode: String,
-    referralNetworkName: String?,
-    expandUpdateNetworkReferralSheet: () -> Unit,
     version: String,
     allowProvideCell: Boolean,
     toggleProvideCell: () -> Unit,
@@ -553,7 +501,6 @@ private fun SettingsScreen(
     provideIndicatorColor: Color,
     provideIndicatorRingColor: Color? = null,
     stripePortalUrl: String?,
-    totalReferrals: Long = 0L,
     authMethods: List<String>,
     onRemoveAuthMethod: (String) -> Unit,
     onAddAuthMethodClick: () -> Unit,
@@ -610,27 +557,6 @@ private fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(stringResource(id = R.string.settings), style = MaterialTheme.typography.headlineSmall)
-
-                /**
-                 * referral royalty: networks with at least one referral get the
-                 * crowned frog mascot (same as the ur.io site)
-                 */
-                if (0 < totalReferrals) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.referral_frog),
-                            contentDescription = stringResource(id = R.string.referral_royalty),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Text(
-                            stringResource(id = R.string.referral_royalty),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted
-                        )
-                    }
-                }
             }
             Spacer(modifier = Modifier.height(64.dp))
 
@@ -671,47 +597,6 @@ private fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-
-            /**
-             * Referral code
-             */
-            URTextInputLabel(
-                text = stringResource(id = R.string.referral_code)
-            )
-
-            CopyReferralCode(
-                bonusReferralCode = bonusReferralCode
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            /**
-             * Update referral network
-             */
-            URTextInputLabel(stringResource(id = R.string.referral_network))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    referralNetworkName ?: stringResource(id = R.string.none),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White
-                )
-
-                TextButton(onClick = {
-                    expandUpdateNetworkReferralSheet()
-                }) {
-                    Text(
-                        stringResource(id = R.string.update),
-                        color = BlueMedium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
 
             /**
              * Auth code
@@ -1055,15 +940,6 @@ private fun SettingsScreen(
                     tint = TextMuted
                 )
             }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            /**
-             * Quick connect surfaces: the Quick Settings tile (Android 13+ can ask the
-             * system to add it; hidden once it is placed) and the Home Screen widgets
-             * (pinned through the launcher's confirmation).
-             */
-            QuickConnectSettingsRows()
 
             Spacer(modifier = Modifier.height(18.dp))
 
@@ -1590,9 +1466,6 @@ private fun SettingsScreenPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             signAndVerifySeekerHolder = {},
             isSeekerHolder = false,
-            bonusReferralCode = "ABC123",
-            referralNetworkName = "parent_network",
-            expandUpdateNetworkReferralSheet = {},
             version = "1.2.3",
             allowProvideCell = true,
             toggleProvideCell = {},
@@ -1670,9 +1543,6 @@ private fun SettingsScreenSupporterPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             signAndVerifySeekerHolder = {},
             isSeekerHolder = false,
-            bonusReferralCode = "ABC123",
-            referralNetworkName = null,
-            expandUpdateNetworkReferralSheet = {},
             version = "1.2.3",
             allowProvideCell = true,
             toggleProvideCell = {},
@@ -1718,9 +1588,6 @@ private fun SettingsScreenNotificationsDisabledPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             signAndVerifySeekerHolder = {},
             isSeekerHolder = true,
-            bonusReferralCode = "ABC123",
-            referralNetworkName = "parent_network",
-            expandUpdateNetworkReferralSheet = {},
             version = "1.2.3",
             allowProvideCell = true,
             toggleProvideCell = {},
@@ -1766,9 +1633,6 @@ private fun SettingsScreenNotificationsAllowedPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             signAndVerifySeekerHolder = {},
             isSeekerHolder = false,
-            bonusReferralCode = "ABC123",
-            referralNetworkName = "parent_network",
-            expandUpdateNetworkReferralSheet = {},
             version = "1.2.3",
             allowProvideCell = true,
             toggleProvideCell = {},
@@ -1814,9 +1678,6 @@ private fun SettingsScreenDeleteAccountDialogPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             signAndVerifySeekerHolder = {},
             isSeekerHolder = false,
-            bonusReferralCode = "ABC123",
-            referralNetworkName = null,
-            expandUpdateNetworkReferralSheet = {},
             version = "1.2.3",
             allowProvideCell = true,
             toggleProvideCell = {},
@@ -1840,88 +1701,3 @@ private fun SettingsScreenDeleteAccountDialogPreview() {
 private enum class SeedphraseAction { GENERATE, REGENERATE }
 
 
-@Composable
-private fun QuickConnectSettingsRows() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var tileAdded by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(com.bringyour.network.QuickConnectTileService.isAdded(context))
-    }
-    val tileAddedMessage = stringResource(id = R.string.widget_quick_tile_added)
-
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && !tileAdded) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    val statusBar = context.getSystemService(android.app.StatusBarManager::class.java)
-                    statusBar?.requestAddTileService(
-                        android.content.ComponentName(context, com.bringyour.network.QuickConnectTileService::class.java),
-                        context.getString(R.string.app_name),
-                        android.graphics.drawable.Icon.createWithResource(context, R.drawable.ic_tile_quick_on),
-                        context.mainExecutor,
-                    ) { result ->
-                        if (result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED ||
-                            result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED
-                        ) {
-                            com.bringyour.network.QuickConnectTileService.setAdded(context, true)
-                            com.bringyour.network.QuickConnectTileService.requestUpdate(context)
-                            tileAdded = true
-                            android.widget.Toast.makeText(context, tileAddedMessage, android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-                .padding(vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(id = R.string.settings_add_quick_tile),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    stringResource(id = R.string.settings_add_quick_tile_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-            }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "Keyboard Arrow Right",
-                tint = TextMuted
-            )
-        }
-        Spacer(modifier = Modifier.height(18.dp))
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                com.bringyour.network.widgets.requestPinWidget(
-                    context,
-                    com.bringyour.network.widgets.DashboardWidgetReceiver::class.java,
-                )
-            }
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                stringResource(id = R.string.settings_add_widgets),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                stringResource(id = R.string.settings_add_widgets_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
-            )
-        }
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = "Keyboard Arrow Right",
-            tint = TextMuted
-        )
-    }
-}

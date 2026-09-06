@@ -1,5 +1,10 @@
 package com.bringyour.network.ui.connect
 
+import com.bringyour.network.ui.theme.TextMuted
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.Icons
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -37,8 +42,9 @@ fun ConnectStatusIndicator(
     contractStatus: ContractStatus?,
     currentPlan: Plan,
     isPollingSubscriptionBalance: Boolean,
-    // when set, the connected-providers label opens the provider locations
-    // detail (only meaningful while connected)
+    // when set, the provider status label opens the provider locations detail:
+    // "Connected to N providers" and "Connecting to providers" alike (the detail
+    // shows whatever providers are known so far while connecting)
     onShowProviderLocations: (() -> Unit)? = null
 ) {
 
@@ -76,10 +82,14 @@ fun ConnectStatusIndicator(
         ConnectStatus.DISCONNECTED -> "Disconnected"
     }
 
-    // the provider count is the affordance: tapping it opens the per-provider
-    // locations detail. Any other status text is not interactive.
+    // the provider status is the affordance: tapping it opens the per-provider
+    // locations detail, while connecting as well as once connected. Any other
+    // status text is not interactive.
+    val providerStatus = status == ConnectStatus.CONNECTED ||
+            status == ConnectStatus.CONNECTING ||
+            status == ConnectStatus.DESTINATION_SET
     val showProviderLocations = onShowProviderLocations?.takeIf {
-        status == ConnectStatus.CONNECTED &&
+        providerStatus &&
                 !displayReconnectTunnel &&
                 !isPollingSubscriptionBalance &&
                 !(contractStatus?.insufficientBalance == true && currentPlan != Plan.Supporter)
@@ -117,6 +127,17 @@ fun ConnectStatusIndicator(
 
             if (status == ConnectStatus.CONNECTING) {
                 AnimatedEllipsis()
+            }
+
+            // the caret says the provider count opens the provider details
+            if (showProviderLocations != null) {
+                Spacer(modifier = Modifier.width(2.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

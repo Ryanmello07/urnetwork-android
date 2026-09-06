@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.upgrade
 
+import com.bringyour.network.ui.components.BestValuePill
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -29,7 +30,6 @@ import com.bringyour.network.ui.components.PlanOptionContainer
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.shared.enums.PlanType
 import com.bringyour.network.ui.theme.Black
-import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.stripe.android.PaymentConfiguration
@@ -38,6 +38,11 @@ import com.stripe.android.paymentsheet.PaymentSheetResult
 
 @Composable
 fun AltSubscriptionOptions(
+    // the prices the picker prints, from PlanViewModel. The Solana dApp store
+    // app sells the yearly plan only (a one-time USDC payment), so monthly is
+    // accepted for signature parity with the other flavors and not shown.
+    monthlyCostFormatted: String,
+    yearlyCostFormatted: String,
     onStripePaymentSuccess: () -> Unit,
     // the payment sheet's error detail, for the shared payment-problem dialog. This
     // used to be `{}` -- a declined card looked exactly like nothing happening.
@@ -120,78 +125,28 @@ fun AltSubscriptionOptions(
     Column() {
 
         /**
-         * Yearly
+         * Yearly: the only plan on the Solana dApp store app, a one-time
+         * payment in USDC
          */
         PlanOptionContainer(
-            isSelected = selectedPlan == PlanType.YEARLY,
+            isSelected = true,
             select = {
                 setSelectedPlan(PlanType.YEARLY)
             },
             content = {
                 Column() {
                     Text(
-                        "$40 Annual (Save 33%)",
+                        stringResource(id = R.string.plan_price_per_year, yearlyCostFormatted),
                         style = TopBarTitleTextStyle
                     )
                 }
             },
             badge = {
-                Box(
-                    modifier = Modifier
-                        .background(
-                            Green,
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        "Most popular",
-                        color = Black,
-                        style = TopBarTitleTextStyle
-                    )
-                }
-            }
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        PlanOptionContainer(
-            isSelected = selectedPlan == PlanType.MONTHLY,
-            select = {
-                setSelectedPlan(PlanType.MONTHLY)
+                BestValuePill()
             },
-            content = {
-                Column() {
-                    Text(
-                        "$5/month",
-                        style = TopBarTitleTextStyle
-                    )
-                }
-            }
+            glow = true
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(modifier = Modifier.fillMaxWidth()) {
-
-            URButton(
-                onClick = {
-                    if (selectedPlan == PlanType.YEARLY) {
-                        upgradeStripeYearly()
-                    } else {
-                        upgradeStripeMonthly()
-                    }
-                },
-                enabled = !isCreatingIntents,
-                isProcessing = isCreatingIntents
-            ) { buttonTextStyle ->
-                Text(
-                    stringResource(id = R.string.pay_with_stripe),
-                    style = buttonTextStyle
-                )
-            }
-
-        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -209,8 +164,7 @@ fun AltSubscriptionOptions(
                     upgradeSolana()
                 },
                 enabled = !isPromptingSolanaPayment &&
-                        !isCheckingSolanaTransaction &&
-                        selectedPlan == PlanType.YEARLY,
+                        !isCheckingSolanaTransaction,
                 isProcessing = isPromptingSolanaPayment || isCheckingSolanaTransaction
             ) { buttonTextStyle ->
                 Text(
@@ -224,7 +178,7 @@ fun AltSubscriptionOptions(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            stringResource(id = R.string.solana_payment_insufficient_funds_warning),
+            stringResource(id = R.string.paid_in_usdc_on_solana),
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted
         )

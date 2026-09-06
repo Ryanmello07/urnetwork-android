@@ -1,5 +1,7 @@
 package com.bringyour.network.ui.upgrade
 
+import com.bringyour.network.R
+import androidx.compose.ui.res.stringResource
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -131,7 +133,7 @@ fun UpgradePlanAlt(
                     }) {
                         Icon(
                             Icons.Filled.ChevronLeft,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(id = R.string.back)
                         )
                     }
                 },
@@ -149,7 +151,8 @@ fun UpgradePlanAlt(
             UpgradePlanContent(
                 upgradeSolana = upgradeWithSolana,
                 upgradeInProgress = planViewModel.inProgress,
-                formattedSubscriptionPrice = planViewModel.formattedSubscriptionPrice,
+                monthlyCostFormatted = planViewModel.formattedMonthlySubscriptionPrice,
+                yearlyCostFormatted = planViewModel.formattedYearlySubscriptionPrice,
 //                onStripePaymentSuccess = {
 //                    pollSubscriptionBalance()
 //                    overlayViewModel.launch(OverlayMode.Upgrade)
@@ -168,7 +171,8 @@ fun UpgradePlanAlt(
 private fun UpgradePlanContent(
     upgradeInProgress: Boolean,
     upgradeSolana: () -> Unit,
-    formattedSubscriptionPrice: String,
+    monthlyCostFormatted: String,
+    yearlyCostFormatted: String,
     onStripePaymentSuccess: () -> Unit,
     networkId: String?,
     isCheckingSolanaTransaction: Boolean
@@ -194,6 +198,8 @@ private fun UpgradePlanContent(
         Column {
 
             AltSubscriptionOptions(
+                monthlyCostFormatted = monthlyCostFormatted,
+                yearlyCostFormatted = yearlyCostFormatted,
                 upgradeSolana = upgradeSolana,
                 isPromptingSolanaPayment = isPromptingSolanaPayment,
                 setIsPromptingSolanaPayment = {

@@ -51,6 +51,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.ui.components.URButton
+import com.bringyour.network.ui.components.ButtonStyle
+import com.bringyour.network.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.size
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.MainTintedBackgroundBase
 import com.bringyour.network.ui.theme.TextMuted
@@ -73,19 +78,19 @@ fun SeedphraseDisplayScreen(
     if (showBackConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showBackConfirmDialog = false },
-            title = { Text("Save Your Seedphrase") },
-            text = { Text("Are you sure? This is the ONLY time you'll see your seedphrase. Make sure you've saved it before going back.") },
+            title = { Text(stringResource(id = R.string.site_save_your_seedphrase)) },
+            text = { Text(stringResource(id = R.string.seedphrase_leave_confirm_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     showBackConfirmDialog = false
                     onBack()
                 }) {
-                    Text("Go Back")
+                    Text(stringResource(id = R.string.go_back))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showBackConfirmDialog = false }) {
-                    Text("Stay")
+                    Text(stringResource(id = R.string.stay))
                 }
             }
         )
@@ -96,7 +101,7 @@ fun SeedphraseDisplayScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        "Secure Your Account",
+                        stringResource(id = R.string.secure_your_account),
                         style = MaterialTheme.typography.titleMedium
                     )
                 },
@@ -106,7 +111,7 @@ fun SeedphraseDisplayScreen(
                     }) {
                         Icon(
                             Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(id = R.string.back)
                         )
                     }
                 },
@@ -131,7 +136,7 @@ fun SeedphraseDisplayScreen(
                 modifier = Modifier.widthIn(max = 512.dp)
             ) {
                 Text(
-                    "Your Seedphrase",
+                    stringResource(id = R.string.your_seedphrase),
                     style = MaterialTheme.typography.headlineLarge,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -150,7 +155,7 @@ fun SeedphraseDisplayScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    "Write it down and store it somewhere safe. If you lose it, you'll lose access to your account.",
+                    stringResource(id = R.string.write_it_down_and_store_it_somewhere),
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
                     color = TextMuted,
@@ -208,11 +213,22 @@ fun SeedphraseDisplayScreen(
                             putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
                         }
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Seedphrase copied to clipboard", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.seedphrase_copied_to_clipboard), Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.testTag("acceptance.instant.copy")
+                    // secondary action: the one primary button on this screen is the
+                    // confirmation below
+                    style = ButtonStyle.OUTLINE,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("acceptance.instant.copy")
                 ) { buttonTextStyle ->
-                    Text("Copy to Clipboard", style = buttonTextStyle)
+                    Icon(
+                        painter = painterResource(id = R.drawable.content_copy),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(id = R.string.copy), style = buttonTextStyle)
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -221,7 +237,7 @@ fun SeedphraseDisplayScreen(
                     onClick = onConfirmed,
                     modifier = Modifier.testTag("acceptance.instant.continue")
                 ) { buttonTextStyle ->
-                    Text("I've Saved My Seedphrase", style = buttonTextStyle)
+                    Text(stringResource(id = R.string.i_ve_saved_my_seedphrase), style = buttonTextStyle)
                 }
             }
         }

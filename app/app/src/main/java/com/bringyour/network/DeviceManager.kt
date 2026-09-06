@@ -37,6 +37,10 @@ class DeviceManager @Inject constructor(
         private set
 
     private var jwtRefreshSub: Sub? = null
+
+    /** The signed-in jwt as it changes (network id and name); null when signed out. */
+    val jwtFlow: kotlinx.coroutines.flow.StateFlow<com.bringyour.sdk.ByJwt?>
+        get() = jwtManager.jwtFlow
     private var authLogoutSub: Sub? = null
     private var provideSecretKeysSub: Sub? = null
     private val localStateChangeSubs = mutableListOf<Sub>()
@@ -79,7 +83,9 @@ class DeviceManager @Inject constructor(
     var canPromptIntroFunnel: Boolean
         get() = synchronized(deviceLock) { device?.canPromptIntroFunnel ?: true }
         set(it) = synchronized(deviceLock) {
-            asyncLocalState?.localState?.setIntroFunnelLastPrompted()
+            // persist the flag itself: the legacy "last prompted" timestamp re-arms
+            // the funnel after five days, but onboarding is a one-shot after sign-up
+            asyncLocalState?.localState?.canPromptIntroFunnel = it
             device?.canPromptIntroFunnel = it
         }
 

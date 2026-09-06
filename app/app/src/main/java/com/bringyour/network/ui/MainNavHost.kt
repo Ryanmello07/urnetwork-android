@@ -1,5 +1,10 @@
 package com.bringyour.network.ui
 
+import com.bringyour.network.ui.introduction.LocalIntroConnector
+import com.bringyour.network.ui.introduction.IntroConnectorState
+import com.bringyour.network.ui.introduction.FloatingIntroConnector
+import androidx.navigation.compose.currentBackStackEntryAsState
+import com.bringyour.network.ui.introduction.IntroductionQuickConnect
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -47,6 +52,7 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -79,7 +85,7 @@ import com.bringyour.network.ui.settings.DeveloperScreen
 import com.bringyour.network.ui.account.ProviderIdentitiesScreen
 import com.bringyour.network.ui.components.overlays.FullScreenOverlay
 import com.bringyour.network.ui.components.overlays.WelcomeAnimatedMainOverlay
-import com.bringyour.network.ui.components.referral.REFERRAL_BONUS_GIB_PER_DAY
+import com.bringyour.network.ui.components.referral.LocalReferralTerms
 import com.bringyour.network.ui.components.referral.ReferralRoyalToast
 import com.bringyour.network.ui.connect.ConnectScreen
 import com.bringyour.network.ui.connect.ConnectViewModel
@@ -100,13 +106,14 @@ import com.bringyour.network.ui.components.nestedLinkBottomSheet.NestedLinkBotto
 import com.bringyour.network.ui.connect.BrowseLocationsScreen
 import com.bringyour.network.ui.connect.LocationsListViewModel
 import com.bringyour.network.ui.leaderboard.LeaderboardScreen
+import com.bringyour.network.ui.referrals.ReferralsScreen
+import com.bringyour.network.ui.widgets.WidgetsScreen
 import com.bringyour.network.ui.profile.ProfileScreen
 import com.bringyour.network.ui.profile.ProfileViewModel
 import com.bringyour.network.ui.settings.SettingsScreen
 import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
-import com.bringyour.network.ui.wallet.WalletScreen
-import com.bringyour.network.ui.wallet.WalletViewModel
-import com.bringyour.network.ui.wallet.WalletsScreen
+import com.bringyour.network.ui.wallet.EarningsViewModel
+import com.bringyour.network.ui.wallet.EarningsScreen
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.bringyour.network.R
 import com.bringyour.network.TAG
@@ -118,10 +125,8 @@ import com.bringyour.network.ui.introduction.IntroductionInitial
 import com.bringyour.network.ui.introduction.IntroductionReferral
 import com.bringyour.network.ui.introduction.IntroductionSettings
 import com.bringyour.network.ui.introduction.IntroductionUsageBar
-import com.bringyour.network.ui.payout.PayoutScreen
 import com.bringyour.network.ui.shared.models.BundleStore
 import com.bringyour.network.ui.shared.models.ProvideControlMode
-import com.bringyour.network.ui.shared.viewmodels.AccountPointEvent
 import com.bringyour.network.ui.shared.viewmodels.AccountPointsViewModel
 import com.bringyour.network.ui.shared.viewmodels.NetworkReliabilityViewModel
 import com.bringyour.network.ui.shared.viewmodels.Plan
@@ -144,7 +149,56 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainNavHost(
-    walletViewModel: WalletViewModel,
+    earningsViewModel: EarningsViewModel,
+    settingsViewModel: SettingsViewModel,
+    planViewModel: PlanViewModel,
+    subscriptionBalanceViewModel: SubscriptionBalanceViewModel,
+    overlayViewModel: OverlayViewModel,
+    animateIn: Boolean,
+    targetLink: String?,
+    defaultLocation: String?,
+    activityResultSender: ActivityResultSender?,
+    bundleStore: BundleStore?,
+    isPro: Boolean,
+    mainNavViewModel: MainNavViewModel = hiltViewModel<MainNavViewModel>(),
+    referralCodeViewModel: ReferralCodeViewModel = hiltViewModel<ReferralCodeViewModel>(),
+    connectViewModel: ConnectViewModel = hiltViewModel<ConnectViewModel>(),
+    locationsListViewModel: LocationsListViewModel = hiltViewModel<LocationsListViewModel>(),
+    networkReliabilityViewModel: NetworkReliabilityViewModel = hiltViewModel<NetworkReliabilityViewModel>(),
+    solanaPaymentViewModel: SolanaPaymentViewModel = hiltViewModel<SolanaPaymentViewModel>(),
+) {
+
+    // the referral cap and bonus come from the server with the referral code;
+    // everything signed-in reads them from here instead of hardcoding numbers
+    val referralTerms by referralCodeViewModel.terms.collectAsState()
+
+    CompositionLocalProvider(LocalReferralTerms provides referralTerms) {
+        MainNavHostContent(
+        earningsViewModel = earningsViewModel,
+        settingsViewModel = settingsViewModel,
+        planViewModel = planViewModel,
+        subscriptionBalanceViewModel = subscriptionBalanceViewModel,
+        overlayViewModel = overlayViewModel,
+        animateIn = animateIn,
+        targetLink = targetLink,
+        defaultLocation = defaultLocation,
+        activityResultSender = activityResultSender,
+        bundleStore = bundleStore,
+        isPro = isPro,
+        mainNavViewModel = mainNavViewModel,
+        referralCodeViewModel = referralCodeViewModel,
+        connectViewModel = connectViewModel,
+        locationsListViewModel = locationsListViewModel,
+        networkReliabilityViewModel = networkReliabilityViewModel,
+        solanaPaymentViewModel = solanaPaymentViewModel
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainNavHostContent(
+    earningsViewModel: EarningsViewModel,
     settingsViewModel: SettingsViewModel,
     planViewModel: PlanViewModel,
     subscriptionBalanceViewModel: SubscriptionBalanceViewModel,
@@ -251,6 +305,96 @@ fun MainNavHost(
         onDispose {
             navController.removeOnDestinationChangedListener(listener)
         }
+    }
+
+    /**
+     * Select a bottom-bar tab. The bar's own onClick and the dashboard widget both
+     * go through here, so a re-tap pops the tab to its root (and collapses the
+     * connect drawer) the same way from either entry.
+     */
+    val selectTopLevelRoute: (TopLevelScaffoldRoutes) -> Unit = { screen ->
+
+        if (currentTopLevelRoute.route == Route.AccountContainer
+            && screen.route == Route.AccountContainer
+            && currentRoute != Route.Account
+        ) {
+            navController.popBackStack(Route.Account, inclusive = false)
+        } else if (
+            currentTopLevelRoute.route == Route.ConnectContainer
+            && screen.route == Route.ConnectContainer
+        ) {
+
+            if (currentRoute != Route.Connect) {
+                navController.popBackStack(Route.Connect, inclusive = false)
+            } else {
+                // already on the connect screen: collapse the drawer
+                scope.launch {
+                    connectActionsSheetState.partialExpand()
+                }
+            }
+
+        } else {
+
+            navController.navigate(screen.route) {
+                // from https://developer.android.com/develop/ui/compose/navigation#bottom-nav
+                // Pop up to the start destination of the graph to
+                // avoid building up a large stack of destinations
+                // on the back stack as users select items
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                // Avoid multiple copies of the same destination when
+                // reselecting the same item
+                launchSingleTop = true
+                // Restore state when reselecting a previously selected item
+                restoreState = true
+
+            }
+        }
+        mainNavViewModel.setCurrentTopLevelRoute(screen)
+    }
+
+    /**
+     * A Home Screen widget tap asked for a screen (MainApplication.widgetRoute,
+     * set by QuickConnectActivity): go to the connect tab, then push the
+     * provider details or the client contract details on top. Observed as a
+     * flow so it works whether the app was cold-started for the tap or was
+     * already running behind the launcher.
+     */
+    val widgetApp = androidx.compose.ui.platform.LocalContext.current.applicationContext as? com.bringyour.network.MainApplication
+    val widgetRoute by (widgetApp?.widgetRoute ?: kotlinx.coroutines.flow.MutableStateFlow<String?>(null)).collectAsState()
+    LaunchedEffect(widgetRoute) {
+        val route = widgetRoute ?: return@LaunchedEffect
+        widgetApp?.widgetRoute?.value = null
+        if (route == com.bringyour.network.QuickConnectActivity.ROUTE_CONNECT) {
+            // the dashboard widget does exactly what a tap on the Connect tab does
+            selectTopLevelRoute(TopLevelScaffoldRoutes.CONNECT_CONTAINER)
+            return@LaunchedEffect
+        }
+        navController.navigate(TopLevelScaffoldRoutes.CONNECT_CONTAINER.route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+        mainNavViewModel.setCurrentTopLevelRoute(TopLevelScaffoldRoutes.CONNECT_CONTAINER)
+        when (route) {
+            com.bringyour.network.QuickConnectActivity.ROUTE_PROVIDER_LOCATIONS ->
+                navController.navigate(Route.ProviderLocations)
+            com.bringyour.network.QuickConnectActivity.ROUTE_CONTRACT_STATS ->
+                navController.navigate(Route.ContractStats(provider = false))
+        }
+    }
+
+    // the ur.io bridge returned a signed wallet-connect challenge: show the earnings
+    // screen, where the view model validates and attaches the coldkey
+    val pendingEarningsNavigation by earningsViewModel.pendingEarningsNavigation.collectAsState()
+    LaunchedEffect(pendingEarningsNavigation) {
+        if (!pendingEarningsNavigation) {
+            return@LaunchedEffect
+        }
+        earningsViewModel.consumeEarningsNavigation()
+        selectTopLevelRoute(TopLevelScaffoldRoutes.ACCOUNT_CONTAINER)
+        navController.navigate(Route.Earnings)
     }
 
     /**
@@ -565,47 +709,7 @@ fun MainNavHost(
 
                                     },
                                     selected = screen == currentTopLevelRoute,
-                                    onClick = {
-
-                                        if (currentTopLevelRoute.route == Route.AccountContainer
-                                            && screen.route == Route.AccountContainer
-                                            && currentRoute != Route.Account
-                                        ) {
-                                            navController.popBackStack(Route.Account, inclusive = false)
-                                        } else if (
-                                            currentTopLevelRoute.route == Route.ConnectContainer
-                                            && screen.route == Route.ConnectContainer
-                                        ) {
-
-                                            if (currentRoute != Route.Connect) {
-                                                navController.popBackStack(Route.Connect, inclusive = false)
-                                            } else {
-                                                // already on the connect screen: collapse the drawer
-                                                scope.launch {
-                                                    connectActionsSheetState.partialExpand()
-                                                }
-                                            }
-
-                                        } else {
-
-                                            navController.navigate(screen.route) {
-                                                // from https://developer.android.com/develop/ui/compose/navigation#bottom-nav
-                                                // Pop up to the start destination of the graph to
-                                                // avoid building up a large stack of destinations
-                                                // on the back stack as users select items
-                                                popUpTo(navController.graph.findStartDestination().id) {
-                                                    saveState = true
-                                                }
-                                                // Avoid multiple copies of the same destination when
-                                                // reselecting the same item
-                                                launchSingleTop = true
-                                                // Restore state when reselecting a previously selected item
-                                                restoreState = true
-
-                                            }
-                                        }
-                                        mainNavViewModel.setCurrentTopLevelRoute(screen)
-                                    },
+                                    onClick = { selectTopLevelRoute(screen) },
                                     colors = navItemColors,
                                 )
                             }
@@ -623,16 +727,13 @@ fun MainNavHost(
                                         planViewModel = planViewModel,
                                         overlayViewModel = overlayViewModel,
                                         navController = navController,
-                                        walletViewModel = walletViewModel,
+                                        earningsViewModel = earningsViewModel,
                                         connectViewModel = connectViewModel,
                                         locationsListViewModel = locationsListViewModel,
                                         activityResultSender = activityResultSender,
                                         subscriptionBalanceViewModel = subscriptionBalanceViewModel,
                                         referralCodeViewModel = referralCodeViewModel,
                                         bundleStore = bundleStore,
-                                        launchIntro = {
-                                            mainNavViewModel.setDisplayIntroFunnel(true)
-                                        },
                                         reliabilityWindow = reliabilityWindow,
                                         totalReferralCount = totalReferralCount,
                                         solanaPaymentViewModel = solanaPaymentViewModel,
@@ -662,16 +763,13 @@ fun MainNavHost(
                                     planViewModel = planViewModel,
                                     overlayViewModel = overlayViewModel,
                                     navController = navController,
-                                    walletViewModel = walletViewModel,
+                                    earningsViewModel = earningsViewModel,
                                     connectViewModel = connectViewModel,
                                     locationsListViewModel = locationsListViewModel,
                                     activityResultSender = activityResultSender,
                                     subscriptionBalanceViewModel = subscriptionBalanceViewModel,
                                     referralCodeViewModel = referralCodeViewModel,
                                     bundleStore = bundleStore,
-                                    launchIntro = {
-                                        mainNavViewModel.setDisplayIntroFunnel(true)
-                                    },
                                     reliabilityWindow = reliabilityWindow,
                                     totalReferralCount = totalReferralCount,
                                     solanaPaymentViewModel = solanaPaymentViewModel,
@@ -702,7 +800,6 @@ fun MainNavHost(
         overlayViewModel,
         referralCode = referralCode,
         planUpgradeConfirmed = hasActiveSubscription,
-        totalReferralCount = totalReferralCount,
         referralCelebrationJoined = pendingReferralCelebration?.joined ?: 1L,
         onReferralCelebrationDismissed = {
             referralCodeViewModel.clearCelebration()
@@ -742,11 +839,11 @@ fun MainNavHost(
                 id = R.plurals.referral_toast_joined,
                 count = celebration.joined.toInt(),
                 celebration.joined.toInt(),
-                REFERRAL_BONUS_GIB_PER_DAY
+                LocalReferralTerms.current.bonusGibPerDay
             ),
             onClick = {
                 referralCodeViewModel.clearCelebration()
-                overlayViewModel.launch(OverlayMode.Refer)
+                navController.navigate(Route.Referrals)
             },
         )
     }
@@ -773,6 +870,17 @@ fun IntroNavHost(
 
     val introNavController = rememberNavController()
     val scope = rememberCoroutineScope()
+
+    // the connector mark that flies from page 1's route line into the header
+    val introConnector = remember { IntroConnectorState() }
+    val introEntry by introNavController.currentBackStackEntryAsState()
+    LaunchedEffect(introEntry) {
+        val route = introEntry?.destination?.route ?: return@LaunchedEffect
+        introConnector.inHeader = !route.contains(IntroRoute.IntroductionInitial::class.qualifiedName.toString())
+    }
+
+    CompositionLocalProvider(LocalIntroConnector provides introConnector) {
+    Box(modifier = Modifier.fillMaxSize()) {
 
     NavHost(
         navController = introNavController,
@@ -806,6 +914,7 @@ fun IntroNavHost(
         composable<IntroRoute.IntroductionUsageBar> {
             IntroductionUsageBar(
                 navController = introNavController,
+                dismiss = dismiss,
                 usedBytes = subscriptionBalanceViewModel.usedBalanceByteCount,
                 pendingBytes = subscriptionBalanceViewModel.pendingBalanceByteCount,
                 availableBytes = subscriptionBalanceViewModel.availableBalanceByteCount.collectAsState().value,
@@ -818,6 +927,7 @@ fun IntroNavHost(
         composable<IntroRoute.IntroductionSettings> {
             IntroductionSettings(
                 navController = introNavController,
+                dismiss = dismiss,
                 provideControlMode = provideControlMode,
                 setProvideControlMode = setProvideControlMode,
                 provideIndicatorColor = provideIndicatorColor,
@@ -835,6 +945,18 @@ fun IntroNavHost(
             )
         }
 
+        composable<IntroRoute.IntroductionQuickConnect> {
+            IntroductionQuickConnect(
+                navController = introNavController,
+                dismiss = dismiss
+            )
+        }
+
+    }
+
+    FloatingIntroConnector(introConnector)
+
+    }
     }
 
 }
@@ -842,7 +964,7 @@ fun IntroNavHost(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainNavContent(
-    walletViewModel: WalletViewModel,
+    earningsViewModel: EarningsViewModel,
     settingsViewModel: SettingsViewModel,
     planViewModel: PlanViewModel,
     overlayViewModel: OverlayViewModel,
@@ -853,7 +975,6 @@ fun MainNavContent(
     subscriptionBalanceViewModel: SubscriptionBalanceViewModel,
     referralCodeViewModel: ReferralCodeViewModel,
     bundleStore: BundleStore?,
-    launchIntro: () -> Unit,
     reliabilityWindow: ReliabilityWindow?,
     totalReferralCount: Long,
     solanaPaymentViewModel: SolanaPaymentViewModel,
@@ -868,7 +989,6 @@ fun MainNavContent(
     val canvasSizePx =
         with(localDensityCurrent) { connectViewModel.canvasSize.times(0.4f).toPx() }
 
-    val wallets by walletViewModel.wallets.collectAsState()
 
     LaunchedEffect(Unit) {
         connectViewModel.initSuccessPoints(canvasSizePx)
@@ -913,7 +1033,6 @@ fun MainNavContent(
                     bundleStore,
                     meanReliabilityWeight = reliabilityWindow?.meanReliabilityWeight ?: 0.0,
                     totalReferrals = totalReferralCount,
-                    launchIntro = launchIntro,
                     isPro = isPro,
                     connectActionsSheetState = connectActionsSheetState
                 )
@@ -1065,9 +1184,8 @@ fun MainNavContent(
                 AccountScreen(
                     navController,
                     accountViewModel,
-                    totalPayoutAmount = walletViewModel.totalPayoutAmount,
-                    totalPayoutAmountInitialized = walletViewModel.totalPayoutAmountInitialized,
-                    walletCount = wallets.size,
+                    totalAccountPoints = accountPointsViewModel.totalAccountPoints.collectAsState().value,
+                    accountPointsLoaded = accountPointsViewModel.pointsLoaded.collectAsState().value,
                     planViewModel = planViewModel,
                     subscriptionBalanceViewModel = subscriptionBalanceViewModel,
                     overlayViewModel = overlayViewModel,
@@ -1099,10 +1217,8 @@ fun MainNavContent(
                 settingsViewModel,
                 overlayViewModel,
                 activityResultSender,
-                walletViewModel,
-                bonusReferralCode = referralCodeViewModel.referralCode.collectAsState().value,
-                isPro = isPro,
-                totalReferrals = referralCodeViewModel.totalReferralCount.collectAsState().value
+                earningsViewModel,
+                isPro = isPro
             ) }
 
             composable<Route.ProviderIdentities>(
@@ -1149,68 +1265,50 @@ fun MainNavContent(
                 )
             }
 
-            composable<Route.Wallets>(
+            composable<Route.Earnings>(
                 enterTransition = NavigationAnimations.enterTransition(),
                 exitTransition = NavigationAnimations.exitTransition(),
                 popEnterTransition = NavigationAnimations.popEnterTransition(),
                 popExitTransition = NavigationAnimations.popExitTransition()
             ) {
-                WalletsScreen(
-                    navController,
-                    walletViewModel,
-                    activityResultSender,
-                    overlayViewModel,
+                EarningsScreen(
+                    navController = navController,
+                    earningsViewModel = earningsViewModel,
+                    overlayViewModel = overlayViewModel,
                     totalAccountPoints = accountPointsViewModel.totalAccountPoints.collectAsState().value,
                     payoutPoints = accountPointsViewModel.payoutPoints.collectAsState().value,
                     referralPoints = accountPointsViewModel.referralPoints.collectAsState().value,
                     multiplierPoints = accountPointsViewModel.multiplierPoints.collectAsState().value,
                     reliabilityPoints = accountPointsViewModel.reliabilityPoints.collectAsState().value,
-                    fetchAccountPoints = accountPointsViewModel.fetchAccountPoints,
-                    reliabilityWindow = reliabilityWindow,
-                    totalReferralCount = totalReferralCount,
-                    fetchReferralCode = referralCodeViewModel.fetchReferralCode
+                    fetchAccountPoints = { accountPointsViewModel.fetchAccountPoints() },
+                    reliabilityWindow = reliabilityWindow
                 )
             }
 
-            composable<Route.Wallet>(
+            composable<Route.Referrals>(
                 enterTransition = NavigationAnimations.enterTransition(),
                 exitTransition = NavigationAnimations.exitTransition(),
                 popEnterTransition = NavigationAnimations.popEnterTransition(),
                 popExitTransition = NavigationAnimations.popExitTransition()
-            ) { backStackEntry ->
-
-                val wallet: Route.Wallet = backStackEntry.toRoute()
-                val accountWallet = walletViewModel.findWalletById(wallet.id)
-
-                WalletScreen(
+            ) {
+                ReferralsScreen(
                     navController = navController,
-                    accountWallet = accountWallet,
-                    walletViewModel = walletViewModel,
+                    settingsViewModel = settingsViewModel,
+                    referralCode = referralCodeViewModel.referralCode.collectAsState().value,
+                    totalReferrals = totalReferralCount,
+                    referralPoints = accountPointsViewModel.referralPoints.collectAsState().value,
+                    pointsLoaded = accountPointsViewModel.pointsLoaded.collectAsState().value,
+                    fetchAccountPoints = { accountPointsViewModel.fetchAccountPoints() },
                 )
             }
 
-            composable<Route.Payout>(
+            composable<Route.Widgets>(
                 enterTransition = NavigationAnimations.enterTransition(),
                 exitTransition = NavigationAnimations.exitTransition(),
                 popEnterTransition = NavigationAnimations.popEnterTransition(),
                 popExitTransition = NavigationAnimations.popExitTransition()
-            ) { backStackEntry ->
-
-                val payoutRoute: Route.Payout = backStackEntry.toRoute()
-                val payoutId = payoutRoute.id
-                val accountPayment = walletViewModel.getPayoutById(payoutId)
-
-                PayoutScreen(
-                    accountPayment = accountPayment,
-                    navController = navController,
-                    totalAccountPoints = accountPointsViewModel.getTotalPointsByPaymentId(payoutId),
-                    multiplierPoints = accountPointsViewModel.getPayoutEventPointsByPaymentId(payoutId, AccountPointEvent.PAYOUT_MULTIPLIER),
-                    referralPoints = accountPointsViewModel.getPayoutEventPointsByPaymentId(payoutId, AccountPointEvent.PAYOUT_LINKED_ACCOUNT),
-                    payoutPoints = accountPointsViewModel.getPayoutEventPointsByPaymentId(payoutId, AccountPointEvent.PAYOUT),
-                    holdsMultiplier = walletViewModel.isSeekerHolder.collectAsState().value,
-                    reliabilityPoints = accountPointsViewModel.getPayoutEventPointsByPaymentId(payoutId,
-                        AccountPointEvent.PAYOUT_RELIABILITY)
-                )
+            ) {
+                WidgetsScreen(navController = navController)
             }
         }
     }
