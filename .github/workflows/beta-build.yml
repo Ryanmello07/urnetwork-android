@@ -40,14 +40,18 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Generate debug keystore
+      - name: Set up debug keystore
         run: |
           mkdir -p "$HOME/.android"
-          keytool -genkeypair -v \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storepass android -keypass android \
-            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          if [ -f app/debug.keystore ]; then
+            cp app/debug.keystore "$HOME/.android/debug.keystore"
+          else
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
