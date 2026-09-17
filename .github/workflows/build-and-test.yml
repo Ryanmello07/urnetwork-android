@@ -77,6 +77,11 @@ jobs:
       # could still make the toolchain silently self-upgrade to 1.27 and
       # re-break the bind. `local` turns that into a loud, obvious failure.
       GOTOOLCHAIN: local
+      # Bypass sum.golang.org — the checksum database is intermittently
+      # unreachable in CI and causes `go mod tidy` to fail with stream errors.
+      # Go still verifies every module hash against the local go.sum, so
+      # integrity is preserved.
+      GONOSUMDB: "*"
     steps:
       # This repository is ~700 MB, most of it design art under res/ that the
       # gradle build never reads. checkout's DEFAULT fetch-depth of 1 is what
