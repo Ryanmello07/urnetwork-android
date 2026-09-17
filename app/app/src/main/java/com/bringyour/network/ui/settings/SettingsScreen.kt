@@ -300,6 +300,7 @@ fun SettingsScreen(
             editingDeviceName = TextFieldValue(settingsViewModel.deviceName)
             isPresentingRenameDevice = true
         },
+        networkName = networkUser?.networkName,
         showDeleteAccountDialog = showDeleteAccountDialog,
         setShowDeleteAccountDialog = settingsViewModel.setShowDeleteAccountDialog,
         deleteAccount = settingsViewModel.deleteAccount,
@@ -536,6 +537,7 @@ private fun SettingsScreen(
     deviceName: String = "",
     deviceSpec: String = "",
     onEditDeviceName: () -> Unit = {},
+    networkName: String? = null,
     setShowDeleteAccountDialog: (Boolean) -> Unit = {},
     showDeleteAccountDialog: Boolean,
     deleteAccount: (onSuccess: () -> Unit, onFailure: (Exception?) -> Unit) -> Unit,
@@ -1468,6 +1470,9 @@ private fun SettingsScreen(
         }
 
         if (showDeleteAccountDialog) {
+            var confirmText by remember { mutableStateOf(TextFieldValue("")) }
+            val isConfirmValid = networkName != null && confirmText.text == networkName
+
             BasicAlertDialog(
                 onDismissRequest = {
                     setShowDeleteAccountDialog(false)
@@ -1512,13 +1517,42 @@ private fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Row {
+                        if (networkName != null) {
+                            URTextInput(
+                                value = confirmText,
+                                onValueChange = { confirmText = it },
+                                label = stringResource(id = R.string.delete_account_confirm_label),
+                                placeholder = networkName,
+                                isValid = isConfirmValid || confirmText.text.isEmpty(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            URButton(
+                                onClick = {
+                                    confirmText = TextFieldValue("")
+                                    setShowDeleteAccountDialog(false)
+                                },
+                                style = ButtonStyle.OUTLINE,
+                                modifier = Modifier.weight(1f)
+                            ) { buttonTextStyle ->
+                                Text(
+                                    stringResource(id = R.string.cancel),
+                                    style = buttonTextStyle
+                                )
+                            }
+
                             URButton(
                                 onClick = {
 
                                     deleteAccount(
                                         {
                                             setShowDeleteAccountDialog(false)
+                                            confirmText = TextFieldValue("")
 
                                             application?.logout()
 
@@ -1531,13 +1565,15 @@ private fun SettingsScreen(
                                         { exception ->
                                             Log.i(TAG, "Error deleting account: ${exception?.message}")
                                             setShowDeleteAccountDialog(false)
+                                            confirmText = TextFieldValue("")
                                             // todo: snackbar show error
                                         }
                                     )
                                 },
                                 style = ButtonStyle.WARNING,
-                                enabled = !isDeletingAccount,
-                                isProcessing = isDeletingAccount
+                                enabled = isConfirmValid && !isDeletingAccount,
+                                isProcessing = isDeletingAccount,
+                                modifier = Modifier.weight(1f)
                             ) { buttonTextStyle ->
                                 Text(
                                     stringResource(id = R.string.delete_account),

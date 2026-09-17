@@ -123,6 +123,7 @@
     <string name="default_wallet">Standard</string>
     <string name="delete">Löschen</string>
     <string name="delete_account">Konto löschen</string>
+    <string name="delete_account_confirm_label">Type your network name to confirm</string>
     <string name="device">Gerät</string>
     <string name="device_discoverable">Dieses Gerät ist auffindbar</string>
     <string name="device_discoverable_as">Dieses Gerät ist auffindbar als %1$s</string>
