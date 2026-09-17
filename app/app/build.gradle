@@ -467,7 +467,7 @@ android {
     }
 
     tasks.register('buildSdk', Exec) {
-        workingDir "${bringyourHomeDir}/sdk/build"
+        workingDir "${bringyourHomeDir}/urnetwork-sdk/build"
         commandLine 'make', 'init', 'build_android'
         environment 'WARP_VERSION', "${appVersion()}+${appVersionCode()}"
         environment 'ANDROID_NDK_HOME', android.ndkDirectory
@@ -477,7 +477,7 @@ android {
     // Acceptance setup installs the pinned gomobile/checksec tools first. Keep
     // the app build itself non-mutating and use its private Go caches.
     tasks.register('buildSdkAcceptance', Exec) {
-        workingDir "${bringyourHomeDir}/sdk/build"
+        workingDir "${bringyourHomeDir}/urnetwork-sdk/build"
         commandLine 'make', 'build_android'
         environment 'WARP_VERSION', "${appVersion()}+${appVersionCode()}"
         environment 'ANDROID_NDK_HOME', android.ndkDirectory
@@ -511,8 +511,8 @@ android {
 
 // local URnetwork SDK
 dependencies {
-    compileOnly fileTree(dir: "${bringyourHomeDir}/sdk/build/android", include: ['*-sources.jar'])
-    implementation fileTree(dir: "${bringyourHomeDir}/sdk/build/android", include: ['*.aar', '*.jar'])
+    compileOnly fileTree(dir: "${bringyourHomeDir}/urnetwork-sdk/build/android", include: ['*-sources.jar'])
+    implementation fileTree(dir: "${bringyourHomeDir}/urnetwork-sdk/build/android", include: ['*.aar', '*.jar'])
 }
 
 dependencies {

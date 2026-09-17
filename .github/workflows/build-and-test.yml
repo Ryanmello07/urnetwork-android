@@ -89,9 +89,9 @@ jobs:
       - name: Check out the SDK
         uses: actions/checkout@v4
         with:
-          repository: urnetwork/sdk
+          repository: re-masashi/urnetwork-sdk
           ref: main
-          path: sdk
+          path: urnetwork-sdk
 
       # sdk/build/go.mod resolves these with `replace ... => ../../<name>` (and
       # sdk/go.mod with `replace ... => ../<name>`), so they must sit as
@@ -126,8 +126,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: sdk/build/go.mod
-          cache-dependency-path: sdk/build/go.sum
+          go-version-file: urnetwork-sdk/build/go.mod
+          cache-dependency-path: urnetwork-sdk/build/go.sum
 
       # gomobile bind generates and compiles the Java half of the binding, and
       # the build_android recipe then repacks the .aar with `jar cvf`. Both
@@ -158,11 +158,11 @@ jobs:
       # build_android runs it over every .so. This is the split the Makefile
       # documents and the split :app:buildSdkAcceptance relies on.
       - name: Install the pinned gomobile toolchain
-        working-directory: sdk/build
+        working-directory: urnetwork-sdk/build
         run: make init_tools
 
       - name: Build the Android SDK .aar
-        working-directory: sdk/build
+        working-directory: urnetwork-sdk/build
         env:
           WARP_VERSION: ${{ env.UR_CI_VERSION }}
         run: make build_android
@@ -172,16 +172,16 @@ jobs:
       # Assert the artifacts anyway -- they are the contract with the next job.
       - name: Assert the .aar actually built
         run: |
-          for f in sdk/build/android/URnetworkSdk.aar sdk/build/android/URnetworkSdk-sources.jar; do
+          for f in urnetwork-sdk/build/android/URnetworkSdk.aar urnetwork-sdk/build/android/URnetworkSdk-sources.jar; do
             [ -s "$f" ] || { echo "::error::$f is missing or empty"; exit 1; }
           done
-          ls -la sdk/build/android
+          ls -la urnetwork-sdk/build/android
 
       - name: Upload the .aar
         uses: actions/upload-artifact@v4
         with:
           name: urnetwork-sdk-android
-          path: sdk/build/android
+          path: urnetwork-sdk/build/android
           if-no-files-found: error
 
   gradle:
@@ -207,7 +207,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: urnetwork-sdk-android
-          path: sdk/build/android
+          path: urnetwork-sdk/build/android
 
       # The project sets a Java 21 toolchain and JvmTarget.JVM_21, and
       # build/all/run.sh refuses to build unless `java -version` is 21.0.x.
