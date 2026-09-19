@@ -231,7 +231,7 @@ private fun ConnectingButtonContent(
         }
 
         GridCanvas(
-            size = 248.dp, // slightly smaller than the parent so points don't rub against the mask edges
+            size = CONNECT_GRID_CANVAS_SIZE,
             providerGridPoints = providerGridPoints,
             grid = grid,
             updatedStatus = status,
@@ -243,17 +243,28 @@ private fun ConnectingButtonContent(
     }
 }
 
+// The provider grid canvas side: slightly smaller than the widget so points
+// don't rub against the mask edges. Shared with the connect drawer's IP
+// version histogram, whose dots must be the size of the widget's points.
+val CONNECT_GRID_CANVAS_SIZE = 248.dp
+// the gap between adjacent points, in pixels
+const val CONNECT_GRID_POINT_PADDING_PX = 1f
+
 class AnimatedProviderGridPoint(
     val clientId: Id,
     val x: Int,
     val y: Int,
     initialState: ProviderPointState,
     initialDone: Boolean = false,
+    // the colors of the extenders carrying this provider (K2, K3), as opaque
+    // ARGB ints in the sdk's order; empty for a provider reached directly
+    initialExtenderRings: List<Int> = listOf(),
     val radius: Animatable<Float, AnimationVector1D> = Animatable(0f),
     val color: Animatable<Color, AnimationVector4D> = Animatable(Color.Transparent)
 ) {
     var state by mutableStateOf(initialState)
     var done by mutableStateOf(initialDone)
+    var extenderRings by mutableStateOf(initialExtenderRings)
 }
 
 @Composable
@@ -270,7 +281,7 @@ fun GridCanvas(
     val localDensityCurrent = LocalDensity.current
     val pointSize = grid?.width?.let { (size.value / it.toFloat()) * localDensityCurrent.density }
         ?: 2.toFloat()
-    val padding = 1f
+    val padding = CONNECT_GRID_POINT_PADDING_PX
     var currentStatus by remember { mutableStateOf<ConnectStatus?>(null) }
     val animatedPoints = remember { mutableStateMapOf<Id, AnimatedProviderGridPoint>() }
 
@@ -476,7 +487,8 @@ fun GridCanvas(
                         point.clientId,
                         point.x,
                         point.y,
-                        newState
+                        newState,
+                        initialExtenderRings = extenderRingArgbList(point.extenderColorHexes)
                     )
                     if (currentStatus != ConnectStatus.CONNECTED) {
                         launch {
@@ -510,67 +522,78 @@ fun GridCanvas(
 
                     animatedPoints[point.clientId] = animatedPoint
                 }
-            } else if (animatedPoint.state != newState) {
+            } else {
 
-                if (currentStatus != ConnectStatus.CONNECTED) {
-                    launch {
-                        try {
-                            animatedPoint.color.animateTo(
-                                getStateColor(newState),
-                                animationSpec = tween(durationMillis = 500)
-                            )
-                        } catch (e: Exception) {
-                            if (!animatedPoint.done) {
-                                animatedPoint.color.snapTo(getStateColor(animatedPoint.state))
-                            }
-                        }
-                    }
+                // the extenders carrying a provider change while the point
+                // stays put -- a transport migration briefly carries two --
+                // so the rings follow the grid point on every update
+                val extenderRings = extenderRingArgbList(point.extenderColorHexes)
+                if (animatedPoint.extenderRings != extenderRings) {
+                    animatedPoint.extenderRings = extenderRings
                 }
 
-                animatedPoint.state = newState
+                if (animatedPoint.state != newState) {
 
-                val done =
-                    newState == ProviderPointState.REMOVED || newState == ProviderPointState.EVALUATION_FAILED || newState == ProviderPointState.NOT_ADDED
-                if (animatedPoint.done != done) {
-                    if (done) {
-                        launch {
-                            // Remove point
-                            try {
-                                animatedPoint.radius.animateTo(
-                                    0f,
-                                    animationSpec = tween(
-                                        durationMillis = 500,
-                                        delayMillis = 500
-                                    )
-                                )
-                            } catch (e: Exception) {
-                                if (animatedPoint.done) {
-                                    // Failure(androidx.compose.runtime.LeftCompositionCancellationException: The coroutine scope left the composition)
-                                    animatedPoint.radius.snapTo(0f)
-                                }
-                            } finally {
-                                if (animatedPoint.done) {
-                                    animatedPoints.remove(animatedPoint.clientId)
-                                }
-                            }
-                        }
-                    } else {
+                    if (currentStatus != ConnectStatus.CONNECTED) {
                         launch {
                             try {
-                                animatedPoint.radius.animateTo(
-                                    pointSize / 2 - padding / 2,
+                                animatedPoint.color.animateTo(
+                                    getStateColor(newState),
                                     animationSpec = tween(durationMillis = 500)
                                 )
                             } catch (e: Exception) {
                                 if (!animatedPoint.done) {
-                                    animatedPoint.radius.snapTo(pointSize / 2 - padding / 2)
+                                    animatedPoint.color.snapTo(getStateColor(animatedPoint.state))
                                 }
                             }
                         }
                     }
-                }
 
-                animatedPoint.done = done
+                    animatedPoint.state = newState
+
+                    val done =
+                        newState == ProviderPointState.REMOVED || newState == ProviderPointState.EVALUATION_FAILED || newState == ProviderPointState.NOT_ADDED
+                    if (animatedPoint.done != done) {
+                        if (done) {
+                            launch {
+                                // Remove point
+                                try {
+                                    animatedPoint.radius.animateTo(
+                                        0f,
+                                        animationSpec = tween(
+                                            durationMillis = 500,
+                                            delayMillis = 500
+                                        )
+                                    )
+                                } catch (e: Exception) {
+                                    if (animatedPoint.done) {
+                                        // Failure(androidx.compose.runtime.LeftCompositionCancellationException: The coroutine scope left the composition)
+                                        animatedPoint.radius.snapTo(0f)
+                                    }
+                                } finally {
+                                    if (animatedPoint.done) {
+                                        animatedPoints.remove(animatedPoint.clientId)
+                                    }
+                                }
+                            }
+                        } else {
+                            launch {
+                                try {
+                                    animatedPoint.radius.animateTo(
+                                        pointSize / 2 - padding / 2,
+                                        animationSpec = tween(durationMillis = 500)
+                                    )
+                                } catch (e: Exception) {
+                                    if (!animatedPoint.done) {
+                                        animatedPoint.radius.snapTo(pointSize / 2 - padding / 2)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    animatedPoint.done = done
+                }
             }
         }
     }
@@ -593,13 +616,19 @@ fun GridCanvas(
                 Canvas(modifier = Modifier.size(size)) {
                     // our provider grid
                     animatedPoints.values.forEach { point ->
-                        drawCircle(
-                            color = point.color.value,
-                            radius = point.radius.value,
+                        // the dot's own animating diameter is the cell the
+                        // rings are laid out in, so they grow in and shrink
+                        // out with it and never reach past the cell edge (K2)
+                        drawExtenderDot(
                             center = Offset(
                                 point.x * pointSize + pointSize / 2,
                                 point.y * pointSize + pointSize / 2
-                            )
+                            ),
+                            cellSizePx = point.radius.value * 2,
+                            color = point.color.value,
+                            ringArgb = point.extenderRings,
+                            strokePx = EXTENDER_RING_STROKE_DP.dp.toPx(),
+                            gapPx = EXTENDER_RING_GAP_DP.dp.toPx(),
                         )
                     }
 

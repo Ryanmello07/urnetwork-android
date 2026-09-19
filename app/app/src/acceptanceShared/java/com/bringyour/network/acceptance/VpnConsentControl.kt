@@ -34,6 +34,49 @@ internal data class VpnConsentStackDecision(
     val selectedIndex: Int?,
 )
 
+/** Runs an auth action or wait poll after the verified save sheet is declined. */
+internal fun <T> performAutofillReadyAction(
+    controls: List<VpnConsentControlIdentity>,
+    dismissVerifiedNegative: (Int) -> Unit,
+    action: () -> T,
+): T {
+    val decision = classifyVpnConsentStack(controls)
+    when (decision.action) {
+        VpnConsentStackAction.ABSENT -> Unit
+        VpnConsentStackAction.DISMISS_AUTOFILL_SAVE -> {
+            val index = decision.selectedIndex
+            check(index != null && index in controls.indices) {
+                "classifier returned no verified control"
+            }
+            dismissVerifiedNegative(index)
+        }
+
+        else -> error("refusing autofill save control stack: ${decision.action}")
+    }
+    return action()
+}
+
+/** A positive-only save snapshot is incomplete during a bounded auth poll. */
+internal fun pollAutofillReadyCondition(
+    controls: List<VpnConsentControlIdentity>,
+    dismissVerifiedNegative: (Int) -> Unit,
+    condition: () -> Boolean,
+): Boolean {
+    val decision = classifyVpnConsentStack(controls)
+    return when (decision.action) {
+        VpnConsentStackAction.ABSENT -> condition()
+        VpnConsentStackAction.DISMISS_AUTOFILL_SAVE -> {
+            val index = decision.selectedIndex
+            check(index != null && index in controls.indices) { "classifier returned no verified control" }
+            dismissVerifiedNegative(index)
+            condition()
+        }
+
+        VpnConsentStackAction.REFUSE_AUTOFILL_SAVE_ACCEPT -> false
+        else -> error("refusing autofill save control stack: ${decision.action}")
+    }
+}
+
 /**
  * Selects only the two controls the acceptance harness is allowed to click.
  *

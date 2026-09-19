@@ -17,8 +17,13 @@ import android.os.Handler
 import android.os.PowerManager
 import android.os.SystemClock
 import android.os.ext.SdkExtensions
+import android.telephony.SignalStrength
+import android.telephony.TelephonyCallback
+import android.telephony.TelephonyDisplayInfo
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.annotation.RequiresApi
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -38,15 +43,51 @@ import java.lang.ref.WeakReference
 import javax.inject.Inject
 import kotlin.math.min
 
+@RequiresApi(Build.VERSION_CODES.S)
+private class DefaultNetworkTelephonyCallback(
+    private val tracker: DefaultCellularQualityTracker,
+    private val onChanged: () -> Unit,
+) : TelephonyCallback(),
+    TelephonyCallback.SignalStrengthsListener,
+    TelephonyCallback.DisplayInfoListener {
+    override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
+        if (tracker.onSignalLevel(signalStrength.level)) onChanged()
+    }
+
+    override fun onDisplayInfoChanged(telephonyDisplayInfo: TelephonyDisplayInfo) {
+        if (
+            tracker.onNetworkType(
+                telephonyDisplayInfo.networkType,
+                telephonyDisplayInfo.overrideNetworkType,
+            )
+        ) {
+            onChanged()
+        }
+    }
+}
+
 
 @HiltAndroidApp
 class MainApplication : Application() {
-    private companion object {
+    internal companion object {
         const val VPN_STATE_BURST_COALESCE_MILLIS = 20L
-        // Match the iOS packet-tunnel process budget so Android physical runs
-        // expose the same SDK pressure/failure boundary. DeviceManager already
-        // passes the matching iOS per-device steady target (24 MiB).
-        const val SDK_PROCESS_MEMORY_LIMIT_MIB = 32L
+        // a return to the foreground after this long starts a new product-event session
+        const val CLIENT_EVENT_SESSION_GAP_MILLIS = 30L * 60L * 1000L
+        // how long logout waits for the pending product events to send
+        const val CLIENT_EVENT_LOGOUT_DRAIN_MILLIS = 1500L
+        // Android retains its normal larger profile. Only a debug audit APK
+        // explicitly selects the iOS extension's 20/32-MiB admission/GC inputs.
+        const val IOS_MEMORY_AUDIT_PROFILE = "ios-memory-audit-v1"
+        val MEMORY_PROFILE_NAME: String
+            get() = if (BuildConfig.DEBUG && BuildConfig.URNETWORK_MEMORY_PROFILE == IOS_MEMORY_AUDIT_PROFILE) {
+                IOS_MEMORY_AUDIT_PROFILE
+            } else {
+                "android"
+            }
+        internal fun processMemoryLimitMib(profile: String): Long =
+            if (profile == IOS_MEMORY_AUDIT_PROFILE) 32L else 40L
+        val SDK_PROCESS_MEMORY_LIMIT_MIB: Long
+            get() = processMemoryLimitMib(MEMORY_PROFILE_NAME)
         // Stable platform capability id since API 30. The framework exposes it
         // to system code only, but public hasCapability(Int) reports it to VPN
         // apps as part of ordinary NetworkCapabilities callbacks.
@@ -144,6 +185,7 @@ class MainApplication : Application() {
     var networkCallback: ConnectivityManager.NetworkCallback? = null
     var offlineCallback: ConnectivityManager.NetworkCallback? = null
     var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var defaultNetworkTelephonyCallback: Any? = null
     var powerSaveReceiver: BroadcastReceiver? = null
     var networkPolicyReceiver: BroadcastReceiver? = null
     private var thermalStatusRegistration: ThermalStatusRegistration? = null
@@ -182,6 +224,10 @@ class MainApplication : Application() {
                     val args = com.bringyour.sdk.AuthNetworkClientArgs().apply {
                         deviceDescription = this@MainApplication.deviceDescription
                         deviceSpec = this@MainApplication.deviceSpec
+                        // the onboarding campaign sends in the user's local morning and
+                        // in their language: the zone and locale travel with every auth
+                        timeZone = java.util.TimeZone.getDefault().id
+                        locale = java.util.Locale.getDefault().toLanguageTag()
                     }
                     currentApi.authNetworkClient(args) { result, error ->
                         val resultError = result?.error
@@ -343,6 +389,25 @@ class MainApplication : Application() {
      * tap or was already running.
      */
     val widgetRoute = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /**
+     * A campaign email link opened the app on the feedback screen with a
+     * pre-filled rating or reason (ur.io/f/<token>?r=n|why=x): the login
+     * activity parks the link's values here and the feedback screen consumes
+     * them once.
+     */
+    val pendingFeedbackPrefill = kotlinx.coroutines.flow.MutableStateFlow<com.bringyour.network.analytics.FeedbackPrefill?>(null)
+
+    /**
+     * The product-event queue for the active network space (one per process;
+     * see [com.bringyour.network.analytics.ClientEvents]). Recreated whenever
+     * the active network space changes, flushed when the app goes to the
+     * background and drained on logout.
+     */
+    @Volatile
+    var clientEventQueue: com.bringyour.sdk.ClientEventQueue? = null
+        private set
+    private var lastBackgroundedAtMillis = 0L
 //    val vcManager get() = deviceManager.vcManager
     val api get() = networkSpaceManagerProvider.getNetworkSpace()?.api
     val asyncLocalState get() = networkSpaceManagerProvider.getNetworkSpace()?.asyncLocalState
@@ -363,20 +428,22 @@ class MainApplication : Application() {
         }
 
 
-//    override fun onTrimMemory(level: Int) {
-//        super.onTrimMemory(level)
-//
-//        if (TRIM_MEMORY_BACKGROUND <= level) {
-//            Sdk.freeMemory()
-//        }
-//    }
+    // The lambda defers touching the gomobile class until a report is relayed.
+    private val memoryTrimRelay = MemoryTrimRelay(
+        sdkReady = { applicationStateInitialized },
+        report = { level -> Sdk.reportMemoryTrimLevel(level) },
+    )
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        memoryTrimRelay.onTrimMemory(level)
+    }
 
     override fun onLowMemory() {
         super.onLowMemory()
-
         // A cold VPN-service process deliberately has not loaded gomobile yet;
         // a memory callback must not defeat the early-promotion startup path.
-        if (applicationStateInitialized) Sdk.freeMemory()
+        memoryTrimRelay.onLowMemory()
     }
 
 
@@ -587,7 +654,7 @@ class MainApplication : Application() {
 
         val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager?
         val maxMemoryMib = activityManager?.memoryClass?.toLong() ?: 32
-        // Target 3/4 of the app heap, capped to the iOS packet-tunnel budget.
+        // Bound emergency GC pacing independently of device admission targets.
         val sdkMemoryMib = min((3 * maxMemoryMib) / 4, SDK_PROCESS_MEMORY_LIMIT_MIB)
         Sdk.setMemoryLimit(sdkMemoryMib * 1024 * 1024)
 
@@ -707,6 +774,18 @@ class MainApplication : Application() {
         processLifecycleObserver = object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 requestWakeHealthAudit("process-foreground")
+                // a return after a long pause is a new app session for the
+                // product events (the queue stamps the session on each event)
+                val backgroundedAt = lastBackgroundedAtMillis
+                if (0L < backgroundedAt && CLIENT_EVENT_SESSION_GAP_MILLIS < System.currentTimeMillis() - backgroundedAt) {
+                    clientEventQueue?.newSession()
+                }
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                lastBackgroundedAtMillis = System.currentTimeMillis()
+                // send what is pending before the process may be frozen
+                clientEventQueue?.flush()
             }
         }.also { ProcessLifecycleOwner.get().lifecycle.addObserver(it) }
     }
@@ -845,6 +924,17 @@ class MainApplication : Application() {
         stop()
 
         networkSpaceManagerProvider.setNetworkSpace(networkSpace)
+
+        // the product-event queue follows the active network space: its api sends
+        // and its local state dir persists the pending batch across process death
+        clientEventQueue?.close()
+        clientEventQueue = Sdk.newClientEventQueue(
+            networkSpace,
+            Sdk.EventPlatformAndroid,
+            BuildConfig.VERSION_NAME,
+            java.util.Locale.getDefault().toLanguageTag(),
+        )
+        com.bringyour.network.analytics.ClientEvents.install(this) { clientEventQueue }
 
         loginVc = Sdk.newLoginViewController(api)
 
@@ -1095,12 +1185,37 @@ class MainApplication : Application() {
         updatePerformanceDegraded()
     }
 
+    private fun defaultNetworkQuality(
+        capabilities: NetworkCapabilities,
+    ): DefaultNetworkQuality {
+        val wifiSignalStrength = if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        ) {
+            capabilities.signalStrength
+        } else {
+            Int.MIN_VALUE
+        }
+        return DefaultNetworkQuality(
+            wifiSignalLevel = defaultNetworkSignalLevel(wifiSignalStrength),
+            downstreamBandwidthKbps = defaultNetworkBandwidthBucket(
+                capabilities.linkDownstreamBandwidthKbps,
+            ),
+            upstreamBandwidthKbps = defaultNetworkBandwidthBucket(
+                capabilities.linkUpstreamBandwidthKbps,
+            ),
+        )
+    }
+
     private fun addDefaultNetworkCallback() {
         removeDefaultNetworkCallback()
 
         val callbackDevice = device
         val tracker = DefaultNetworkTracker<Network>()
         val pressureTracker = DefaultNetworkPressureTracker<Network>()
+        val qualityTracker = DefaultNetworkQualityTracker<Network>()
+        val cellularQualityTracker = DefaultCellularQualityTracker()
+        var defaultNetworkIsCellular = false
         defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 if (defaultNetworkCallback !== this || device !== callbackDevice) {
@@ -1108,6 +1223,9 @@ class MainApplication : Application() {
                 }
                 if (pressureTracker.onAvailable(network)) {
                     setDefaultNetworkDegraded(pressureTracker.degraded)
+                }
+                if (qualityTracker.onAvailable(network)) {
+                    defaultNetworkIsCellular = false
                 }
                 if (tracker.onAvailable(network)) {
                     Log.i(TAG, "network default changed to $network")
@@ -1129,6 +1247,16 @@ class MainApplication : Application() {
                 ) {
                     setDefaultNetworkDegraded(pressureTracker.degraded)
                 }
+                if (
+                    qualityTracker.onCapabilitiesChanged(
+                        network,
+                        defaultNetworkQuality(networkCapabilities),
+                        networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
+                    )
+                ) {
+                    notifyNetworkQualityChanged(callbackDevice, "Wi-Fi or link estimate")
+                }
+                defaultNetworkIsCellular = qualityTracker.currentIsCellular()
                 // Meteredness can change with capabilities without a Data Saver
                 // preference broadcast (for example Wi-Fi policy changes).
                 updateDataSaverDegraded()
@@ -1141,6 +1269,9 @@ class MainApplication : Application() {
                 // A loss->replacement with the same Network identity is still
                 // a dead-path crossing and is detected by the tracker.
                 tracker.onLost(network)
+                if (qualityTracker.onLost(network)) {
+                    defaultNetworkIsCellular = false
+                }
                 if (pressureTracker.onLost(network)) {
                     setDefaultNetworkDegraded(pressureTracker.degraded)
                 }
@@ -1154,6 +1285,53 @@ class MainApplication : Application() {
             defaultNetworkCallback!!,
             Handler(mainLooper),
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            defaultNetworkTelephonyCallback = addDefaultNetworkTelephonyCallback(
+                cellularQualityTracker,
+            ) {
+                if (
+                    defaultNetworkIsCellular &&
+                    defaultNetworkCallback != null &&
+                    device === callbackDevice
+                ) {
+                    notifyNetworkQualityChanged(callbackDevice, "cell bar or type")
+                }
+            }
+        }
+    }
+
+    private fun notifyNetworkQualityChanged(callbackDevice: DeviceLocal?, source: String) {
+        Log.i(TAG, "default network $source changed")
+        runCatching { callbackDevice?.networkQualityChanged() }
+            .onFailure { Log.e(TAG, "network quality update failed: ${it.message}", it) }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun addDefaultNetworkTelephonyCallback(
+        tracker: DefaultCellularQualityTracker,
+        onChanged: () -> Unit,
+    ): Any? {
+        val callback = DefaultNetworkTelephonyCallback(tracker, onChanged)
+        return runCatching {
+            getSystemService(TelephonyManager::class.java).registerTelephonyCallback(
+                ContextCompat.getMainExecutor(this),
+                callback,
+            )
+            callback
+        }.onFailure {
+            Log.w(TAG, "cell quality callbacks unavailable: ${it.message}")
+        }.getOrNull()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun removeDefaultNetworkTelephonyCallback(callback: Any) {
+        runCatching {
+            getSystemService(TelephonyManager::class.java).unregisterTelephonyCallback(
+                callback as DefaultNetworkTelephonyCallback,
+            )
+        }.onFailure {
+            Log.w(TAG, "cell quality callback removal failed: ${it.message}")
+        }
     }
 
     fun removeDefaultNetworkCallback() {
@@ -1166,6 +1344,12 @@ class MainApplication : Application() {
             }
         }
         defaultNetworkCallback = null
+        defaultNetworkTelephonyCallback?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                removeDefaultNetworkTelephonyCallback(it)
+            }
+        }
+        defaultNetworkTelephonyCallback = null
         setDefaultNetworkDegraded(false)
     }
 
@@ -1556,6 +1740,10 @@ class MainApplication : Application() {
     private fun logoutInternal() {
         stop()
         widgetSnapshotWriter?.clear()
+
+        // the pending product events can only be sent while the jwt is still
+        // set; give the queue a bounded moment to drain before it is cleared
+        clientEventQueue?.flushAndWait(CLIENT_EVENT_LOGOUT_DRAIN_MILLIS)
 
         // note this clears the clientJwt also
         asyncLocalState?.localState?.logout()

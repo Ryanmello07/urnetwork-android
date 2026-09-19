@@ -1,8 +1,17 @@
 package com.bringyour.network.ui.connect.providerlocations
 
 import com.bringyour.network.ui.components.tabletReadableColumn
+import com.bringyour.network.ui.components.isTabletWidth
+import com.bringyour.network.ui.components.TabletLayout
+import androidx.compose.foundation.layout.BoxWithConstraints
 import android.widget.Toast
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
+import com.bringyour.network.ui.stats.IpFamilyRowKind
+import com.bringyour.network.ui.stats.labelResId
+import com.bringyour.network.ui.theme.MainBorderBase
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -150,29 +159,43 @@ fun ProviderLocationsScreen(
         containerColor = Black,
     ) { innerPadding ->
         // The toggle and globe are fixed; only the list scrolls, in the space
-        // left below them.
-        Column(
+        // left below them. The container's size decides how big the globe may
+        // be (see providerGlobeWidth), so it never outgrows the sheet.
+        BoxWithConstraints(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
+        val globeWidth = providerGlobeWidth(
+            maxWidth = maxWidth,
+            maxHeight = maxHeight,
+            contentWidth = if (isTabletWidth()) TabletLayout.contentWidth else null,
+        )
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
             mockLocationSection?.let {
-                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                // the toggle sits in the same column as the globe and the rows
+                Column(modifier = Modifier.tabletReadableColumn().padding(horizontal = 16.dp)) {
                     it()
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // full bleed: the globe spans the screen width, outside the
-            // horizontal padding the rows use. The sphere is scaled to fit
-            // and centered inside that square, so it never overflows.
+            // On a phone the globe spans the screen width, outside the
+            // horizontal padding the rows use; on a tablet it is capped to the
+            // content column and to half the height, centered. The sphere is
+            // scaled to fit and centered inside that box, so it never overflows.
             ProviderGlobe(
                 rows = rows,
                 selectedClientId = selectedClientId,
                 onSelect = { viewModel.select(it) },
                 onStep = { viewModel.step(it) },
                 getLocationColor = getLocationColor,
+                modifier = Modifier
+                    .width(globeWidth)
+                    .align(Alignment.CenterHorizontally),
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -219,6 +242,7 @@ fun ProviderLocationsScreen(
                     Spacer(modifier = Modifier.height(32.dp))
                 }
             }
+        }
         }
     }
 }
@@ -295,12 +319,19 @@ private fun ProviderLocationRowItem(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            Text(
-                placeLabel(row).ifEmpty { stringResource(R.string.provider_location_unknown) },
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // the place, with the IP versions the provider carries as a small
+            // tag after it (both / v4 / v6)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    placeLabel(row).ifEmpty { stringResource(R.string.provider_location_unknown) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                IpFamilyTag(row)
+            }
 
             Spacer(modifier = Modifier.height(2.dp))
 
@@ -353,6 +384,27 @@ private fun ProviderDot(color: Color, selected: Boolean) {
         }
     }
 }
+
+/**
+ * The IP versions a provider carries, as a small muted tag: "both", "v4" or
+ * "v6" from the sdk's label, localized like the histogram rows.
+ */
+@Composable
+private fun IpFamilyTag(row: ProviderLocationRow) {
+    Text(
+        stringResource(ipFamilyTagResId(row)),
+        style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+        color = TextMuted,
+        maxLines = 1,
+        modifier = Modifier
+            .background(MainBorderBase, RoundedCornerShape(4.dp))
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+    )
+}
+
+/** The label resource for a row's IP family tag; legacy and unknown read as v4. */
+fun ipFamilyTagResId(row: ProviderLocationRow): Int =
+    IpFamilyRowKind.fromLabel(row.ipFamilyLabel).labelResId()
 
 /** "City, Region, Country" — omitting whichever parts the server does not know. */
 fun placeLabel(row: ProviderLocationRow): String =

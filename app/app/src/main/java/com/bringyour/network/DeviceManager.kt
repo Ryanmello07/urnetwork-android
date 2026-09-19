@@ -75,12 +75,19 @@ class DeviceManager @Inject constructor(
 ) {
 
     companion object {
-        // per-device memory target passed where the device is created: split
-        // dns 2 : client 14 : provider 4 by ratio inside the sdk, with the
-        // provider share backing the client pair while providing is off. The
-        // process-level Sdk.setMemoryLimit (MainApplication) sizes the
-        // shared message pools and go soft limit separately.
-        const val DEVICE_MEMORY_TARGET_BYTE_COUNT = 24L * 1024 * 1024
+        // Per-device target passed at construction: DNS 2 parts, one shared
+        // 13-part transfer/topology root with overlapping client/provider/NAT
+        // children, and 5 parts for platform carriers. Process-level
+        // Sdk.setMemoryLimit (MainApplication) separately sizes the shared
+        // message pools, carrier root, and Go soft limit.
+        //
+        // Ordinary Android keeps 28 MiB. The explicit debug iOS proxy follows
+        // apple/app/extension/TunnelMemoryBounds.swift: 20 MiB admission, with
+        // the separate observed runtime constrained to a hard 24-MiB cap.
+        internal fun deviceMemoryTargetByteCount(profile: String): Long =
+            (if (profile == MainApplication.IOS_MEMORY_AUDIT_PROFILE) 20L else 28L) * 1024 * 1024
+        val DEVICE_MEMORY_TARGET_BYTE_COUNT: Long
+            get() = deviceMemoryTargetByteCount(MainApplication.MEMORY_PROFILE_NAME)
     }
 
     private val deviceLock = Any()
@@ -368,8 +375,9 @@ class DeviceManager @Inject constructor(
                         instanceId,
                         false,
                         retainedKeyMaterial,
-                        // per-device memory target (split dns 2 : client 14 :
-                        // provider 4); the process pools are sized by setMemoryLimit
+                        // Per-device DNS 2 + shared transfer/topology 13 +
+                        // platform carriers 5 target; process pools and the
+                        // shared carrier root are sized by setMemoryLimit.
                         DEVICE_MEMORY_TARGET_BYTE_COUNT,
                     )
                 }
@@ -493,8 +501,9 @@ class DeviceManager @Inject constructor(
                 instanceId,
                 false,
                 null,
-                // per-device memory target (split dns 2 : client 14 :
-                // provider 4); the process pools are sized by setMemoryLimit
+                // Per-device DNS 2 + shared transfer/topology 13 + platform
+                // carriers 5 target; process pools and the shared carrier root
+                // are sized by setMemoryLimit.
                 DEVICE_MEMORY_TARGET_BYTE_COUNT
             )
         }.getOrNull()

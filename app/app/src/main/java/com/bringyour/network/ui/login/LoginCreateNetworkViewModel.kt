@@ -81,6 +81,14 @@ class LoginCreateNetworkViewModel @Inject constructor(
     var termsAgreed by mutableStateOf(false)
         private set
 
+    /** The sign-up page's "Periodic product updates" line, on until the user turns it off. */
+    var productUpdates by mutableStateOf(true)
+        private set
+
+    val setProductUpdates: (Boolean) -> Unit = { on ->
+        productUpdates = on
+    }
+
     val setTermsAgreed:(Boolean) -> Unit = { ta ->
         termsAgreed = ta
     }
@@ -105,6 +113,11 @@ class LoginCreateNetworkViewModel @Inject constructor(
     private val _referralCodeInputSupportingTextRes = MutableStateFlow<Int?>(null)
     val referralCodeInputSupportingTextRes: StateFlow<Int?> get() = _referralCodeInputSupportingTextRes
 
+    // the check itself did not run or did not answer (transport error, or the
+    // server refused the call): the code was never judged, so the form must
+    // not call it invalid
+    private var referralCheckFailed = false
+
     val validateReferralCode: (Api?, (Boolean) -> Unit) -> Unit = { api, onComplete ->
 
         if (!isValidatingReferralCode) {
@@ -123,8 +136,10 @@ class LoginCreateNetworkViewModel @Inject constructor(
                         if (err != null) {
                             Log.i(TAG, "validateReferralCode callback err: ${err.message}")
                             isValidReferralCode = false
+                            referralCheckFailed = true
                         } else {
                             isValidReferralCode = result?.isValid ?: false
+                            referralCheckFailed = false
                         }
 
                         isValidatingReferralCode = false
@@ -140,6 +155,7 @@ class LoginCreateNetworkViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.i(TAG, "${e.message}")
                 isValidReferralCode = false
+                referralCheckFailed = true
                 isValidatingReferralCode = false
                 referralValidationComplete = true
                 setReferralCodeInputSupportingText()
@@ -162,7 +178,9 @@ class LoginCreateNetworkViewModel @Inject constructor(
 
         if (!isValidatingNetworkName && referralValidationComplete)  {
 
-            if (!isValidReferralCode) {
+            if (referralCheckFailed) {
+                msgRes = R.string.something_went_wrong
+            } else if (!isValidReferralCode) {
                 msgRes = R.string.invalid_referral_code
             }
 
@@ -219,6 +237,7 @@ class LoginCreateNetworkViewModel @Inject constructor(
         args.userName = ""
         args.networkName = networkName.text.trim()
         args.terms = termsAgreed
+        args.productUpdatesOptOut = !productUpdates
         args.verifyOtpNumeric = true
 
         if (isValidReferralCode && !isValidatingReferralCode && !_referralCodeIsCapped.value) {

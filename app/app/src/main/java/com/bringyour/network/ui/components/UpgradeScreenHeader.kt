@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.R
-import com.bringyour.network.ui.theme.TextMuted
 
 @Composable
 fun UpgradeScreenHeader() {
@@ -25,20 +24,7 @@ fun UpgradeScreenHeader() {
             style = MaterialTheme.typography.headlineLarge
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            stringResource(id = R.string.support_us),
-            style = MaterialTheme.typography.bodyLarge,
-            color = TextMuted
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            stringResource(id = R.string.unlock_speed),
-            style = MaterialTheme.typography.bodyLarge,
-            color = TextMuted
-        )
+        // No explainer under the title: the screen is the title and the two
+        // plan options.
     }
 }
