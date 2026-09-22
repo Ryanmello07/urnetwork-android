@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as videoProbe from "./chrome_video_probe.mjs";
 
 import {
   parseArgs,
@@ -88,4 +89,171 @@ test("host sanitizer never retains a request path or signed query", () => {
     "media.example.test",
   );
   assert.equal(safeHost("not a URL"), "invalid");
+});
+
+function targetFixture() {
+  const calls = [];
+  let elapsed = 0;
+  const f = {
+    calls,
+    targets: [{ id: "unrelated", type: "page", webSocketDebuggerUrl: "ws://unrelated" },
+      { id: "owned", type: "page", webSocketDebuggerUrl: "ws://owned" }],
+    browser: {
+      open: async () => calls.push(["open"]),
+      send: async (method, params) => {
+        calls.push([method, params]);
+        return method === "Target.createTarget" ? { targetId: "owned" } : { success: true };
+      },
+      close: () => calls.push(["browser-close"]),
+    },
+    deps: {
+      fetchJson: async (url) => {
+        calls.push(["fetch", url]);
+        return url.endsWith("/json/version") ? { webSocketDebuggerUrl: "ws://browser" } : f.targets;
+      },
+      createSession: (url) => { assert.equal(url, "ws://browser"); return f.browser; },
+      now: () => elapsed,
+      sleep: async (ms) => { elapsed += ms; },
+    },
+  };
+  return f;
+}
+
+test("6Vkcuq root: documented --navigate without target owns a blank target before any site navigation", async () => {
+  assert.equal(typeof videoProbe.acquireVideoTarget, "function");
+  const f = targetFixture();
+  const options = parseArgs(["--port", "9223", "--navigate", "https://example.test/video"]);
+  const lease = await videoProbe.acquireVideoTarget(options, f.deps);
+  assert.equal(lease.target.id, "owned");
+  assert.deepEqual(f.calls.find(([method]) => method === "Target.createTarget"),
+    ["Target.createTarget", { url: "about:blank" }]);
+  assert.equal(JSON.stringify(f.calls).includes("example.test"), false, "attach probe before loading site");
+  await lease.close();
+  await lease.close();
+  assert.equal(f.calls.filter(([method]) => method === "Target.closeTarget").length, 1);
+  assert.deepEqual(f.calls.at(-2), ["Target.closeTarget", { targetId: "owned" }]);
+  assert.deepEqual(f.calls.at(-1), ["browser-close"]);
+});
+
+test("explicit existing target is never replaced or closed by video probe", async () => {
+  const f = targetFixture();
+  const lease = await videoProbe.acquireVideoTarget(parseArgs(["--target-id", "unrelated"]), f.deps);
+  assert.equal(lease.target.id, "unrelated");
+  await lease.close();
+  assert.equal(f.calls.length, 1);
+  assert.ok(f.calls[0][1].endsWith("/json/list"));
+  await assert.rejects(videoProbe.acquireVideoTarget(parseArgs([]), f.deps), /target-id.*navigate/);
+});
+
+test("created target discovery failure closes only the owned target and browser session", async () => {
+  const f = targetFixture(); f.targets = [f.targets[0]];
+  await assert.rejects(videoProbe.acquireVideoTarget(parseArgs(["--navigate", "https://example.test/video"]), f.deps),
+    /target.*unavailable/i);
+  assert.deepEqual(f.calls.at(-2), ["Target.closeTarget", { targetId: "owned" }]);
+  assert.deepEqual(f.calls.at(-1), ["browser-close"]);
+});
+
+test("target cleanup failure is visible but still closes the browser session", async () => {
+  const f = targetFixture();
+  const lease = await videoProbe.acquireVideoTarget(parseArgs(["--navigate", "https://example.test/video"]), f.deps);
+  f.browser.send = async () => { throw new Error("close refused"); };
+  await assert.rejects(lease.close(), /close refused/);
+  assert.deepEqual(f.calls.at(-1), ["browser-close"]);
+});
+
+test("actual navigation path instruments the owned blank target, reports playback, then closes it", async () => {
+  const f = targetFixture(); let samples = 0;
+  const page = {
+    open: async () => f.calls.push(["page-open"]),
+    on: (method) => f.calls.push(["observe", method]),
+    send: async (method, params) => {
+      f.calls.push([method, params]);
+      if (method === "Runtime.evaluate" && params.returnByValue) {
+        if (params.expression.includes("typeof window.__urnetworkVideoProbeReloadMarker")) return { result: { value: true } };
+        return { result: { value: { video: { currentTime: samples++ * 2, readyState: 4 } } } };
+      }
+      return {};
+    },
+    close: () => f.calls.push(["page-close"]),
+  };
+  f.deps.createSession = (url) => url === "ws://browser" ? f.browser : page;
+  const result = await videoProbe.runVideoProbe(parseArgs(["--navigate", "https://example.test/video"]), f.deps);
+  assert.equal(result.playbackProgressed, true);
+  assert.equal(result.targetId, "owned");
+  assert.equal(result.sampleCount, 2);
+  const navigate = f.calls.findIndex(([method]) => method === "Page.navigate");
+  assert.ok(navigate > f.calls.findIndex(([method]) => method === "Network.enable"));
+  assert.ok(navigate > f.calls.findIndex(([method]) => method === "observe"));
+  assert.deepEqual(f.calls.slice(-3), [["page-close"], ["Target.closeTarget", { targetId: "owned" }], ["browser-close"]]);
+});
+
+test("page websocket open failure still releases the created target", async () => {
+  const f = targetFixture();
+  f.deps.createSession = (url) => url === "ws://browser" ? f.browser : {
+    open: async () => { throw new Error("page open failed"); },
+    close: () => f.calls.push(["page-close"]),
+  };
+  await assert.rejects(videoProbe.runVideoProbe(parseArgs(["--navigate", "https://example.test/video"]), f.deps),
+    /page open failed/);
+  assert.deepEqual(f.calls.slice(-3), [["page-close"], ["Target.closeTarget", { targetId: "owned" }], ["browser-close"]]);
+});
+
+function loadingPageFixture({ committed = true, challenge = false } = {}) {
+  const f = targetFixture();
+  let videoSamples = 0;
+  const page = {
+    open: async () => {}, on: () => {}, close: () => f.calls.push(["page-close"]),
+    send: async (method, params) => {
+      f.calls.push([method, params]);
+      if (method !== "Runtime.evaluate" || !params.returnByValue) return {};
+      if (params.expression.includes("typeof window.__urnetworkVideoProbeReloadMarker")) {
+        // The new document has committed and video can play while an
+        // unrelated subresource prevents document.readyState=complete.
+        return { result: { value: committed && !params.expression.includes("document.readyState === 'complete'") } };
+      }
+      return { result: { value: {
+        documentReadyState: "interactive", robotChallenge: challenge, videoCount: challenge ? 0 : 1,
+        video: challenge ? null : { currentTime: videoSamples++ * 2, readyState: 4 },
+      } } };
+    },
+  };
+  f.deps.createSession = url => url === "ws://browser" ? f.browser : page;
+  return f;
+}
+
+test("CNN observer gap: a playing media element is sampled before unrelated document load completes", async () => {
+  const f = loadingPageFixture();
+  const output = await videoProbe.runVideoProbe(parseArgs([
+    "--navigate", "https://example.test/video", "--timeout-ms", "5000",
+  ]), f.deps);
+  assert.equal(output.playbackProgressed, true);
+  assert.equal(output.sampleCount, 2);
+  assert.equal(output.maximumReadyState, 4);
+  assert.equal(output.last.documentReadyState, "interactive");
+});
+
+test("navigation timeout is explicitly incomplete evidence, not an observed readyState-zero player", async () => {
+  const f = loadingPageFixture({ committed: false });
+  const output = await videoProbe.runVideoProbe(parseArgs([
+    "--navigate", "https://example.test/video", "--timeout-ms", "1000",
+  ]), f.deps);
+  assert.equal(output.sampleCount, 0);
+  assert.equal(output.navigationCommitted, false);
+  assert.equal(output.observationStatus, "navigation-timeout");
+  assert.equal(output.first, null);
+  assert.equal(output.last, null);
+  assert.equal(output.playbackProgressed, false);
+});
+
+test("an observed challenge stays an application denial, without inventing a player or playback", async () => {
+  const f = loadingPageFixture({ challenge: true });
+  const output = await videoProbe.runVideoProbe(parseArgs([
+    "--navigate", "https://example.test/video", "--timeout-ms", "5000",
+  ]), f.deps);
+  assert.equal(output.navigationCommitted, true);
+  assert.equal(output.observationStatus, "observed");
+  assert.equal(output.sampleCount, 1);
+  assert.equal(output.last.robotChallenge, true);
+  assert.equal(output.last.video, null);
+  assert.equal(output.playbackProgressed, false);
 });

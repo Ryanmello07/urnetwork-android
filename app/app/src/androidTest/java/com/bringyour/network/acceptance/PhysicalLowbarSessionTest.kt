@@ -65,6 +65,7 @@ class PhysicalLowbarSessionTest {
     private val activeClientLedger = ActiveClientLedger(File(acceptanceDir, "active-client-ids"))
     private val expectedPeerFile = File(acceptanceDir, "physical-expected-peer-id")
     private val startupGoroutinesFile = File(acceptanceDir, "physical-startup-goroutines.txt")
+    private var credentialDiagnostics = false
 
     @Volatile
     private var phase = "startup"
@@ -99,6 +100,11 @@ class PhysicalLowbarSessionTest {
                 },
             )
         }
+    }
+
+    private fun credentialCheckpoint(stage: PhysicalCredentialStage) {
+        if (!credentialDiagnostics) return
+        PhysicalCredentialDiagnosticRecorder.checkpoint(context, stage)
     }
 
     private fun loginWithPassword(
@@ -398,6 +404,10 @@ class PhysicalLowbarSessionTest {
         .put("goHeapGoalBytes", sample.optLong("go_goal_bytes"))
         .put("goRuntimeBytes", sample.optLong("go_total_bytes"))
         .put("goMemoryLimitBytes", sample.optLong("go_limit_bytes"))
+        .put("goHeapAllocBytes", sample.optLong("go_heap_alloc_bytes"))
+        .put("goHeapFragmentationBytes", sample.optLong("go_heap_unused_bytes"))
+        .put("goHeapRetainedBytes", sample.optLong("go_heap_free_bytes"))
+        .put("goStackInuseBytes", sample.optLong("go_stack_inuse_bytes"))
         .put("goTotalAllocatedBytes", sample.optLong("total_allocated_bytes"))
         .put("goProfilingBucketBytes", sample.optLong("profiling_bucket_bytes"))
         .put("goMemoryProfileRateBytes", sample.optLong("memory_profile_rate_bytes"))
@@ -932,6 +942,34 @@ class PhysicalLowbarSessionTest {
                 )
                 return false
             }
+            "owner-census" -> {
+                val owners = writeMemoryOwnerDiagnostic(device, acceptanceDir, argument)
+                status(
+                    id,
+                    "complete",
+                    application,
+                    startElapsedMs,
+                    JSONObject().put("censusName", owners.name).put("censusBytes", owners.length()),
+                )
+                return false
+            }
+            "goroutine-stacks" -> {
+                require(argument.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}"))) {
+                    "a bounded diagnostic label is required"
+                }
+                val stacks = File(acceptanceDir, "physical-stacks-$argument.txt")
+                check(!stacks.exists()) { "diagnostic evidence already exists" }
+                Sdk.writeGoroutineStacks(stacks.absolutePath)
+                check(stacks.isFile && stacks.length() > 0) { "goroutine evidence is empty" }
+                status(
+                    id,
+                    "complete",
+                    application,
+                    startElapsedMs,
+                    JSONObject().put("stacksName", stacks.name).put("stacksBytes", stacks.length()),
+                )
+                return false
+            }
             "heap-profile" -> {
                 require(argument.isNotEmpty()) { "heap profile label is required" }
                 val profile = File(acceptanceDir, "physical-heap-$argument.pprof")
@@ -967,6 +1005,8 @@ class PhysicalLowbarSessionTest {
     @Test(timeout = 10_800_000)
     fun physicalLowbarSession() {
         val arguments = InstrumentationRegistry.getArguments()
+        credentialDiagnostics = physicalCredentialDiagnosticsEnabled(arguments.getString(PHYSICAL_CREDENTIAL_DIAGNOSTICS_ARGUMENT))
+        credentialCheckpoint(PhysicalCredentialStage.TEST_METHOD_ENTRY)
         val expectedBuildId = arguments.getString("acceptanceBuildId").orEmpty()
         assertTrue("acceptanceBuildId argument is required", expectedBuildId.isNotBlank())
         assertEquals(
@@ -1002,8 +1042,11 @@ class PhysicalLowbarSessionTest {
         var activeCommandId = "0"
 
         try {
-            launchLoggedOutApp(application)
-            loginWithPassword(application, ledgerFailure)
+            withPhysicalCredentialCheckpoints(
+                checkpoint = ::credentialCheckpoint,
+                launchLoggedOut = { launchLoggedOutApp(application) },
+                login = { loginWithPassword(application, ledgerFailure) },
+            )
             val device = checkNotNull(application.device)
             connectVc = device.openConnectViewController().also { it.start() }
             peerVc = device.openPeerViewController().also { it.start() }
