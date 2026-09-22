@@ -53,8 +53,11 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      # v3 defaults its `packages` input to `tools platform-tools`, and Google
+      # has since removed the retired `tools` package from the SDK repository,
+      # so sdkmanager exits 1 before anything builds. v4 drops it.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       # `id` matters: the SDK build step below reads this action's ndk-path
       # OUTPUT. It used to pass `ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}`,
