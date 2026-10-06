@@ -132,9 +132,10 @@ fun connectSolanaOverflowItem(onClick: () -> Unit): OverflowItem = OverflowItem(
 
 /**
  * The legacy USDC payout wallet under the Bittensor wallet section: the card when the
- * network has a payout wallet; otherwise, with USDC waiting and [showWaitingLine] (the
- * Bittensor wallet is connected, so there is no button row to carry the line), the
- * "N USDC waiting" line. Nothing before the first load finished.
+ * network has a payout wallet; otherwise, with the final USDC payout waiting and
+ * [showWaitingLine] (the Bittensor wallet is connected, so there is no button row to
+ * carry the line), the "Final USDC payout: N USDC waiting" line. Nothing before the
+ * first load finished.
  */
 @Composable
 fun LegacyPayoutBlock(
@@ -148,23 +149,27 @@ fun LegacyPayoutBlock(
     if (!legacyLoaded) {
         return
     }
+    val waitingUsd = finalUsdcWaitingUsd(legacy, legacyLoaded)
     val payoutWallet = legacy.payoutWallet
     if (payoutWallet != null) {
         Spacer(modifier = Modifier.height(16.dp))
         SolanaWalletCard(
             wallet = payoutWallet,
-            pendingUsd = if (legacy.hasPending) legacy.pendingUsd else null,
+            pendingUsd = waitingUsd,
             state = state,
             onRemove = onRemove,
             onDismissState = onDismissState
         )
-    } else if (showWaitingLine && legacy.hasPending) {
+    } else if (showWaitingLine && waitingUsd != null) {
         Spacer(modifier = Modifier.height(16.dp))
-        UsdcWaitingLine(pendingUsd = legacy.pendingUsd)
+        UsdcWaitingLine(pendingUsd = waitingUsd)
     }
 }
 
-/** "3.87 USDC waiting" while no payout wallet is connected; the figure the email shows. */
+/**
+ * "Final USDC payout: 3.87 USDC waiting" while no payout wallet is connected; the
+ * figure the email shows. Payouts moved to the UR subnet, so this is the last one.
+ */
 @Composable
 fun UsdcWaitingLine(
     pendingUsd: Double,
@@ -277,6 +282,8 @@ fun SolanaWalletCard(
 
         val (status, color) = when (state) {
             is SolanaConnectState.Linked -> stringResource(id = R.string.payout_wallet_updated) to Green
+            is SolanaConnectState.Promoted ->
+                stringResource(id = R.string.payouts_now_go_to, SolanaAddress.short(state.wallet.address)) to Green
             is SolanaConnectState.Failed -> solanaFailureText(state) to Red
             else -> null to TextMuted
         }
@@ -310,7 +317,12 @@ private fun DefaultWalletBadge() {
     }
 }
 
-/** Remove the payout wallet: the server holds USDC payouts until another wallet is connected. */
+/**
+ * Remove the payout wallet: the server makes another of the network's active Solana or
+ * Polygon wallets the payout wallet when there is one, and holds USDC payouts until a
+ * wallet is connected when there is none. Which wallet takes over is the server's choice,
+ * possibly one this card does not list, so the confirmation does not name it.
+ */
 @Composable
 fun RemoveSolanaWalletDialog(
     visible: Boolean,
@@ -331,7 +343,7 @@ fun RemoveSolanaWalletDialog(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                stringResource(id = R.string.remove_wallet_holds_payouts),
+                stringResource(id = R.string.remove_wallet_moves_or_holds_payouts),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White
             )

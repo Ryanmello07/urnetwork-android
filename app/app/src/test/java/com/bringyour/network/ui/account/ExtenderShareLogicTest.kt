@@ -3,6 +3,7 @@ package com.bringyour.network.ui.account
 import com.bringyour.network.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -21,6 +22,7 @@ class ExtenderShareLogicTest {
         count: Int = 6,
         hasSettings: Boolean = false,
         settingsHost: String = "",
+        controlDohUrls: List<String> = listOf(),
     ) = ExtenderDecodeUi(
         ok = ok,
         errorKey = errorKey,
@@ -29,6 +31,7 @@ class ExtenderShareLogicTest {
         count = count,
         hasSettings = hasSettings,
         settingsHost = settingsHost,
+        controlDohUrls = controlDohUrls,
     )
 
     @Test
@@ -137,6 +140,41 @@ class ExtenderShareLogicTest {
     fun theSwitchIsNotOfferedForAPayloadThatDidNotDecode() {
         assertFalse(extenderUseSettingsOffered(null))
         assertFalse(extenderUseSettingsOffered(decode(ok = false, hasSettings = true)))
+    }
+
+    @Test
+    fun settingsWithBootstrapDohServersNameThem() {
+        val withServers = decode(
+            hasSettings = true,
+            settingsHost = "extender.network.example",
+            controlDohUrls = listOf("https://192.0.2.1/dns-query", "https://203.0.113.1/dns-query"),
+        )
+
+        // the import line lists them as the settings would set them
+        assertEquals(
+            "https://192.0.2.1/dns-query, https://203.0.113.1/dns-query",
+            extenderImportControlDohServers(withServers),
+        )
+        // and they come with the settings, so taking those is still confirmed
+        assertEquals(
+            ExtenderImportStep.ConfirmSettings("extender.network.example"),
+            extenderImportStep(withServers, true),
+        )
+    }
+
+    @Test
+    fun aPayloadThatSetsNoBootstrapDohServersHasNoLine() {
+        // settings that name none leave this space's servers alone
+        assertNull(extenderImportControlDohServers(decode(hasSettings = true, settingsHost = "extender.network.example")))
+        // servers ride only in a settings block, and only a decoded payload
+        // has one
+        assertNull(extenderImportControlDohServers(decode(controlDohUrls = listOf("https://192.0.2.1/dns-query"))))
+        assertNull(
+            extenderImportControlDohServers(
+                decode(ok = false, hasSettings = true, controlDohUrls = listOf("https://192.0.2.1/dns-query"))
+            )
+        )
+        assertNull(extenderImportControlDohServers(null))
     }
 
     @Test

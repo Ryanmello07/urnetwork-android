@@ -12,8 +12,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.bringyour.network.R
 import com.bringyour.network.analytics.ClientEvents
+import com.bringyour.network.ui.account.PurchaseRefusal
 import com.bringyour.network.ui.shared.enums.PlanType
 import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
+import com.bringyour.network.utils.SolanaPaymentQuote
 import com.bringyour.network.utils.createPaymentReference
 import com.bringyour.sdk.Sdk
 
@@ -21,9 +23,9 @@ import com.bringyour.sdk.Sdk
  * The plan surface on the flavors without Play Billing: the shared card picker
  * (sold by the flavor's [PlanPurchaser]) and the Solana Pay alternative below
  * it. The Solana quote comes from the server (`yearly_onboarding` at the
- * offer's 75% while the offer is active, else `yearly`); the wallet is opened
- * by the flavor's [SolanaPayLauncher] and the balance is polled when the app
- * comes back.
+ * offer's 75% while the offer is active, else `yearly`), with where to pay it;
+ * the wallet is opened by the flavor's [SolanaPayLauncher] and the balance is
+ * polled when the app comes back.
  */
 @Composable
 fun NonPlayPlanSurface(
@@ -36,8 +38,8 @@ fun NonPlayPlanSurface(
     createSolanaPaymentIntent: (
         reference: String,
         plan: String,
-        onSuccess: (amountUsd: Double) -> Unit,
-        onError: () -> Unit
+        onSuccess: (quote: SolanaPaymentQuote) -> Unit,
+        onError: (PurchaseRefusal) -> Unit
     ) -> Unit,
     onSolanaUriOpened: (String) -> Unit,
     isCheckingSolanaTransaction: Boolean,
@@ -54,24 +56,30 @@ fun NonPlayPlanSurface(
         createSolanaPaymentIntent(
             reference,
             plan,
-            { amountUsd ->
-                // amountUsd is what the SERVER quoted: the webhook checks the payment against it
-                ClientEvents.purchaseStarted(Sdk.EventStoreSolana, ClientEvents.PRODUCT_SOLANA_PRO_YEARLY, plan, false, amountUsd, "USD")
+            { quote ->
+                // the quote is the server's: the webhook checks the payment against its
+                // amount, and credits the merchant address it names
+                ClientEvents.purchaseStarted(Sdk.EventStoreSolana, ClientEvents.PRODUCT_SOLANA_PRO_YEARLY, plan, false, quote.amountUsd, "USD")
                 if (presentation.offer != null) {
                     ClientEvents.offerCtaTapped(plan, Sdk.EventStoreSolana)
                 }
-                val opened = solanaLauncher.open(reference, amountUsd, plan)
+                val opened = solanaLauncher.open(reference, quote, plan)
                 isPromptingSolanaPayment = false
                 if (opened) {
-                    subscriptionBalanceViewModel.expectSolanaPurchase(plan, amountUsd)
+                    subscriptionBalanceViewModel.expectSolanaPurchase(plan, quote.amountUsd)
                     onSolanaUriOpened(reference)
                 } else {
-                    ClientEvents.purchaseFailed(Sdk.EventStoreSolana, ClientEvents.PRODUCT_SOLANA_PRO_YEARLY, plan, false, amountUsd, "USD", "no_wallet")
+                    ClientEvents.purchaseFailed(Sdk.EventStoreSolana, ClientEvents.PRODUCT_SOLANA_PRO_YEARLY, plan, false, quote.amountUsd, "USD", "no_wallet")
                 }
             },
-            {
+            { refusal ->
                 isPromptingSolanaPayment = false
-                Toast.makeText(context, context.getString(R.string.payment_not_completed), Toast.LENGTH_SHORT).show()
+                when (refusal) {
+                    // a guest network: the add-sign-in sheet instead of the error
+                    PurchaseRefusal.AddSignInMethod -> subscriptionBalanceViewModel.guestSignInRequired()
+                    PurchaseRefusal.PaymentError ->
+                        Toast.makeText(context, context.getString(R.string.payment_not_completed), Toast.LENGTH_SHORT).show()
+                }
             }
         )
     }
@@ -98,6 +106,6 @@ fun NonPlayPlanSurface(
 
 /** How a flavor opens the wallet for a Solana Pay url: a deep link, or a sheet with a QR code and the link. */
 fun interface SolanaPayLauncher {
-    /** Returns true when the wallet (or the sheet) was opened. */
-    fun open(reference: String, amountUsd: Double, plan: String): Boolean
+    /** Returns true when the wallet (or the sheet) was opened for the server's quote. */
+    fun open(reference: String, quote: SolanaPaymentQuote, plan: String): Boolean
 }

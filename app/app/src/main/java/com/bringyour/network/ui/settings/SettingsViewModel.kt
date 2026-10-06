@@ -19,11 +19,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bringyour.network.DeviceManager
 import com.bringyour.network.ForegroundDeviceControllerOwner
+import com.bringyour.network.ProvidePauseState
 import com.bringyour.network.TAG
 import com.bringyour.network.ui.shared.models.ProvideControlMode
 import com.bringyour.network.ui.shared.models.provideIndicatorDotColorFor
 import com.bringyour.network.ui.shared.models.provideIndicatorRingColorFor
 import com.bringyour.network.ui.shared.models.ProvideNetworkMode
+import com.bringyour.network.ui.shared.models.ProvidePowerMode
 import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.theme.Red
 import com.bringyour.network.ui.theme.Yellow
@@ -48,6 +50,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val deviceManager: DeviceManager,
+    private val providePauseState: ProvidePauseState,
     @ApplicationContext private val context: Context
 ): ViewModel(), DefaultLifecycleObserver {
 
@@ -189,6 +192,15 @@ class SettingsViewModel @Inject constructor(
         _allowProvideOnCell.value = !currentValue
     }
 
+    /**
+     * When this device provides on battery; stored with the app
+     */
+    val providePowerMode: StateFlow<ProvidePowerMode> = providePauseState.powerMode
+
+    val setProvidePowerMode: (ProvidePowerMode) -> Unit = { mode ->
+        providePauseState.setPowerMode(mode)
+    }
+
     private val _isCreatingAuthCode = MutableStateFlow(false)
     val isCreatingAuthCode: StateFlow<Boolean> = _isCreatingAuthCode
 
@@ -276,37 +288,54 @@ class SettingsViewModel @Inject constructor(
         this.provideControlMode = mode
     }
 
+    /**
+     * onSuccess runs only when the account was deleted. A server refusal
+     * (an error in the result) or a transport error runs onFailure with the
+     * failed outcome, and the user stays signed in and may retry.
+     */
     val deleteAccount: (
             onSuccess: () -> Unit,
-            onFailure: (Exception?) -> Unit
+            onFailure: (DeleteAccountOutcome.Failed) -> Unit
             ) -> Unit = { onSuccess, onFailure ->
 
                 _isDeletingAccount.value = true
 
-        deviceManager.device?.api?.networkDelete { _, exception ->
+        deviceManager.device?.api?.networkDelete { result, exception ->
+
+            val outcome = DeleteAccountOutcome.of(
+                exception = exception,
+                resultPresent = result != null,
+                resultHasError = result?.error != null,
+                resultErrorMessage = result?.error?.message,
+            )
 
             viewModelScope.launch {
 
-                if (exception != null) {
-                    onFailure(exception)
-                } else {
-                    onSuccess()
+                when (outcome) {
+                    is DeleteAccountOutcome.Deleted -> onSuccess()
+                    is DeleteAccountOutcome.Failed -> {
+                        Log.i(TAG, "Error deleting account: ${exception?.message ?: outcome.serverMessage}")
+                        onFailure(outcome)
+                    }
                 }
                 _isDeletingAccount.value = false
 
             }
         } ?: run {
             _isDeletingAccount.value = false
+            onFailure(DeleteAccountOutcome.Failed(null))
         }
     }
 
     private val _isAddingAuth = MutableStateFlow(false)
     val isAddingAuth: StateFlow<Boolean> = _isAddingAuth
 
+    // the refusal carries the server's code: a pasted Bittensor signature from
+    // another account has its own words (AddAuthMethodSheet)
     val addAuth: (
         args: AddAuthArgs,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onError: (AddAuthRefusal) -> Unit
     ) -> Unit = { args, onSuccess, onError ->
 
         _isAddingAuth.value = true
@@ -316,18 +345,18 @@ class SettingsViewModel @Inject constructor(
                 _isAddingAuth.value = false
 
                 if (err != null) {
-                    onError(err.message ?: "Failed to add sign-in method")
+                    onError(AddAuthRefusal(err.message ?: "Failed to add sign-in method"))
                 } else if (result?.error != null) {
-                    onError(result.error.message ?: "Failed to add sign-in method")
+                    onError(AddAuthRefusal(result.error.message ?: "Failed to add sign-in method", result.error.code))
                 } else if (result != null) {
                     onSuccess()
                 } else {
-                    onError("Failed to add sign-in method")
+                    onError(AddAuthRefusal("Failed to add sign-in method"))
                 }
             }
         } ?: run {
             _isAddingAuth.value = false
-            onError("Unable to connect. Please try again.")
+            onError(AddAuthRefusal("Unable to connect. Please try again."))
         }
     }
 

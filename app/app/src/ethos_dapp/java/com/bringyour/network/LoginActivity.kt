@@ -18,12 +18,26 @@ import androidx.lifecycle.lifecycleScope
 import com.bringyour.network.ui.LoginNavHost
 import com.bringyour.network.ui.login.BITTENSOR_SIGN_PURPOSE_CONNECT
 import com.bringyour.network.ui.login.BITTENSOR_SIGN_PURPOSE_CREATE
+import com.bringyour.network.ui.login.bittensorFailureUri
+import com.bringyour.network.ui.login.bittensorRefusalMessage
+import com.bringyour.network.ui.login.bittensorProofUri
+import com.bringyour.network.ui.wallet.BittensorProofRequest
+import com.bringyour.network.ui.wallet.BittensorReturnAction
+import com.bringyour.network.ui.wallet.BittensorWallets
+import com.bringyour.network.ui.wallet.bittensorReturnAction
+import com.bringyour.network.ui.wallet.startBittensorBridgeProof
 import com.bringyour.network.ui.login.BITTENSOR_SIGN_PURPOSE_LOGIN
 import com.bringyour.network.ui.login.LoginCreateNetworkParams
 import com.bringyour.network.ui.login.LoginViewModel
 import com.bringyour.network.ui.login.launchBittensorSignMessage
 import com.bringyour.network.ui.login.AUTH_JWT_TYPE_APPLE
 import com.bringyour.network.ui.login.AppleOAuthSession
+import com.bringyour.network.ui.login.SsoOAuthReturnRoute
+import com.bringyour.network.ui.login.ssoOAuthReturnRoute
+import com.bringyour.network.ui.settings.bittensorAddReturn
+import com.bringyour.network.ui.settings.forwardSsoAddSignInReturn
+import com.bringyour.network.ui.login.SsoProvider
+import com.bringyour.network.ui.settings.forwardBittensorAddSignInReturn
 import com.bringyour.network.ui.login.appleOAuthUserName
 import com.bringyour.network.ui.login.isAppleOAuthReturn
 import com.bringyour.network.ui.login.ssoJwtPayload
@@ -88,17 +102,45 @@ class LoginActivity : AppCompatActivity() {
             Log.i(TAG, "Intent.ACTION_VIEW == action")
             intent?.data?.let { u ->
                 if (isAppleOAuthReturn(u)) {
+                    if (app.device != null && ssoOAuthReturnRoute(
+                            AppleOAuthSession.attempts(this),
+                            u.getQueryParameter("state"),
+                        ) == SsoOAuthReturnRoute.ADD_SIGN_IN
+                    ) {
+                        // Settings' add sign-in method sheet started this attempt: the
+                        // sheet adds the Apple ID to the signed-in network; never a login
+                        Log.i(TAG, "forwardSsoAddSignInReturn")
+                        forwardSsoAddSignInReturn(this, SsoProvider.APPLE, u, MainActivity::class.java)
+                        return
+                    }
                     Log.i(TAG, "appleOAuthLogin $u")
                     appleOAuthLogin(u)
                 } else if (u.scheme == "ur" && u.host == "bittensor-sign-message") {
-                    if (u.getQueryParameter("purpose") == BITTENSOR_SIGN_PURPOSE_CONNECT && app.device != null) {
-                        // the earnings screen's wallet connect: the main activity owns that flow
-                        Log.i(TAG, "forwardWalletConnectToMain $u")
-                        forwardWalletConnectToMain(u)
+                    // a WalletConnect bridge return is judged by its waiting session
+                    // (message, purpose, address, expiry); with none waiting it is a
+                    // pre-helper return, handled as before
+                    val action = bittensorReturnAction(u.toString(), System.currentTimeMillis())
+                    val addReturn = bittensorAddReturn(action)
+                    if (addReturn != null && app.device != null) {
+                        // Settings' add sign-in method sheet started this session: the
+                        // sheet adds the wallet to the signed-in network; never a login
+                        Log.i(TAG, "forwardBittensorAddSignInReturn")
+                        forwardBittensorAddSignInReturn(this, addReturn, MainActivity::class.java)
                         return
                     }
-                    Log.i(TAG, "bittensorSignMessageLogin $u")
-                    bittensorSignMessageLogin(u)
+                    val bridgeUri = when (action) {
+                        BittensorReturnAction.Legacy -> u
+                        is BittensorReturnAction.Proven -> bittensorProofUri(action.proof)
+                        is BittensorReturnAction.Failed -> bittensorFailureUri(action, bittensorRefusalMessage(action))
+                    }
+                    if (bridgeUri.getQueryParameter("purpose") == BITTENSOR_SIGN_PURPOSE_CONNECT && app.device != null) {
+                        // the earnings screen's wallet connect: the main activity owns that flow
+                        Log.i(TAG, "forwardWalletConnectToMain $bridgeUri")
+                        forwardWalletConnectToMain(bridgeUri)
+                        return
+                    }
+                    Log.i(TAG, "bittensorSignMessageLogin $bridgeUri")
+                    bittensorSignMessageLogin(bridgeUri)
                 } else if ((u.scheme == "https" && u.host == "ur.io" && u.path == "/c") || u.scheme == "ur") {
                     Log.i(TAG, "createWithUri $u")
                     createWithUri(u)
@@ -483,6 +525,20 @@ class LoginActivity : AppCompatActivity() {
                     if (api == null) {
                         isLoadingAuthCode = false
                         loginViewModel.setLoginError(getString(R.string.login_error))
+                        return@launch
+                    }
+
+                    if (uri.getQueryParameter("wallet") == BittensorWallets.WALLET_CONNECT) {
+                        // a WalletConnect sign-in signs the create challenge with the same wallet
+                        val opened = startBittensorBridgeProof(
+                            this@LoginActivity,
+                            api,
+                            BittensorProofRequest(BittensorWallets.WALLET_CONNECT, BittensorWallets.PURPOSE_CREATE, address),
+                        )
+                        isLoadingAuthCode = false
+                        if (!opened) {
+                            loginViewModel.setLoginError(getString(R.string.login_error))
+                        }
                         return@launch
                     }
 

@@ -24,6 +24,76 @@ android_acceptance_session_running() {
   [ -z "${1:-}" ] || kill -0 "$1" 2>/dev/null
 }
 
+# This is the shell's exact wait result, not an inferred app/ADB exit or the
+# time the child actually exited. Keep it even when terminal text is missing.
+android_acceptance_record_session_exit() {
+  local out="$1" role="$2" child_pid="$3" child_status="$4" joined_by="$5" joined_at
+  case "$role:$joined_by" in client:finish|provider:finish|client:trap|provider:trap) ;; *) return 2 ;; esac
+  case "$child_pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+  [[ "$child_status" =~ ^(0|[1-9][0-9]{0,2})$ ]] && [ "$child_status" -le 255 ] || return 2
+  joined_at="$(node -p 'new Date().toISOString()')" || return 1
+  (umask 077; set -C
+    printf '{"schemaVersion":1,"childPid":%s,"waitExitCode":%s,"joinedAt":"%s","joinedBy":"%s"}\n' \
+      "$child_pid" "$child_status" "$joined_at" "$joined_by" >"$out/$role-instrumentation-exit.json")
+}
+
+# `adb am instrument` can exit without a nonzero host status after losing its
+# transport. Absence of a failure line is not proof that the one retained P2P
+# test completed. Require one ordered start, test success, and terminal runner
+# success, with no failure or second terminal result anywhere in the stream.
+android_acceptance_verify_p2p_instrumentation() {
+  local transcript="$1"
+  [ -f "$transcript" ] && [ ! -L "$transcript" ] && [ -s "$transcript" ] || return 1
+  LC_ALL=C awk '
+    { sub(/\r$/, "") }
+    /FAILURES!!!|INSTRUMENTATION_FAILED|FATAL EXCEPTION|Process crashed|shortMsg=|AssertionError/ { invalid = 1 }
+    /^INSTRUMENTATION_STATUS: class=/ {
+      if ($0 != "INSTRUMENTATION_STATUS: class=com.bringyour.network.acceptance.PhysicalLowbarSessionTest") invalid = 1
+      classes++
+    }
+    /^INSTRUMENTATION_STATUS: test=/ {
+      if ($0 != "INSTRUMENTATION_STATUS: test=physicalLowbarSession") invalid = 1
+      tests++
+    }
+    /^INSTRUMENTATION_STATUS: (current|numtests)=/ {
+      if ($0 !~ /=1$/) invalid = 1
+    }
+    /^INSTRUMENTATION_STATUS_CODE:/ {
+      if ($0 == "INSTRUMENTATION_STATUS_CODE: 1" && !started && !completed) started = NR
+      else if ($0 == "INSTRUMENTATION_STATUS_CODE: 0" && started && !completed) completed = NR
+      else invalid = 1
+    }
+    /^OK \(/ {
+      if ($0 != "OK (1 test)" || !completed || ok) invalid = 1
+      ok = NR
+    }
+    /^INSTRUMENTATION_CODE:/ {
+      if ($0 != "INSTRUMENTATION_CODE: -1" || !ok || terminal) invalid = 1
+      terminal = NR
+    }
+    /[^[:space:]]/ { last = NR }
+    END { exit invalid || classes != 2 || tests != 2 || !started || !completed || !ok || !terminal || terminal != last }
+  ' "$transcript"
+}
+
+# Poll only the retained host child; never reconnect/restart ADB or touch a
+# device here. The caller decides how to stop an authorized app after this
+# bounded natural-exit grace. An optional retained terminal transcript also
+# requires guest finalization: a disconnected host alone cannot prove it.
+android_acceptance_wait_for_session_exit() {
+  local session_pid="$1" polls="$2" poll
+  case "$session_pid" in ''|0*|*[!0-9]*) return 2 ;; esac
+  case "$polls" in ''|0*|*[!0-9]*) return 2 ;; esac
+  [ "$#" -eq 2 ] || { [ "$#" -eq 3 ] && [ -n "$3" ]; } || return 2
+  for ((poll=0; poll<polls; poll++)); do
+    if ! android_acceptance_session_running "$session_pid" && \
+       { [ "$#" -eq 2 ] || android_acceptance_verify_p2p_instrumentation "$3"; }; then return 0; fi
+    sleep 0.2
+  done
+  ! android_acceptance_session_running "$session_pid" && \
+    { [ "$#" -eq 2 ] || android_acceptance_verify_p2p_instrumentation "$3"; }
+}
+
 # A successful full UI cell must leave one screenshot at every workflow
 # boundary. Instrumentation's exit status alone is not enough evidence: Android
 # can report a completed runner even when screenshot capture or the host-side
@@ -323,31 +393,48 @@ android_acceptance_runner_owns_emulator() {
   local adb="$1" serial="$2" expected_avd="$3" owner_pid="$4"
   local owner_token="$5" actual_owner actual_avd
 
+  # Diagnostic metadata only. Reset on every call and retain the exact failed
+  # existing check; never expose values or change its authority/return status.
+  android_acceptance_emulator_ownership_stage=serial-validation
   case "$serial" in
     emulator-*)
       case "${serial#emulator-}" in ''|*[!0-9]*) return 2 ;; esac
       ;;
     *) return 2 ;;
   esac
+  android_acceptance_emulator_ownership_stage=avd-validation
   case "$expected_avd" in ''|*$'\r'*|*$'\n'*) return 2 ;; esac
+  android_acceptance_emulator_ownership_stage=pid-validation
   case "$owner_pid" in ''|*[!0-9]*|0) return 2 ;; esac
+  android_acceptance_emulator_ownership_stage=token-validation
   case "$owner_token" in ''|*[!A-Za-z0-9._:-]*) return 2 ;; esac
+  android_acceptance_emulator_ownership_stage=token-length
   [ "${#owner_token}" -le 92 ] || return 2
+  android_acceptance_emulator_ownership_stage=process-before
   kill -0 "$owner_pid" 2>/dev/null || return 1
+  android_acceptance_emulator_ownership_stage=device-ready
   android_acceptance_adb_device_ready "$adb" "$serial" || return 1
+  android_acceptance_emulator_ownership_stage=instance-id-read
   actual_owner="$(timeout 15 "$adb" -s "$serial" emu avd id \
     </dev/null 2>/dev/null)" || return 1
   actual_owner="${actual_owner%%$'\n'*}"
   actual_owner="${actual_owner%$'\r'}"
+  android_acceptance_emulator_ownership_stage=instance-id-empty
   [ -n "$actual_owner" ] || return 1
+  android_acceptance_emulator_ownership_stage=instance-id-match
   [ "$actual_owner" = "$owner_token" ] || return 3
+  android_acceptance_emulator_ownership_stage=avd-name-read
   actual_avd="$(timeout 15 "$adb" -s "$serial" emu avd name \
     </dev/null 2>/dev/null)" || return 1
   actual_avd="${actual_avd%%$'\n'*}"
   actual_avd="${actual_avd%$'\r'}"
+  android_acceptance_emulator_ownership_stage=avd-name-empty
   [ -n "$actual_avd" ] || return 1
+  android_acceptance_emulator_ownership_stage=avd-name-match
   [ "$actual_avd" = "$expected_avd" ] || return 3
-  kill -0 "$owner_pid" 2>/dev/null
+  android_acceptance_emulator_ownership_stage=process-after
+  kill -0 "$owner_pid" 2>/dev/null || return "$?"
+  android_acceptance_emulator_ownership_stage=verified
 }
 
 # ADB exposes a newly launched emulator transport before every console query is
@@ -1847,17 +1934,72 @@ android_acceptance_is_solana_device() {
   return 1
 }
 
-# Resolve one immutable acceptance fleet from `adb devices -l`. Reserved
-# performance devices are recorded but never selected, even if they are the
-# only attached hardware. Every other visible adb target must be fully
-# authorized and online: silently dropping an offline/unauthorized device
-# would let a fleet run claim coverage it never exercised.
+# This physical phone was explicitly authorized for canonical Solana shipping
+# acceptance. Discovering another compatible phone does not authorize it.
+# Changing the physical lane requires a new explicit authorization and a tracked
+# update here; environment variables cannot broaden the mutation scope.
+android_acceptance_canonical_solana_serial() {
+  printf 'O1N1XT172304047\n'
+}
+
+# Read-only identity/capability proof, before unlocking, changing settings,
+# installing, or cleaning up packages. Do not substitute a ready foreign phone
+# or an emulator whose model was configured to look like Solana hardware.
+android_acceptance_validate_canonical_solana_device() {
+  local adb="$1" serial="$2" actual qemu boot_qemu api abis value property
+  local -a identity=()
+
+  [ "$serial" = "$(android_acceptance_canonical_solana_serial)" ] || {
+    echo "physical Solana device is outside canonical acceptance authorization" >&2
+    return 1
+  }
+  android_acceptance_adb_device_ready "$adb" "$serial" || return 1
+  actual="$(timeout 15 "$adb" -s "$serial" get-serialno </dev/null | tr -d '\r\n')" || return 1
+  [ "$actual" = "$serial" ] || return 1
+  qemu="$(timeout 15 "$adb" -s "$serial" shell getprop ro.kernel.qemu </dev/null | tr -d '\r\n')" || return 1
+  boot_qemu="$(timeout 15 "$adb" -s "$serial" shell getprop ro.boot.qemu </dev/null | tr -d '\r\n')" || return 1
+  case "$qemu:$boot_qemu" in :|0:|:0|0:0) ;; *) return 1 ;; esac
+  for property in ro.product.manufacturer ro.product.brand ro.product.model ro.product.name ro.product.device; do
+    value="$(timeout 15 "$adb" -s "$serial" shell getprop "$property" </dev/null | tr -d '\r\n')" || return 1
+    identity+=("$value")
+  done
+  android_acceptance_is_solana_device "${identity[@]}" || {
+    echo "authorized physical device is not Saga or Seeker hardware" >&2
+    return 1
+  }
+  api="$(timeout 15 "$adb" -s "$serial" shell getprop ro.build.version.sdk </dev/null | tr -d '\r\n')" || return 1
+  case "$api" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$api" -ge 26 ] || return 1
+  abis="$(timeout 15 "$adb" -s "$serial" shell getprop ro.product.cpu.abilist </dev/null | tr -d '\r\n')" || return 1
+  android_acceptance_device_has_shipping_abi "$abis"
+}
+
+# Resolve explicit serials from `adb devices -l`. The fourth argument is an
+# exact newline-delimited required set: canonical acceptance supplies its
+# owned AVD and the authorized physical Solana lane when that flavor is needed;
+# diagnostics supply one explicit serial. An empty selection only inventories
+# devices before owned targets start. Unrelated devices, including unauthorized
+# or offline ones, cannot block this lane or become accidental fallback targets.
+# Reserved performance devices remain excluded even if explicitly requested.
 android_acceptance_select_adb_devices() {
-  local raw_file="$1" selected_file="$2" excluded_file="$3"
-  shift 3
+  local raw_file="$1" selected_file="$2" excluded_file="$3" required_serials="$4"
+  shift 4
   local selected_tmp="${selected_file}.tmp.$$"
   local excluded_tmp="${excluded_file}.tmp.$$"
-  local line serial state reserved candidate
+  local line serial state reserved candidate required matched
+  local -a required_set=()
+
+  while IFS= read -r required; do
+    [ -n "$required" ] || continue
+    case "$required" in *[!A-Za-z0-9._:-]*) return 1 ;; esac
+    for candidate in ${required_set[@]+"${required_set[@]}"} "$@"; do
+      if [ "$required" = "$candidate" ]; then
+        echo "duplicate or reserved required adb serial: $required" >&2
+        return 1
+      fi
+    done
+    required_set+=("$required")
+  done <<<"$required_serials"
 
   : >"$selected_tmp" || return 1
   : >"$excluded_tmp" || { rm -f "$selected_tmp"; return 1; }
@@ -1890,8 +2032,16 @@ android_acceptance_select_adb_devices() {
       printf '%s\t%s\treserved-for-performance\n' "$serial" "$state" >>"$excluded_tmp"
       continue
     fi
+    matched=0
+    for required in ${required_set[@]+"${required_set[@]}"}; do
+      [ "$serial" != "$required" ] || matched=1
+    done
+    if [ "$matched" -eq 0 ]; then
+      printf '%s\t%s\toutside-acceptance-selection\n' "$serial" "$state" >>"$excluded_tmp"
+      continue
+    fi
     if [ "$state" != device ]; then
-      echo "adb device $serial is $state; every non-reserved attached device must be authorized and online" >&2
+      echo "required adb device $serial is $state; the selected target must be authorized and online" >&2
       rm -f "$selected_tmp" "$excluded_tmp"
       return 1
     fi
@@ -1902,6 +2052,13 @@ android_acceptance_select_adb_devices() {
     fi
     printf '%s\n' "$serial" >>"$selected_tmp"
   done <"$raw_file"
+  for required in ${required_set[@]+"${required_set[@]}"}; do
+    if ! grep -Fqx -- "$required" "$selected_tmp"; then
+      echo "required adb device $required is absent or reserved for performance" >&2
+      rm -f "$selected_tmp" "$excluded_tmp"
+      return 1
+    fi
+  done
 
   LC_ALL=C sort "$selected_tmp" >"${selected_tmp}.sorted" || {
     rm -f "$selected_tmp" "$selected_tmp.sorted" "$excluded_tmp"
@@ -1925,13 +2082,13 @@ android_acceptance_execution_mode() {
     0:0) printf 'canonical\n' ;;
     1:1) printf 'diagnostic\n' ;;
     *)
-      echo "--diagnostic-device and --diagnostic-case must be supplied together" >&2
+      echo "one diagnostic target (--diagnostic-device or --diagnostic-owned-avd) and --diagnostic-case must be supplied together" >&2
       return 2
       ;;
   esac
 }
 
-# A focused P2P invocation is intentionally one fresh build, one physical
+# A focused P2P invocation is intentionally one fresh build, one selected
 # device, one flavor, and one case. Three confirmations must therefore be
 # three independent invocations with independent cleanup boundaries. A
 # diagnostic may never emit the result file consumed by final proof.
@@ -1954,6 +2111,26 @@ android_acceptance_validate_diagnostic_request() {
       return 2
     fi
   done
+  android_acceptance_validate_diagnostic_settings \
+    "$requested_case" "$flavor_count" "$flavor" "$repeat_count" \
+    "$skip_build" "$smoke_only" "$keep_emulator" "$keep_fixture" "$result_matrix"
+}
+
+# An owned AVD is a separate target kind, never an exception permitting a
+# caller-supplied emulator serial. Solana remains a physical-only lane.
+android_acceptance_validate_owned_avd_diagnostic_request() {
+  case "$3" in
+    github|play|fdroid) ;;
+    *) echo "owned-AVD diagnostics require github, play, or fdroid" >&2; return 2 ;;
+  esac
+  android_acceptance_validate_diagnostic_settings "$@"
+}
+
+android_acceptance_validate_diagnostic_settings() {
+  local requested_case="$1" flavor_count="$2" flavor="$3" repeat_count="$4"
+  local skip_build="$5" smoke_only="$6" keep_emulator="$7" keep_fixture="$8"
+  local result_matrix="$9"
+
   if [ "$requested_case" != peer-to-peer ]; then
     echo "--diagnostic-case supports only peer-to-peer" >&2
     return 2
@@ -2001,7 +2178,7 @@ android_acceptance_validate_diagnostic_request() {
 android_acceptance_select_diagnostic_device() {
   local captured_file="$1" output_file="$2" requested_serial="$3"
   shift 3
-  local reserved matches temporary="${output_file}.tmp.$$"
+  local reserved
 
   case "$requested_serial" in
     ''|emulator-*|*[!A-Za-z0-9._:-]*)
@@ -2015,6 +2192,26 @@ android_acceptance_select_diagnostic_device() {
       return 2
     fi
   done
+  android_acceptance_select_captured_diagnostic_device \
+    "$captured_file" "$output_file" "$requested_serial"
+}
+
+# Prove the exact live child/guest identity again after startup and inventory
+# capture. Merely finding an emulator serial in ADB never authorizes reuse.
+android_acceptance_select_owned_avd_diagnostic_device() {
+  local captured_file="$1" output_file="$2" adb="$3" requested_serial="$4"
+  local expected_avd="$5" owner_pid="$6" owner_token="$7"
+
+  android_acceptance_runner_owns_emulator \
+    "$adb" "$requested_serial" "$expected_avd" "$owner_pid" "$owner_token" || return 1
+  android_acceptance_select_captured_diagnostic_device \
+    "$captured_file" "$output_file" "$requested_serial"
+}
+
+android_acceptance_select_captured_diagnostic_device() {
+  local captured_file="$1" output_file="$2" requested_serial="$3"
+  local matches temporary="${output_file}.tmp.$$"
+
   [ -f "$captured_file" ] || return 1
   matches="$(awk -v serial="$requested_serial" '$0 == serial { count++ } END { print count + 0 }' "$captured_file")" || \
     return 1
@@ -2063,11 +2260,33 @@ android_acceptance_write_device_records() {
 # cell. Target-major order builds each APK once, then runs it sequentially on
 # compatible devices. Capability rows are:
 #   device-id<TAB>serial<TAB>play-services(0|1)<TAB>solana-device(0|1)<TAB>api
+# Canonical mode additionally assigns the general flavors to the owned AVD
+# and solana_dapp exclusively to the authorized physical phone. Diagnostics
+# keep their separately authorized single-device capability plan.
 android_acceptance_write_device_flavor_plan() {
   local capabilities_file="$1" plan_file="$2" skipped_file="$3"
   shift 3
   local temporary="${plan_file}.tmp.$$" skipped_temporary="${skipped_file}.tmp.$$"
   local target device_id serial play_services solana_device android_api extra reason
+  local canonical=0 owned_avd='' solana_serial=''
+
+  if [ "${1:-}" = --canonical-devices ]; then
+    [ "$#" -ge 3 ] || return 2
+    canonical=1
+    owned_avd="$2"
+    solana_serial="$3"
+    shift 3
+    case "$owned_avd" in emulator-*) ;; *) return 1 ;; esac
+    case "${owned_avd#emulator-}" in ''|*[!0-9]*) return 1 ;; esac
+    [ -z "$solana_serial" ] || \
+      [ "$solana_serial" = "$(android_acceptance_canonical_solana_serial)" ] || return 1
+    # Capability inventory is immutable and exact, not a second broad selector.
+    awk -F '\t' -v avd="$owned_avd" -v solana="$solana_serial" '
+      NF != 5 || ($2 != avd && (solana == "" || $2 != solana)) { failed = 1 }
+      { if (++seen[$2] != 1) failed = 1 }
+      END { exit failed || seen[avd] != 1 || (solana != "" && seen[solana] != 1) }
+    ' "$capabilities_file" || return 1
+  fi
 
   : >"$temporary" || return 1
   : >"$skipped_temporary" || { rm -f "$temporary"; return 1; }
@@ -2089,7 +2308,11 @@ android_acceptance_write_device_flavor_plan() {
         return 1
       }
       reason=""
-      if [ "$target" = play ] && [ "$play_services" -ne 1 ]; then
+      if [ "$canonical" -eq 1 ] && [ "$target" = solana_dapp ] && [ "$serial" != "$solana_serial" ]; then
+        reason="requires-authorized-physical-solana"
+      elif [ "$canonical" -eq 1 ] && [ "$target" != solana_dapp ] && [ "$serial" != "$owned_avd" ]; then
+        reason="reserved-for-canonical-solana-flavor"
+      elif [ "$target" = play ] && [ "$play_services" -ne 1 ]; then
         reason="requires-google-play-services"
       elif [ "$target" = solana_dapp ] && [ "$solana_device" -ne 1 ]; then
         reason="requires-solana-seeker-or-saga"

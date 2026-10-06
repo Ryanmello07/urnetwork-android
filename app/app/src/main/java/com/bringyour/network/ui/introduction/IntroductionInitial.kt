@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.bringyour.network.ui.account.PurchaseRefusal
 import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +41,7 @@ import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.NeueBitLargeTextStyle
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.upgrade.SubscriptionOptions
+import com.bringyour.network.utils.SolanaPaymentQuote
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,8 +53,8 @@ fun IntroductionInitial(
     createSolanaPaymentIntent: (
         reference: String,
         plan: String,
-        onSuccess: (amountUsd: Double) -> Unit,
-        onError: () -> Unit
+        onSuccess: (quote: SolanaPaymentQuote) -> Unit,
+        onError: (PurchaseRefusal) -> Unit
     ) -> Unit,
     setPendingSolanaSubscriptionReference: (String) -> Unit,
     onStripePaymentSuccess: () -> Unit,

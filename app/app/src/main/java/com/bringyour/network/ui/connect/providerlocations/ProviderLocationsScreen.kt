@@ -9,10 +9,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
-import com.bringyour.network.ui.stats.IpFamilyRowKind
-import com.bringyour.network.ui.stats.labelResId
+import com.bringyour.network.ui.stats.IpFamilyColumn
+import com.bringyour.network.ui.stats.tagResId
 import com.bringyour.network.ui.theme.MainBorderBase
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,13 +69,17 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.bringyour.network.R
 import com.bringyour.network.ui.components.Identicon
+import com.bringyour.network.ui.components.RowRemoveControl
+import com.bringyour.network.ui.components.providerLocationRemoveControls
 import com.bringyour.network.ui.components.SwipeToRevealRow
 import com.bringyour.network.ui.indexedLazyListKey
 import com.bringyour.network.ui.shared.viewmodels.PostQuantumIdentityViewModel
 import com.bringyour.network.ui.theme.Black
+import com.bringyour.network.ui.theme.Pink
 import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
 import com.bringyour.network.ui.theme.TopBarTitleTextStyle
+import com.bringyour.sdk.ConnectLocation
 import kotlinx.coroutines.delay
 
 /**
@@ -80,6 +87,10 @@ import kotlinx.coroutines.delay
  * sheet: the list is the point of the view, and a sheet dismisses itself on
  * the same downward drag used to scroll it. Dismissal is the explicit control
  * in the top bar, matching the contract details screen.
+ *
+ * The selected row offers "Stay on this exit" (see [stayOnExitState]), which
+ * hands the provider's client id location to [onStayOnExit]. [stayingClientId]
+ * is the client id of the current location when it is one.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +98,8 @@ fun ProviderLocationsScreen(
     navController: NavController,
     getLocationColor: (String) -> Color,
     mockLocationSection: @Composable (() -> Unit)? = null,
+    stayingClientId: String? = null,
+    onStayOnExit: ((ConnectLocation) -> Unit)? = null,
     viewModel: ProviderLocationsViewModel = hiltViewModel(),
     postQuantumIdentityViewModel: PostQuantumIdentityViewModel = hiltViewModel(),
 ) {
@@ -225,15 +238,39 @@ fun ProviderLocationsScreen(
                         indexedLazyListKey("provider-location", index, row.clientId)
                     },
                 ) { _, row ->
-                    SwipeToRevealRow(onDelete = { viewModel.removeProvider(row.clientId) }) {
+                    val stayState = if (onStayOnExit != null) {
+                        stayOnExitState(row, selectedClientId, stayingClientId)
+                    } else {
+                        StayOnExitState.NONE
+                    }
+                    val rowContent: @Composable () -> Unit = {
                         ProviderLocationRowItem(
                             row = row,
                             selected = row.clientId == selectedClientId,
                             nowMillis = nowMillis,
                             getLocationColor = getLocationColor,
                             onSelect = { viewModel.select(row.clientId) },
+                            stayState = stayState,
+                            onStay = {
+                                viewModel.stayOnExitLocation(row)?.let { location ->
+                                    onStayOnExit?.invoke(location)
+                                }
+                            },
+                            onRemove = if (RowRemoveControl.Button in providerLocationRemoveControls) {
+                                { viewModel.removeProvider(row.clientId) }
+                            } else {
+                                null
+                            },
                             pqIdenticon = pqIdenticonByClientId[row.clientId],
                         )
+                    }
+                    if (RowRemoveControl.Swipe in providerLocationRemoveControls) {
+                        SwipeToRevealRow(
+                            onDelete = { viewModel.removeProvider(row.clientId) },
+                            content = rowContent,
+                        )
+                    } else {
+                        rowContent()
                     }
                     HorizontalDivider()
                 }
@@ -254,10 +291,14 @@ private fun ProviderLocationRowItem(
     nowMillis: Long,
     getLocationColor: (String) -> Color,
     onSelect: () -> Unit,
+    // a visible remove button at the end of the row, when non-null
+    onRemove: (() -> Unit)? = null,
     // the provider's post-quantum identity identicon at badge size, non-null
     // only when the provider has an identity-verified end-to-end encrypted
     // session; rendered as a small badge to the right of the client id
     pqIdenticon: ImageBitmap? = null,
+    stayState: StayOnExitState = StayOnExitState.NONE,
+    onStay: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -350,6 +391,47 @@ private fun ProviderLocationRowItem(
                 color = TextMuted,
                 maxLines = 1,
             )
+
+            when (stayState) {
+                StayOnExitState.OFFER -> {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.stay_on_this_exit_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
+                    TextButton(
+                        onClick = onStay,
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.stay_on_this_exit),
+                            color = Pink,
+                        )
+                    }
+                }
+                StayOnExitState.STAYING -> {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.staying_on_this_exit),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
+                }
+                StayOnExitState.NONE -> {}
+            }
+        }
+
+        // swipe-to-reveal alone is unreachable for TalkBack, Switch Access and
+        // keyboard users, and invisible to anyone who does not know to swipe
+        onRemove?.let { remove ->
+            IconButton(onClick = remove) {
+                Icon(
+                    Icons.Filled.Clear,
+                    contentDescription = stringResource(id = R.string.remove),
+                    tint = TextMuted,
+                )
+            }
         }
     }
 }
@@ -387,7 +469,7 @@ private fun ProviderDot(color: Color, selected: Boolean) {
 
 /**
  * The IP versions a provider carries, as a small muted tag: "both", "v4" or
- * "v6" from the sdk's label, localized like the histogram rows.
+ * "v6" from the sdk's label, the short form of the status row's columns.
  */
 @Composable
 private fun IpFamilyTag(row: ProviderLocationRow) {
@@ -404,7 +486,7 @@ private fun IpFamilyTag(row: ProviderLocationRow) {
 
 /** The label resource for a row's IP family tag; legacy and unknown read as v4. */
 fun ipFamilyTagResId(row: ProviderLocationRow): Int =
-    IpFamilyRowKind.fromLabel(row.ipFamilyLabel).labelResId()
+    IpFamilyColumn.fromLabel(row.ipFamilyLabel).tagResId()
 
 /** "City, Region, Country" — omitting whichever parts the server does not know. */
 fun placeLabel(row: ProviderLocationRow): String =

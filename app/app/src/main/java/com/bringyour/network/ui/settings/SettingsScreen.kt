@@ -65,6 +65,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -84,7 +85,8 @@ import com.bringyour.network.LoginActivity
 import com.bringyour.network.MainApplication
 import com.bringyour.network.ui.account.AccountViewModel
 import com.bringyour.network.ui.components.InfoIconWithOverlay
-import com.bringyour.network.ui.components.URLinkText
+import com.bringyour.network.ui.components.SupportContact
+import com.bringyour.network.ui.components.openSupportUri
 import com.bringyour.network.ui.components.URSwitch
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
@@ -106,6 +108,7 @@ import com.bringyour.network.ui.Route
 import com.bringyour.network.ui.components.ButtonStyle
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.shared.models.ProvideControlMode
+import com.bringyour.network.ui.shared.models.ProvidePowerMode
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.bringyour.network.ui.shared.viewmodels.Plan
 import com.bringyour.network.ui.shared.viewmodels.PlanViewModel
@@ -113,6 +116,8 @@ import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
 import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.Green
 import com.bringyour.network.ui.wallet.EarningsViewModel
+import com.bringyour.network.ui.wallet.SeekerSignOutcome
+import com.bringyour.network.ui.wallet.SeekerVerifyNotice
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
@@ -129,6 +134,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.bringyour.network.TAG
 import com.bringyour.network.ui.components.ProvideCellPicker
 import com.bringyour.network.ui.components.ProvideControlModePicker
+import com.bringyour.network.ui.components.ProvidePowerModePicker
 import com.bringyour.network.location.MockLocationStatus
 import com.bringyour.network.location.MockLocationTarget
 import com.bringyour.network.ui.connect.providerlocations.MockLocationViewModel
@@ -218,6 +224,7 @@ fun SettingsScreen(
     val iconUri = Uri.parse("favicon.ico")
     val identityName = "URnetwork"
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     val clipboardManager = LocalClipboardManager.current
 
@@ -251,35 +258,51 @@ fun SettingsScreen(
                     signMessagesDetached(arrayOf(message.toByteArray()), arrayOf((authResult.accounts.first().publicKey)))
                 }
 
-                when (result) {
-                    is TransactionResult.Success -> {
-                        val signedMessageBytes = result.successPayload?.messages?.first()?.signatures?.first()
-                        val signatureBase64 = Base64.encodeToString(signedMessageBytes, Base64.NO_WRAP)
-                        // val message = result.successPayload?.messages?.first()?.message?.decodeToString()
-                        val pk = SolanaPublicKey(result.authResult.accounts.first().publicKey)
-
-                        earningsViewModel.verifySeekerHolder(
-                            pk,
-                            message,
-                            signatureBase64
-                        ) { errMsg ->
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = errMsg,
-                                    withDismissAction = true,
-                                    duration = SnackbarDuration.Indefinite
-                                )
-                            }
-                        }
-
-
+                val showNotice: (SeekerVerifyNotice) -> Unit = { notice ->
+                    val noticeMessage = when (notice) {
+                        SeekerVerifyNotice.NoWalletApp ->
+                            context.getString(R.string.seeker_verify_no_wallet_app)
+                        SeekerVerifyNotice.Failed ->
+                            context.getString(R.string.seeker_verify_failed)
+                        is SeekerVerifyNotice.NotHolder ->
+                            context.getString(R.string.seeker_token_not_found, notice.walletSuffix)
+                        is SeekerVerifyNotice.ServerMessage -> notice.message
                     }
-                    is TransactionResult.NoWalletFound -> {
-                        println("No MWA compatible wallet app found on device.")
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = noticeMessage,
+                            withDismissAction = true,
+                            duration = SnackbarDuration.Indefinite
+                        )
                     }
+                }
+
+                // a wallet app that cannot sign is shown, not only logged
+                val signedMessageBytes = (result as? TransactionResult.Success)
+                    ?.successPayload?.messages?.firstOrNull()?.signatures?.firstOrNull()
+                val signOutcome = when (result) {
+                    is TransactionResult.Success ->
+                        if (signedMessageBytes == null) SeekerSignOutcome.NoSignature else SeekerSignOutcome.Signed
+                    is TransactionResult.NoWalletFound -> SeekerSignOutcome.NoWalletApp
                     is TransactionResult.Failure -> {
-                        println("Error during transaction signing: ${result.e}")
+                        Log.i(TAG, "Error during transaction signing: ${result.e}")
+                        SeekerSignOutcome.Failed
                     }
+                }
+
+                val signNotice = SeekerVerifyNotice.fromSign(signOutcome)
+                if (signNotice != null) {
+                    showNotice(signNotice)
+                } else if (result is TransactionResult.Success && signedMessageBytes != null) {
+                    val signatureBase64 = Base64.encodeToString(signedMessageBytes, Base64.NO_WRAP)
+                    val pk = SolanaPublicKey(result.authResult.accounts.first().publicKey)
+
+                    earningsViewModel.verifySeekerHolder(
+                        pk,
+                        message,
+                        signatureBase64,
+                        showNotice
+                    )
                 }
             }
 
@@ -316,6 +339,8 @@ fun SettingsScreen(
         version = settingsViewModel.version,
         allowProvideCell = settingsViewModel.allowProvideOnCell.collectAsState().value,
         toggleProvideCell = settingsViewModel.toggleAllowProvideOnCell,
+        providePowerMode = settingsViewModel.providePowerMode.collectAsState().value,
+        setProvidePowerMode = settingsViewModel.setProvidePowerMode,
         authCodeCreate = settingsViewModel.authCodeCreate,
         authCode = authCode,
         isCreatingAuthCode = settingsViewModel.isCreatingAuthCode.collectAsState().value,
@@ -343,6 +368,17 @@ fun SettingsScreen(
         },
         onOpenMockLocationGuide = {
             navController.navigate(Route.MockLocationGuide)
+        },
+        showCloudProxyEntry = CloudProxy.entryVisible(accountViewModel.loginMode),
+        onCloudProxyClick = {
+            // Open the existing ur.io cloud proxies page (P150). Opened without a
+            // one-time auth code for now; see CloudProxy for the signed-in follow-up.
+            val linkHostName = (context.applicationContext as? MainApplication)
+                ?.deviceManager?.networkSpace?.linkHostName
+            val proxiesUrl = CloudProxy.proxiesUrl(linkHostName)
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, proxiesUrl.toUri()))
+            }
         },
     )
 
@@ -403,7 +439,7 @@ fun SettingsScreen(
     AddAuthMethodSheet(
         visible = presentAddAuthSheet,
         onDismiss = { presentAddAuthSheet = false },
-        showGoogleOption = BuildConfig.BRINGYOUR_BUNDLE_SSO_GOOGLE,
+        showSsoOptions = BuildConfig.BRINGYOUR_BUNDLE_SSO_GOOGLE,
         activityResultSender = activityResultSender,
         isAddingAuth = isAddingAuth,
         addAuth = settingsViewModel.addAuth,
@@ -543,7 +579,7 @@ private fun SettingsScreen(
     networkName: String? = null,
     setShowDeleteAccountDialog: (Boolean) -> Unit = {},
     showDeleteAccountDialog: Boolean,
-    deleteAccount: (onSuccess: () -> Unit, onFailure: (Exception?) -> Unit) -> Unit,
+    deleteAccount: (onSuccess: () -> Unit, onFailure: (DeleteAccountOutcome.Failed) -> Unit) -> Unit,
     isDeletingAccount: Boolean,
     routeLocal: Boolean,
     toggleRouteLocal: () -> Unit,
@@ -553,6 +589,8 @@ private fun SettingsScreen(
     version: String,
     allowProvideCell: Boolean,
     toggleProvideCell: () -> Unit,
+    providePowerMode: ProvidePowerMode = ProvidePowerMode.DEFAULT,
+    setProvidePowerMode: (ProvidePowerMode) -> Unit = {},
     authCodeCreate: () -> Unit,
     authCode: String?,
     isCreatingAuthCode: Boolean,
@@ -573,14 +611,16 @@ private fun SettingsScreen(
     mockLocationTarget: MockLocationTarget? = null,
     onToggleMockLocation: () -> Unit = {},
     onOpenMockLocationGuide: () -> Unit = {},
+    showCloudProxyEntry: Boolean = false,
+    onCloudProxyClick: () -> Unit = {},
 ) {
 
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val application = context.applicationContext as? MainApplication
+    // outlives the delete dialog, which closes before the failure snackbar shows
+    val deleteAccountScope = rememberCoroutineScope()
 
-    // todo - load this maybe as an config var?
-    val discordInviteLink = "https://discord.com/invite/RUNZXMwPRK"
 
     val depinHubStr = "DePIN Hub"
     val depinHubLink = "https://depinhub.io/projects/urnetwork"
@@ -933,6 +973,17 @@ private fun SettingsScreen(
             Spacer(modifier = Modifier.height(18.dp))
 
             /**
+             * Providing on battery: keep providing, pause in Battery Saver
+             * (the default), or pause until charging
+             */
+            ProvidePowerModePicker(
+                providePowerMode = providePowerMode,
+                setProvidePowerMode = setProvidePowerMode
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            /**
              * Kill switch
              */
             Row(
@@ -963,8 +1014,16 @@ private fun SettingsScreen(
                                 color = Color.White
                             )
                             Spacer(modifier = Modifier.height(8.dp))
+                            // the tunnel captures ::/0 like 0.0.0.0/0 (VpnRoutes.kt),
+                            // so the only public-route exception is SMTP on port 25
                             Text(
-                                stringResource(id = R.string.kill_switch_exception_detail),
+                                stringResource(id = R.string.kill_switch_exception_smtp_detail),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BlueLight
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                stringResource(id = R.string.kill_switch_exception_unrecognized_encrypted),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = BlueLight
                             )
@@ -1083,6 +1142,69 @@ private fun SettingsScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.height(18.dp))
+
+            /**
+             * VLESS: a VLESS server this network space also dials through
+             */
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        navController.navigate(Route.Vless)
+                    }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    stringResource(id = R.string.vless),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(id = R.string.vless),
+                    tint = TextMuted
+                )
+            }
+
+            // Run URnetwork as a cloud proxy instead of the VPN (P150): opens
+            // ur.io/app/proxies, where the HTTPS proxy is always on and SOCKS and
+            // WireGuard are available on Pro. Hidden for guests (no account).
+            if (showCloudProxyEntry) {
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onCloudProxyClick() }
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            stringResource(id = R.string.use_as_proxy_no_vpn),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                            modifier = Modifier.testTag("acceptance.cloud_proxy_entry")
+                        )
+
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.Outbound,
+                            contentDescription = "Open in browser",
+                            tint = TextMuted
+                        )
+                    }
+
+                    Text(
+                        stringResource(id = R.string.use_as_proxy_no_vpn_detail),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
 
             // allow notifications
@@ -1142,40 +1264,56 @@ private fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
+            // one row per support contact; the email comes first since Discord is unreachable in some regions
+            SupportContact.settingsLinks.forEachIndexed { index, link ->
+
+                if (0 < index) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                }
 
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    Text(
-                        stringResource(id = R.string.join_community_discord),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    URLinkText(
-                        text = "Discord",
-                        url = discordInviteLink,
-                        fontSize = 14.sp
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, discordInviteLink.toUri())
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.size(20.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.Outbound,
-                        contentDescription = "Right Arrow",
-                        tint = TextMuted,
-                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            stringResource(
+                                id = if (link == SupportContact.emailLink) {
+                                    R.string.email_support_at
+                                } else {
+                                    R.string.join_community_discord
+                                }
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            link.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = BlueMedium,
+                            modifier = Modifier.clickable {
+                                openSupportUri(context, link.uri)
+                            }
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            openSupportUri(context, link.uri)
+                        },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.Outbound,
+                            contentDescription = link.text,
+                            tint = TextMuted,
+                        )
+                    }
                 }
             }
 
@@ -1376,6 +1514,30 @@ private fun SettingsScreen(
                 }
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            /**
+             * Licenses
+             */
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        navController.navigate(Route.Licenses)
+                    }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    stringResource(id = R.string.licenses),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(id = R.string.licenses),
+                )
+            }
+
             // The Seeker/Saga data multiplier is promoted only on the Solana Mobile flavor.
             if (BuildConfig.BRINGYOUR_BUNDLE_STORE == "solana_dapp") {
 
@@ -1420,6 +1582,13 @@ private fun SettingsScreen(
 
             Text(
                 stringResource(id = R.string.connect_seeker_wallet),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
+
+            // the multiplier doubles points, free daily data and referral data; it does not grant Pro
+            Text(
+                stringResource(id = R.string.seeker_multiplier_benefit),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )
@@ -1478,6 +1647,7 @@ private fun SettingsScreen(
             var deleteConfirmText by remember { mutableStateOf(TextFieldValue("")) }
             val requiresTypedName = DeleteAccountConfirmation.requiresTypedName(networkName)
             val deleteConfirmed = DeleteAccountConfirmation.confirms(networkName, deleteConfirmText.text)
+            val deleteAccountFailedText = stringResource(id = R.string.error_deleting_account)
 
             BasicAlertDialog(
                 onDismissRequest = {
@@ -1588,10 +1758,17 @@ private fun SettingsScreen(
                                             (context as? Activity)?.finish()
 
                                         },
-                                        { exception ->
-                                            Log.i(TAG, "Error deleting account: ${exception?.message}")
+                                        { failed ->
+                                            // the account still exists: stay signed in, say why
                                             setShowDeleteAccountDialog(false)
-                                            // todo: snackbar show error
+                                            val message = DeleteAccountOutcome.failureMessage(deleteAccountFailedText, failed)
+                                            deleteAccountScope.launch {
+                                                snackbarHostState.showSnackbar(
+                                                    message = message,
+                                                    withDismissAction = true,
+                                                    duration = SnackbarDuration.Indefinite
+                                                )
+                                            }
                                         }
                                     )
                                 },

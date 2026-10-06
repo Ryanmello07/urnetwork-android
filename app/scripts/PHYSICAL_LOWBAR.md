@@ -71,10 +71,14 @@ during client cleanup. Host fixtures exercise those real driver paths with a
 fake ADB executable, rather than only accepting a fake schedule step.
 
 `result.json` separates `memoryQualified`, website measurements and cleanup.
-Every runtime sample, including teardown, must remain at or below 24 MiB.
+Every iOS-profile runtime sample, including teardown, must remain at or below
+**32 MiB (33,554,432 bytes)** for `ios-memory-audit-v2`, with 32-MiB admission
+and 32-MiB Go soft limit. Historical v1 retains its 20/32/28-MiB contract;
+old measurements cannot qualify v2. This Android proxy supplies no signed-iOS
+proof of the separate kernel-peak `phys_footprint <50 MiB` requirement.
 An arm's successful memory result is not a full campaign verdict or statistical
 baseline promotion; retain its Fast.com 40-Mbit/s goal result separately and
-follow RUN-PERF's paired sampling requirements. A failed setup/owner/quiet gate
+follow TEST-PERF's paired sampling requirements. A failed setup/owner/quiet gate
 cannot be rescued by low observed memory. Host-only regression coverage:
 
 ```sh
@@ -86,7 +90,7 @@ node --test app/scripts/physical_h1_arm_test.mjs
 For an observed rate-zero memory failure, use a **separate fresh arm** with
 `--measurement-mode diagnostic`. This is not a qualification override: it
 attests rate 65536 in the native writer, locked consumer/APK assembly, retained
-binary proof and installed live-profile gate. The same 20-MiB device target and
+binary proof and installed live-profile gate. The same v2 32-MiB device target and
 32-MiB Go soft limit remain in effect. No other rate or custom workload is
 accepted. For example, use the invocation above with a fresh run directory,
 label/build ID and unused port, adding:
@@ -132,7 +136,7 @@ the shared schedule with deterministic failures, strict helper argument parsing,
 effective rate binding, census/GC validation, 45-second clock simulation,
 exact memory-breach preservation and an actual retained PTY. Extended matched
 idle/post-traffic studies below remain available after this minimal capture;
-only a separate rate-zero arm can qualify the absolute 24-MiB barrier.
+only a separate rate-zero arm can qualify the absolute 32-MiB barrier.
 
 `physical_lowbar_capture.mjs` records a timestamped, privacy-safe NDJSON
 telemetry stream beside a real-device workload. It is intended to correlate the
@@ -331,7 +335,7 @@ It does not prove the cause of the original physical socket closure, or rule
 out a later closure after readiness. No keyguard/crash cause has been established.
 
 For iOS-profile memory work, build the app and Android-test APK with both
-`-PurnetworkMemoryProfile=ios-memory-audit-v1` and a unique
+`-PurnetworkMemoryProfile=ios-memory-audit-v2` and a unique
 `-PurnetworkAcceptanceBuildId=LABEL`; the Gradle default is Android's 40-MiB
 profile and is invalid for this campaign. Run
 `PhysicalLowbarSessionTest` with the same `acceptanceBuildId` instrumentation
@@ -358,6 +362,19 @@ com.bringyour.network cat files/acceptance/physical-status`; an absent file
 after the retained owner exits is a readiness failure, not an empty successful
 session. On that failure, preserve the owner exit output and remove the private
 credential and command files before a persistent-owner retry.
+
+On a command wait timeout, status `extra` retains `failure=wait-timeout` and a
+finite `stage` from `PhysicalWaitStage`, rather than the exception message or
+its cause. For public H1 connection the stages are `client-disconnect`,
+`provider-stop`, `transport-policy`, `us-country-pool`, `public-vpn-connection`,
+`peer-traffic-counters`, and `us-provider-carrier-evidence`. The role checker
+also retains this bounded classification in its captured stderr as
+`type=physical-command-failure`; legacy or unknown errors remain `unclassified`.
+An `AssertionError` and an approximately 120-second elapsed time alone do not
+identify which wait failed. Preserve the failed arm and rerun after rebuilding
+both APKs to obtain the stage; do not infer a network fix from that timing.
+These diagnostics use the existing Kotlin instrumentation/unit-test and Node
+platform-helper test surfaces, the platform exception to RUN-MAIN's Go rule.
 
 Native provenance is a separate pre-traffic gate. A fresh acceptance build ID
 only proves the app/test wrapper; `assembleGithubDebug` does not rebuild the
@@ -448,15 +465,15 @@ retention, and an upgrade between initial observation and installation.
 
 Use `physical_native_provenance.mjs` for the source-input half of this gate;
 manual revision lists are insufficient. Follow the exact before-build,
-after-build and verify/check commands in `tests/RUN-PERF.md` (native provenance).
+after-build and verify/check commands in `tests/TEST-PERF.md` (native provenance).
 Before the explicit SDK build, freeze `URNETWORK_ANDROID_SDK_BUILD_OWNER`,
 `ACCEPTANCE_BUILD_ID`, `NATIVE_PROFILE_RATE` (0 normally; 65536 only for approved
 owner diagnostics), the build PATH/GOWORK/GOFLAGS environment, and the private
 `NATIVE_INPUTS_BEFORE`, `NATIVE_INPUTS_AFTER`, `NATIVE_INPUTS_PROOF` and
 `NATIVE_WRITER_RECEIPT` paths. Capture `before`, then launch
 `physical_native_writer.sh` with explicit build ID, rate,
-`--memory-profile ios-memory-audit-v1`, bounded `--max-workers`, and private
-receipt/stdout/stderr paths using RUN-PERF's exact standalone retained call.
+`--memory-profile ios-memory-audit-v2`, bounded `--max-workers`, and private
+receipt/stdout/stderr paths using TEST-PERF's exact standalone retained call.
 The Bash entry point supervises the fixed `:app:buildSdkAcceptance` task and
 atomically writes its own terminal receipt after child outcome/join. Do not
 assign an outer-shell `status` or manually write the receipt: zsh reserves that
@@ -464,7 +481,7 @@ name, which caused `terra_proof_arm` to lose its writer evidence. Failed or
 interrupted writer receipts never authorize consumption; absent terminal
 evidence is incomplete setup. Raw child logs and receipt remain private 0600.
 The default executor is zsh, including commands **before** `exec bash`.
-Restore a saved arm using RUN-PERF's exact `NATIVE-CONTEXT` scalar-read block
+Restore a saved arm using TEST-PERF's exact `NATIVE-CONTEXT` scalar-read block
 before **each** retained writer and consumer call. Its private `arm-identifiers`
 record has exactly `LABEL\nBUILD_ID\n`. Freeze/restore the explicit profile rate,
 worker limit and tool environment too. Never use `readarray`, `mapfile`, arrays,
@@ -481,7 +498,7 @@ holds the lock through command join and APK/AAR retention/linkage. Do not
 assemble first and manually remember after/verify later (the CXAusf failure).
 The consumer command must not rebuild the SDK, install, stage credentials or
 perform any device work. Use the exact retained/private-log invocation in
-RUN-PERF; the wrapper forwards argv without eval and preserves the caller cwd.
+TEST-PERF; the wrapper forwards argv without eval and preserves the caller cwd.
 Missing/stale source evidence, missing after/proof, or invalid/lost lock ownership
 fails with a fixed `…-no-consumer-spawn` reason; never continue or reuse partial
 artifacts. The consumer also rejects missing/nonzero/altered writer receipts;
@@ -590,8 +607,9 @@ not used: signal permission is not the ownership contract.
 
 Before connecting or driving public traffic, capture the retained owner's
 fresh ready status and require the **offline** profile gate to exit 0. The
-effective values must be exactly 20-MiB device admission and 32-MiB Go soft
-limit, with live `goMemoryProfileRateBytes=0`; a smaller observed runtime is not
+effective values must be exactly 32-MiB device admission and 32-MiB Go soft
+limit, with selected `memoryProfile=ios-memory-audit-v2` and live
+`goMemoryProfileRateBytes=0`; a requested-profile echo or a smaller observed runtime is not
 a substitute. A missing build flag
 selects Android's 28/40-MiB policy and makes the cohort incomparable. A unique
 build ID by itself does not prove the memory profile.
@@ -610,11 +628,11 @@ node app/scripts/physical_memory_profile.mjs \
 
 This read-only capture is preflight evidence, **not a quiet boundary**. The
 quiet gate independently rechecks both boundaries' admission/soft-limit inputs
-and every primitive sample's soft limit and zero profile rate, including active
+and every primitive sample's selected profile, soft limit and zero profile rate, including active
 and teardown samples. Missing or nonnumeric rates also fail. Both native and
 app/test builds must use `-PurnetworkMemoryProfileRateBytes=0` for qualification;
 do not reuse a diagnostic AAR or disable profiling after it has initialized.
-A profile mismatch never suppresses a measured >24-MiB failure; it additionally
+A profile mismatch never suppresses a measured >32-MiB failure; it additionally
 disqualifies baseline comparison. Neither gate changes the app's budgets.
 
 ### H1 and Direct startup order
@@ -638,9 +656,41 @@ After the profile gate, use this prerequisite block in a normal retained/joined
 executor call. `SESSION_MODE` is exactly `h1` or `direct`. For H1, freeze a fresh
 safe `CONNECT_ID` (for example `h1-` plus a UUID) and retain its exact value for
 the collector call. The instrumentation command stream must have one owner and
-be idle before publication. The existing `connect` verb uses best-available
-exit selection: a completed H1 command proves carrier policy/tunnel, **not** US
-egress; retain the separate location/egress evidence required by the campaign.
+be idle before publication. The `connect` verb selects the explicit US country
+location (never best-available) and requires every current routing-eligible
+provider to publish US geography before completing. The API stores country codes
+in lowercase and the SDK preserves them, so both selection and live evidence
+normalize ASCII two-letter code casing (`us` becomes `US`). Blank, malformed,
+or ambiguous country evidence still fails. `countryCode` is read from those live
+providers, not copied from the requested location. Unknown or mixed geography
+fails the US gate. A separate-UID egress warmup establishes fresh
+packet evidence before workload timing; `selectedCarrier` is the sorted `+`
+joined set of carriers with byte progress since this connection began, not the
+requested mode or Auto preference. Mixed carriers stay explicit. Exact-peer
+status similarly requires the current target and all live provider IDs to
+match; the host still validates that ID against its private peer pin.
+
+Retained physical instrumentation explicitly opts its newly created SDK device
+into transfer counters, then calls the read-only diagnostic export every five
+seconds. `physical-diagnostics.ndjson` retains complete `state`, `memory`,
+`memory_device_transport`, and `memory_device_transfer` batches sharing one
+`unix_millis`; SDK root/child carrier values reuse one atomic hierarchy read.
+Do not reconstruct the budget graph in Kotlin or substitute the older primitive
+ring sample's timestamp. Export failure produces a sampler error and invalidates
+qualification. The opt-in is restored at teardown; normal apps install no
+diagnostic counters, collector, or ticker. The existing 15-second primitive
+sampler remains independently drained and the absolute iOS 28 MiB gate applies.
+
+Provider quiet means connected=false, provideEnabled=true, tunnelStarted=true:
+Android keeps that service running without establishing a client VPN. The
+independent underlay collector must still prove **no VPN**, and this role never
+qualifies connected-client quiet evidence.
+
+Host pilot (Go 1.26.7, Apple M4 Pro, GOMAXPROCS=2; three 500 ms repetitions):
+disabled diagnostic setup was 3.293–3.297 ns, 0 B and 0 allocations; an explicit
+idle-device joined export was 11.05–11.17 µs, about 15.93 KB and 20 allocations.
+This is an instrumentation-cost measurement, not physical performance evidence;
+only acceptance invokes the allocating export, once per five-second interval.
 
 ```sh
 umask 077
@@ -904,7 +954,7 @@ exec bash /Users/builder/urnetwork/android/app/scripts/physical_host_launch.sh w
 Use `owner-script` for physical arms: it derives `traffic-workload.sh` as the
 exact direct child of the frozen label directory instead of accepting a second
 handwritten path. For this layout `PRIVATE_DIR` must end in `LABEL` and the
-output must be `PRIVATE_DIR/workloads.json`. It also supports RUN-PERF's
+output must be `PRIVATE_DIR/workloads.json`. It also supports TEST-PERF's
 `private/LABEL.workloads.json` output, deriving `private/LABEL/traffic-workload.sh`.
 The private directory and its parent must already be owned mode 0700; the body
 must be an owned regular file, not a symlink or group/other-writable file.
@@ -1067,7 +1117,7 @@ separate gates; this helper covers workload telemetry and the quiet window,
 not overall website correctness or the full campaign.
 
 Exit 2 rejects missing/short/interrupted evidence as `INCOMPLETE_QUIET_WINDOW`;
-any retained runtime sample above 24 MiB is `FAILED_MEMORY_LIMIT`, including
+any retained runtime sample above 28 MiB is `FAILED_MEMORY_LIMIT`, including
 active samples before quiet. A below-threshold peak or instrumentation exit 0
 does not override either result. Only exit 0 allows normal `finish`/collector
 stop. On failure or safety timeout still finish and clean up, but preserve the
@@ -1076,7 +1126,7 @@ sessions may finish early and do not qualify memory. Finally pull the joined
 sampler output again so teardown samples are retained and checked as well.
 The teardown recheck uses the same gate arguments plus
 `--live-gate "$PRIVATE_DIR/quiet-gate.json"`, writing a separate output. This
-requires the retained schema-2 live collector proof for the same workload
+requires the retained schema-3 live collector proof, bound to the 32-MiB cap, for the same workload
 owner; it never substitutes a late collector or claims one is currently live.
 
 For a controlled provider, install its exact client ID through standard input
@@ -1282,7 +1332,7 @@ instrumentation session and disables rollback. It retains the marker and
 credentials for normal login and joined-session cleanup.
 
 After sending `finish` with an empty argument, join the retained supervisor
-and run the [normal-session credential cleanup](../../../tests/RUN-PERF.md#owned-credentials-after-normal-session-completion)
+and run the [normal-session credential cleanup](../../../tests/TEST-PERF.md#owned-credentials-after-normal-session-completion)
 with the original ownership, instrumentation-owner and exact finish-command
 ID. The helper requires matching ready/terminal evidence, uninterrupted exit
 0, joined host processes, the original credential/marker proof, and a matching
@@ -1300,7 +1350,7 @@ The stale unmarked `diag9` credential predates this proof and **cannot be
 adopted or automatically deleted**. Request explicit user approval for that
 exact stopped-session file removal, or ask the user to clear app data.
 Never recursively clear acceptance storage or guess ownership from a recycled
-inode. Full contract: [prospective rollback](../../../tests/RUN-PERF.md#prospective-credential-setup-rollback).
+inode. Full contract: [prospective rollback](../../../tests/TEST-PERF.md#prospective-credential-setup-rollback).
 
 Diagnostics distinguish `steps.create` (exclusive open), `steps.copy`,
 `steps.inspect` (final structural/hash inspection), and `steps.publish` (whole
@@ -1554,7 +1604,7 @@ cooldown, and before/after counters to distinguish policy from a leak.
 
 The attested H1 memory failure needs owner evidence, not another threshold
 change. Build the native SDK **and** both APKs with
-`-PurnetworkMemoryProfile=ios-memory-audit-v1`,
+`-PurnetworkMemoryProfile=ios-memory-audit-v2`,
 `-PurnetworkMemoryProfileRateBytes=65536`, and the same unique acceptance build
 ID, using the native build-owner/consumer-lock procedure above. Preserve the
 AAR/native/APK/source-input hash chain. No APK-only rebuild or reused native
@@ -1566,7 +1616,7 @@ rate is 65536 in addition to the normal iOS-profile gate.
 
 For this diagnostic only, pass explicit `--mode diagnostic` to
 `physical_memory_profile.mjs`. Its default (and `--mode qualification`) requires
-rate zero. Diagnostic mode still checks the same 20/32-MiB policy, requires
+rate zero. Diagnostic mode still checks the same 32/32-MiB policy, requires
 exactly 65536 live sampling, and returns `DIAGNOSTIC_PROFILE_READY` with
 `qualificationEligible=false`. This opt-in never enables quiet qualification:
 the absolute gate continues to require rate zero in both status boundaries and

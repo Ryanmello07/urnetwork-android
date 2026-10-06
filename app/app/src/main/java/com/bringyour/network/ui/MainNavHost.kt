@@ -3,6 +3,7 @@ package com.bringyour.network.ui
 import com.bringyour.network.ui.introduction.LocalIntroConnector
 import com.bringyour.network.ui.introduction.IntroConnectorState
 import com.bringyour.network.ui.introduction.FloatingIntroConnector
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.bringyour.network.ui.introduction.IntroductionQuickConnect
 import com.bringyour.network.ui.introduction.IntroductionOffer
@@ -15,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import android.content.res.Configuration
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
@@ -47,6 +49,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.NavigationRailItemDefaults
+import com.bringyour.network.ui.connect.InsufficientBalanceNoticeEffect
+import com.bringyour.network.ui.connect.upgradeShowsFreeRefresh
+import com.bringyour.network.ui.components.LocalUpgradeWaitForRefresh
 import com.bringyour.network.ui.connect.ConnectDrawerState
 import com.bringyour.network.ui.connect.rememberConnectDrawerState
 import androidx.compose.material3.SheetValue
@@ -70,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -88,6 +94,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.bringyour.network.ui.account.AccountScreen
 import com.bringyour.network.ui.settings.DeveloperScreen
+import com.bringyour.network.ui.settings.LicenseDetailScreen
+import com.bringyour.network.ui.settings.LicensesScreen
 import com.bringyour.network.ui.account.ExtendersScreen
 import com.bringyour.network.ui.account.ImportExtendersScreen
 import com.bringyour.network.ui.account.ProviderIdentitiesScreen
@@ -97,6 +105,7 @@ import com.bringyour.network.ui.components.proFlightPixelation
 import com.bringyour.network.ui.components.rememberProFlightClock
 import com.bringyour.network.ui.components.overlays.FullScreenOverlay
 import com.bringyour.network.ui.components.overlays.WelcomeAnimatedMainOverlay
+import com.bringyour.network.ui.components.referral.LocalReferralCountLoad
 import com.bringyour.network.ui.components.referral.LocalReferralTerms
 import com.bringyour.network.ui.components.referral.ReferralRoyalToast
 import com.bringyour.network.ui.connect.ConnectScreen
@@ -114,6 +123,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.navigation
 import androidx.navigation.toRoute
 import com.bringyour.network.ui.account.AccountViewModel
+import com.bringyour.network.ui.account.GuestAccount
+import com.bringyour.network.ui.account.GuestConversionSheet
+import com.bringyour.network.ui.account.IntroFunnel
+import com.bringyour.network.ui.account.UpgradeEntry
 import com.bringyour.network.ui.components.nestedLinkBottomSheet.NestedLinkBottomSheet
 import com.bringyour.network.ui.connect.BrowseLocationsScreen
 import com.bringyour.network.ui.connect.LocationsListViewModel
@@ -123,6 +136,7 @@ import com.bringyour.network.ui.widgets.WidgetsScreen
 import com.bringyour.network.ui.profile.ProfileScreen
 import com.bringyour.network.ui.profile.ProfileViewModel
 import com.bringyour.network.ui.settings.SettingsScreen
+import com.bringyour.network.ui.settings.VlessSettingsScreen
 import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
 import com.bringyour.network.ui.wallet.EarningsViewModel
 import com.bringyour.network.ui.wallet.EarningsScreen
@@ -140,6 +154,7 @@ import com.bringyour.network.ui.introduction.IntroductionUsageBar
 import com.bringyour.network.ui.shared.models.BundleStore
 import com.bringyour.network.ui.shared.models.ProvideControlMode
 import com.bringyour.network.ui.shared.viewmodels.AccountPointsViewModel
+import com.bringyour.network.ui.shared.models.SectionLoad
 import com.bringyour.network.ui.shared.viewmodels.NetworkReliabilityViewModel
 import com.bringyour.network.ui.shared.viewmodels.Plan
 import com.bringyour.network.ui.shared.viewmodels.SolanaPaymentViewModel
@@ -183,8 +198,13 @@ fun MainNavHost(
     // the referral cap and bonus come from the server with the referral code;
     // everything signed-in reads them from here instead of hardcoding numbers
     val referralTerms by referralCodeViewModel.terms.collectAsState()
+    // the usage bar's referral figures wait for the same read
+    val referralCountLoad by referralCodeViewModel.codeLoad.collectAsState()
 
-    CompositionLocalProvider(LocalReferralTerms provides referralTerms) {
+    CompositionLocalProvider(
+        LocalReferralTerms provides referralTerms,
+        LocalReferralCountLoad provides referralCountLoad,
+    ) {
         MainNavHostContent(
         earningsViewModel = earningsViewModel,
         settingsViewModel = settingsViewModel,
@@ -234,6 +254,7 @@ private fun MainNavHostContent(
     val reliabilityWindow by networkReliabilityViewModel.reliabilityWindow.collectAsState()
     val totalReferralCount by referralCodeViewModel.totalReferralCount.collectAsState()
     val referralCode by referralCodeViewModel.referralCode.collectAsState()
+    val referralCodeLoad by referralCodeViewModel.codeLoad.collectAsState()
     val pendingReferralCelebration by referralCodeViewModel.pendingCelebration.collectAsState()
     val pendingSolanaSubReference by solanaPaymentViewModel.pendingSolanaSubscriptionReference.collectAsState()
     val isCheckingSolanaTransaction by subscriptionBalanceViewModel.isCheckingSolanaTransaction.collectAsState()
@@ -382,6 +403,13 @@ private fun MainNavHostContent(
             selectTopLevelRoute(TopLevelScaffoldRoutes.CONNECT_CONTAINER)
             return@LaunchedEffect
         }
+        if (route == com.bringyour.network.QuickConnectActivity.ROUTE_UPGRADE) {
+            // a connect blocked by insufficient balance: the upgrade the connect
+            // screen offers in place of Connect
+            selectTopLevelRoute(TopLevelScaffoldRoutes.CONNECT_CONTAINER)
+            navController.navigateToUpgradeForBalanceBlock()
+            return@LaunchedEffect
+        }
         // the campaign email links land on Account screens: the widgets page, the
         // Get Pro screen (which shows the welcome offer while it is active), or
         // the feedback screen with the email's rating or reason pre-filled
@@ -420,20 +448,36 @@ private fun MainNavHostContent(
         navController.navigate(Route.Earnings)
     }
 
+    InsufficientBalanceNoticeEffect(
+        connectViewModel = connectViewModel,
+        isPro = isPro,
+        isPollingSubscriptionBalance = subscriptionBalanceViewModel.isPollingSubscriptionBalance,
+    )
+
     /**
      * For initial intro funnel prompting
      */
-    LaunchedEffect(isPro, allowPromptIntroFunnel) {
+    val isGuestNetworkForIntro by subscriptionBalanceViewModel.isGuestNetwork.collectAsState()
+    // a refreshed guest is a guest only once the balance has loaded
+    val guestStatusKnownForIntro by subscriptionBalanceViewModel.guestStatusKnown.collectAsState()
+    LaunchedEffect(isPro, allowPromptIntroFunnel, isGuestNetworkForIntro, guestStatusKnownForIntro) {
 
-        if (isPro) {
-            mainNavViewModel.setDisplayIntroFunnel(false)
-        } else {
-            if (allowPromptIntroFunnel) {
+        // the intro sells a plan; a guest network is not sold one (GuestAccount),
+        // and it waits until the guest status is known
+        when (GuestAccount.introFunnel(
+            isPro = isPro,
+            isGuest = isGuestNetworkForIntro,
+            guestStatusKnown = guestStatusKnownForIntro,
+            allowPrompt = allowPromptIntroFunnel,
+        )) {
+            IntroFunnel.Hide -> mainNavViewModel.setDisplayIntroFunnel(false)
+            IntroFunnel.Show -> {
                 // display intro funnel
                 mainNavViewModel.setDisplayIntroFunnel(true)
                 // set time last prompted in localstorage
                 mainNavViewModel.setIntroFunnelLastPrompted()
             }
+            IntroFunnel.Unchanged -> {}
         }
 
     }
@@ -456,6 +500,41 @@ private fun MainNavHostContent(
                 mainNavViewModel.setDisplayIntroFunnel(false)
             } else {
                 navController.popBackStack()
+            }
+        }
+    }
+
+    /**
+     * A Stripe sheet / pay page / checkout-return purchase the server has confirmed
+     * (SubscriptionBalanceViewModel.confirmPurchase). The overlay launches only now,
+     * never when the payment UI merely reported success.
+     */
+    LaunchedEffect(Unit) {
+        subscriptionBalanceViewModel.purchaseConfirmedSequence.collect { sequence ->
+            if (!subscriptionBalanceViewModel.consumePurchaseConfirmedSequence(sequence)) {
+                return@collect
+            }
+
+            overlayViewModel.launchSunglassesFlight()
+            overlayViewModel.launch(OverlayMode.Upgrade)
+        }
+    }
+
+    /**
+     * The server refused a purchase for a guest network the app did not know
+     * about (SubscriptionBalanceViewModel.guestSignInRequired), which now reads
+     * as a guest: the upgrade route shows the add-sign-in sheet in place of
+     * checkout, and the intro funnel hides itself, so a refusal from the intro
+     * opens the upgrade route on that sheet.
+     */
+    LaunchedEffect(Unit) {
+        subscriptionBalanceViewModel.guestSignInRequiredSequence.collect { sequence ->
+            if (!subscriptionBalanceViewModel.consumeGuestSignInRequiredSequence(sequence)) {
+                return@collect
+            }
+
+            if (navController.currentDestination?.hasRoute<Route.Upgrade>() != true) {
+                navController.navigate(Route.Upgrade)
             }
         }
     }
@@ -534,6 +613,48 @@ private fun MainNavHostContent(
 
             showConfirmationDelayedDialog = true
         }
+    }
+
+    /**
+     * The Solana return-path check passed the old 20 s cap: say it is still checking
+     * rather than going quiet. If it runs out its two minutes, the confirmation-delayed
+     * notice follows -- without the "Payment received" title, since the app cannot
+     * know the wallet sent anything.
+     */
+    val solanaStillCheckingMessage = stringResource(id = R.string.solana_payment_still_checking)
+    val navHostContext = LocalContext.current
+    LaunchedEffect(Unit) {
+        subscriptionBalanceViewModel.solanaStillCheckingSequence.collect { sequence ->
+            if (!subscriptionBalanceViewModel.consumeSolanaStillCheckingSequence(sequence)) {
+                return@collect
+            }
+
+            Toast.makeText(navHostContext, solanaStillCheckingMessage, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    var showSolanaCheckDelayedDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        subscriptionBalanceViewModel.solanaCheckTimedOutSequence.collect { sequence ->
+            if (!subscriptionBalanceViewModel.consumeSolanaCheckTimedOutSequence(sequence)) {
+                return@collect
+            }
+
+            showSolanaCheckDelayedDialog = true
+        }
+    }
+
+    if (showSolanaCheckDelayedDialog) {
+        AlertDialog(
+            onDismissRequest = { showSolanaCheckDelayedDialog = false },
+            text = { Text(stringResource(id = R.string.payment_confirmation_delayed)) },
+            confirmButton = {
+                TextButton(onClick = { showSolanaCheckDelayedDialog = false }) {
+                    Text(stringResource(id = R.string.close))
+                }
+            }
+        )
     }
 
     if (showConfirmationDelayedDialog) {
@@ -615,7 +736,9 @@ private fun MainNavHostContent(
 
     /**
      * This is for listening to Solana Wallet subscriptions
-     * If there is a pending sub reference + the app regains focus, we start polling the subscription balance
+     * If there is a pending sub reference + the app regains focus, we start polling the subscription balance.
+     * The reference is persisted (it survives the app being killed while the wallet is
+     * in front) and is only dropped once the check is confirmed or timed out.
      */
     DisposableEffect(lifecycleOwner, pendingSolanaSubReference) {
 
@@ -623,9 +746,18 @@ private fun MainNavHostContent(
             if (event == Lifecycle.Event.ON_RESUME) {
                 if (!pendingSolanaSubReference.isNullOrEmpty()) {
                     scope.launch {
+                        // a restart after process death lost the in-memory expectation
+                        solanaPaymentViewModel.pendingSolanaPayment?.let { payment ->
+                            if (payment.plan.isNotEmpty()) {
+                                subscriptionBalanceViewModel.expectSolanaPurchase(payment.plan, payment.amountUsd)
+                            }
+                        }
                         // poll subscription balance until it's updated
-                        subscriptionBalanceViewModel.pollSolanaTransaction()
-                        solanaPaymentViewModel.setPendingSolanaSubscriptionReference(null)
+                        subscriptionBalanceViewModel.pollSolanaTransaction(
+                            onFinished = {
+                                solanaPaymentViewModel.setPendingSolanaSubscriptionReference(null)
+                            }
+                        )
                     }
                 }
             }
@@ -693,6 +825,8 @@ private fun MainNavHostContent(
                 meanReliabilityWeight = reliabilityWindow?.meanReliabilityWeight ?: 0.0,
                 totalReferralCount = totalReferralCount,
                 referralCode = referralCode,
+                referralCodeFailed = referralCodeLoad == SectionLoad.Failed,
+                retryReferralCode = referralCodeViewModel.retryReferralCode,
                 provideControlMode = settingsViewModel.provideControlMode,
                 setProvideControlMode = settingsViewModel.setProvideControlMode,
                 provideIndicatorColor = settingsViewModel.provideIndicatorColor,
@@ -901,6 +1035,8 @@ fun IntroNavHost(
     meanReliabilityWeight: Double,
     totalReferralCount: Long,
     referralCode: String,
+    referralCodeFailed: Boolean = false,
+    retryReferralCode: () -> Unit = {},
     provideControlMode: ProvideControlMode,
     setProvideControlMode: (ProvideControlMode) -> Unit,
     provideIndicatorColor: Color,
@@ -914,7 +1050,6 @@ fun IntroNavHost(
 ) {
 
     val introNavController = rememberNavController()
-    val scope = rememberCoroutineScope()
 
     // the connector mark that flies from page 1's route line into the header
     val introConnector = remember { IntroConnectorState() }
@@ -969,17 +1104,16 @@ fun IntroNavHost(
                 createSolanaPaymentIntent = solanaPaymentViewModel.createSolanaPaymentIntent,
                 setPendingSolanaSubscriptionReference = solanaPaymentViewModel.setPendingSolanaSubscriptionReference,
                 onStripePaymentSuccess = {
-                    subscriptionBalanceViewModel.pollSubscriptionBalance()
+                    subscriptionBalanceViewModel.confirmPurchase()
                     dismiss()
                 },
                 onRedeemTransferBalanceCodeSuccess = {
-                    subscriptionBalanceViewModel.pollSubscriptionBalance()
-                    overlayViewModel.launch(OverlayMode.Upgrade)
-                    scope.launch {
-                        // bandaid for overlapping modal state getting weird
-                        delay(1000)
-                        dismiss()
-                    }
+                    // a balance code is data only: the sheet confirmed the data it
+                    // added; read the balance once and finish the intro. The Pro
+                    // overlay and the Pro confirmation poll would wait for a plan a
+                    // code never grants.
+                    subscriptionBalanceViewModel.fetchSubscriptionBalance()
+                    dismiss()
                 },
                 isCheckingSolanaTransaction = isCheckingSolanaTransaction
             )
@@ -1015,7 +1149,9 @@ fun IntroNavHost(
                 navController = introNavController,
                 dismiss = skipToOffer,
                 totalReferrals = totalReferralCount,
-                referralCode = referralCode
+                referralCode = referralCode,
+                referralCodeFailed = referralCodeFailed,
+                retryReferralCode = retryReferralCode,
             )
         }
 
@@ -1037,9 +1173,8 @@ fun IntroNavHost(
                 planViewModel = planViewModel,
                 subscriptionBalanceViewModel = subscriptionBalanceViewModel,
                 onPurchaseSuccess = {
-                    subscriptionBalanceViewModel.pollSubscriptionBalance()
-                    overlayViewModel.launchSunglassesFlight()
-                    overlayViewModel.launch(OverlayMode.Upgrade)
+                    // the overlay follows the server's confirmation (purchaseConfirmedSequence)
+                    subscriptionBalanceViewModel.confirmPurchase()
                     dismiss()
                 },
             )
@@ -1089,6 +1224,11 @@ fun MainNavContent(
     profileViewModel: ProfileViewModel = hiltViewModel<ProfileViewModel>(),
     accountPointsViewModel: AccountPointsViewModel = hiltViewModel<AccountPointsViewModel>(),
 ) {
+    val isGuestNetwork by subscriptionBalanceViewModel.isGuestNetwork.collectAsState()
+    LaunchedEffect(isGuestNetwork) {
+        accountViewModel.setGuestNetwork(isGuestNetwork)
+    }
+
     val localDensityCurrent = LocalDensity.current
     val canvasSizePx =
         with(localDensityCurrent) { connectViewModel.canvasSize.times(0.4f).toPx() }
@@ -1227,6 +1367,13 @@ fun MainNavContent(
                     mockLocationSection = {
                         MockLocationSection(navController = navController)
                     },
+                    stayingClientId = connectViewModel.selectedLocation?.connectLocationId?.clientId?.idStr,
+                    // Stay on this exit reconnects to the one provider, through the
+                    // same connect gate as a location pick, and returns to the grid
+                    onStayOnExit = { location ->
+                        connectViewModel.connect(location)
+                        navController.popBackStack()
+                    },
                 )
             }
 
@@ -1259,26 +1406,63 @@ fun MainNavContent(
             LeaderboardScreen()
         }
 
+        composable<Route.GuestConversion> {
+            GuestConversionSheet(
+                settingsViewModel = settingsViewModel,
+                activityResultSender = activityResultSender,
+                refreshJwt = subscriptionBalanceViewModel.refreshJwt,
+                onAdded = {
+                    // the server stops reporting a guest once the method exists
+                    subscriptionBalanceViewModel.fetchSubscriptionBalance()
+                    navController.popBackStack()
+                },
+                onDismiss = { navController.popBackStack() }
+            )
+        }
+
         composable<Route.Upgrade>(
             enterTransition = NavigationAnimations.enterTransition(),
             exitTransition = NavigationAnimations.exitTransition(),
             popEnterTransition = NavigationAnimations.popEnterTransition(),
             popExitTransition = NavigationAnimations.popExitTransition()
-        ) {
-            UpgradeScreen(
-                navController = navController,
-                planViewModel = planViewModel,
-                subscriptionBalanceViewModel = subscriptionBalanceViewModel,
-                setPendingSolanaSubscriptionReference = solanaPaymentViewModel.setPendingSolanaSubscriptionReference,
-                createSolanaPaymentIntent = solanaPaymentViewModel.createSolanaPaymentIntent,
-                onStripePaymentSuccess = {
-                    subscriptionBalanceViewModel.pollSubscriptionBalance()
-                    overlayViewModel.launchSunglassesFlight()
-                    overlayViewModel.launch(OverlayMode.Upgrade)
-                    navController.popBackStack()
-                },
-                isCheckingSolanaTransaction = isCheckingSolanaTransaction
-            )
+        ) { backStackEntry ->
+            // every upgrade entry lands here; a guest network has no login to
+            // come back to, so it adds a sign-in method first and is not sold a plan
+            if (GuestAccount.upgradeEntry(isGuestNetwork) == UpgradeEntry.AddSignInMethod) {
+                GuestConversionSheet(
+                    settingsViewModel = settingsViewModel,
+                    activityResultSender = activityResultSender,
+                    refreshJwt = subscriptionBalanceViewModel.refreshJwt,
+                    onAdded = { subscriptionBalanceViewModel.fetchSubscriptionBalance() },
+                    onDismiss = { navController.popBackStack() }
+                )
+                return@composable
+            }
+            // opened by a blocked start connect: the header leads with when the
+            // free data refreshes and offers Wait for refresh, which closes it
+            val openedByBalanceBlock =
+                backStackEntry.savedStateHandle.get<Boolean>(UPGRADE_OPENED_BY_BALANCE_BLOCK) == true
+            val waitForRefresh: (() -> Unit)? =
+                if (upgradeShowsFreeRefresh(openedByBalanceBlock, if (isPro) Plan.Supporter else Plan.Basic)) {
+                    { navController.popBackStack() }
+                } else {
+                    null
+                }
+            CompositionLocalProvider(LocalUpgradeWaitForRefresh provides waitForRefresh) {
+                UpgradeScreen(
+                    navController = navController,
+                    planViewModel = planViewModel,
+                    subscriptionBalanceViewModel = subscriptionBalanceViewModel,
+                    setPendingSolanaSubscriptionReference = solanaPaymentViewModel.setPendingSolanaSubscriptionReference,
+                    createSolanaPaymentIntent = solanaPaymentViewModel.createSolanaPaymentIntent,
+                    onStripePaymentSuccess = {
+                        // the overlay follows the server's confirmation (purchaseConfirmedSequence)
+                        subscriptionBalanceViewModel.confirmPurchase()
+                        navController.popBackStack()
+                    },
+                    isCheckingSolanaTransaction = isCheckingSolanaTransaction
+                )
+            }
         }
 
         navigation<Route.AccountContainer>(
@@ -1292,6 +1476,8 @@ fun MainNavContent(
                     accountViewModel,
                     totalAccountPoints = accountPointsViewModel.totalAccountPoints.collectAsState().value,
                     accountPointsLoaded = accountPointsViewModel.pointsLoaded.collectAsState().value,
+                    accountPointsFailed = accountPointsViewModel.pointsLoad.collectAsState().value == SectionLoad.Failed,
+                    retryAccountPoints = { accountPointsViewModel.fetchAccountPoints() },
                     planViewModel = planViewModel,
                     subscriptionBalanceViewModel = subscriptionBalanceViewModel,
                     overlayViewModel = overlayViewModel,
@@ -1326,6 +1512,15 @@ fun MainNavContent(
                 earningsViewModel,
                 isPro = isPro
             ) }
+
+            composable<Route.Vless>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                VlessSettingsScreen(navController = navController)
+            }
 
             composable<Route.ProviderIdentities>(
                 enterTransition = NavigationAnimations.enterTransition(),
@@ -1380,6 +1575,25 @@ fun MainNavContent(
                 DeveloperScreen(navController = navController)
             }
 
+            composable<Route.Licenses>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) {
+                LicensesScreen(navController = navController)
+            }
+
+            composable<Route.LicenseDetail>(
+                enterTransition = NavigationAnimations.enterTransition(),
+                exitTransition = NavigationAnimations.exitTransition(),
+                popEnterTransition = NavigationAnimations.popEnterTransition(),
+                popExitTransition = NavigationAnimations.popExitTransition()
+            ) { backStackEntry ->
+                val route: Route.LicenseDetail = backStackEntry.toRoute()
+                LicenseDetailScreen(navController = navController, index = route.index)
+            }
+
             composable<Route.BlockedRegions>(
                 enterTransition = NavigationAnimations.enterTransition(),
                 exitTransition = NavigationAnimations.exitTransition(),
@@ -1421,7 +1635,8 @@ fun MainNavContent(
                     reliabilityPoints = accountPointsViewModel.reliabilityPoints.collectAsState().value,
                     fetchAccountPoints = { accountPointsViewModel.fetchAccountPoints() },
                     reliabilityWindow = reliabilityWindow,
-                    activityResultSender = activityResultSender
+                    activityResultSender = activityResultSender,
+                    accountPointsFailed = accountPointsViewModel.pointsLoad.collectAsState().value == SectionLoad.Failed,
                 )
             }
 
@@ -1435,9 +1650,11 @@ fun MainNavContent(
                     navController = navController,
                     settingsViewModel = settingsViewModel,
                     referralCode = referralCodeViewModel.referralCode.collectAsState().value,
+                    referralCodeLoad = referralCodeViewModel.codeLoad.collectAsState().value,
+                    retryReferralCode = referralCodeViewModel.retryReferralCode,
                     totalReferrals = totalReferralCount,
                     referralPoints = accountPointsViewModel.referralPoints.collectAsState().value,
-                    pointsLoaded = accountPointsViewModel.pointsLoaded.collectAsState().value,
+                    pointsLoad = accountPointsViewModel.pointsLoad.collectAsState().value,
                     fetchAccountPoints = { accountPointsViewModel.fetchAccountPoints() },
                 )
             }

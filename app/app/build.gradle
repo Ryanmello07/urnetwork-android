@@ -50,8 +50,8 @@ if (!(urnetworkMemoryProfileRateBytes ==~ /[0-9]+/)) {
 // Explicit acceptance-only profile; production defaults keep Android's budget.
 def urnetworkMemoryProfile =
         (project.findProperty('urnetworkMemoryProfile') ?: 'android').toString()
-if (!(urnetworkMemoryProfile in ['android', 'ios-memory-audit-v1'])) {
-    throw new GradleException('urnetworkMemoryProfile must be android or ios-memory-audit-v1')
+if (!(urnetworkMemoryProfile in ['android', 'ios-memory-audit-v1', 'ios-memory-audit-v2'])) {
+    throw new GradleException('urnetworkMemoryProfile must be android, ios-memory-audit-v1 or ios-memory-audit-v2')
 }
 
 ext.signingSecret = { key ->
@@ -278,21 +278,27 @@ android {
             applicationId 'com.bringyour.network'
 //            versionNameSuffix '-github'
 
-            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"ur.network"'
+            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"bringyour.com"'
+            // the key an earlier bundle stored the operator space under; migrated to
+            // BRINGYOUR_BUNDLE_HOST_NAME at startup (see MainApplication)
+            buildConfigField "String", "BRINGYOUR_BUNDLE_LEGACY_HOST_NAME", '"ur.network"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_NAME", '"main"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_SECRET", 'null'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_IPS", 'true'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_HOST_NAMES", 'true'
             buildConfigField "String", "BRINGYOUR_BUNDLE_LINK_HOST_NAME", '"ur.io"'
-            // the migratioon host name is used for services
-            // TODO this will be removed once we fully migrate to ur.network
-            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '"bringyour.com"'
+            // the migration host name, when set, is used for services instead of the host name
+            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '""'
             buildConfigField "String", "BRINGYOUR_BUNDLE_STORE", 'null'
             // hard coded initial extender networks
             // this can avoid the need for an initial doh query
             // json string array
             buildConfigField "String[]", "BRINGYOUR_BUNDLE_NET_EXTENDER_NETWORKS", 'new String[]{}'
-            buildConfigField "boolean", "BRINGYOUR_BUNDLE_SSO_GOOGLE", 'false'
+            // Google (and Apple) sign-in are offered on the login and the add
+            // sign-in method sheet. Without Play services both run as the
+            // provider's web flow in a Custom Tab (LoginUtils launchSsoOAuth),
+            // never play-services-auth.
+            buildConfigField "boolean", "BRINGYOUR_BUNDLE_SSO_GOOGLE", 'true'
             buildConfigField "String", "BRINGYOUR_BUNDLE_WALLET", '"solana"'
 
             signingConfig = signingConfigs.github
@@ -318,13 +324,16 @@ android {
             applicationId 'com.bringyour.network'
             versionNameSuffix '-play'
 
-            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"ur.network"'
+            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"bringyour.com"'
+            // the key an earlier bundle stored the operator space under; migrated to
+            // BRINGYOUR_BUNDLE_HOST_NAME at startup (see MainApplication)
+            buildConfigField "String", "BRINGYOUR_BUNDLE_LEGACY_HOST_NAME", '"ur.network"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_NAME", '"main"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_SECRET", 'null'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_IPS", 'true'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_HOST_NAMES", 'true'
             buildConfigField "String", "BRINGYOUR_BUNDLE_LINK_HOST_NAME", '"ur.io"'
-            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '"bringyour.com"'
+            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '""'
             buildConfigField "String", "BRINGYOUR_BUNDLE_STORE", '"play"'
             buildConfigField "String[]", "BRINGYOUR_BUNDLE_NET_EXTENDER_NETWORKS", 'new String[]{}'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_SSO_GOOGLE", 'true'
@@ -341,13 +350,16 @@ android {
             applicationId 'com.bringyour.network'
             versionNameSuffix '-solana_dapp'
 
-            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"ur.network"'
+            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"bringyour.com"'
+            // the key an earlier bundle stored the operator space under; migrated to
+            // BRINGYOUR_BUNDLE_HOST_NAME at startup (see MainApplication)
+            buildConfigField "String", "BRINGYOUR_BUNDLE_LEGACY_HOST_NAME", '"ur.network"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_NAME", '"main"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_SECRET", 'null'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_IPS", 'true'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_HOST_NAMES", 'true'
             buildConfigField "String", "BRINGYOUR_BUNDLE_LINK_HOST_NAME", '"ur.io"'
-            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '"bringyour.com"'
+            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '""'
             buildConfigField "String", "BRINGYOUR_BUNDLE_STORE", '"solana_dapp"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_WALLET", '"solana"'
             buildConfigField "String[]", "BRINGYOUR_BUNDLE_NET_EXTENDER_NETWORKS", 'new String[]{}'
@@ -375,13 +387,16 @@ android {
             applicationId 'com.bringyour.network'
             versionNameSuffix '-ethos_dapp'
 
-            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"ur.network"'
+            buildConfigField "String", "BRINGYOUR_BUNDLE_HOST_NAME", '"bringyour.com"'
+            // the key an earlier bundle stored the operator space under; migrated to
+            // BRINGYOUR_BUNDLE_HOST_NAME at startup (see MainApplication)
+            buildConfigField "String", "BRINGYOUR_BUNDLE_LEGACY_HOST_NAME", '"ur.network"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_NAME", '"main"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_ENV_SECRET", 'null'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_IPS", 'true'
             buildConfigField "boolean", "BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_HOST_NAMES", 'true'
             buildConfigField "String", "BRINGYOUR_BUNDLE_LINK_HOST_NAME", '"ur.io"'
-            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '"bringyour.com"'
+            buildConfigField "String", "BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME", '""'
             buildConfigField "String", "BRINGYOUR_BUNDLE_STORE", '"ethos_dapp"'
             buildConfigField "String", "BRINGYOUR_BUNDLE_WALLET", '"ethos"'
             buildConfigField "String[]", "BRINGYOUR_BUNDLE_NET_EXTENDER_NETWORKS", 'new String[]{}'
@@ -607,7 +622,11 @@ dependencies {
 
 // solana saga
 dependencies {
-    implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.1.0")
+    implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.1.0") {
+        // 2.1.0 publishes its test library as a runtime dependency, which would
+        // ship junit, hamcrest and androidx.test in the app
+        exclude group: "androidx.test.ext", module: "junit-ktx"
+    }
     implementation("com.solanamobile:web3-solana:0.3.1")
     implementation("com.solanamobile:rpc-core:0.2.11")
     implementation("io.github.funkatronics:multimult:0.2.6")

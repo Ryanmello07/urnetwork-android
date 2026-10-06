@@ -69,6 +69,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.bringyour.network.MainApplication
+import com.bringyour.network.PrivateDnsMode
+import com.bringyour.network.privateDnsStrictNoticeHost
 import com.bringyour.network.R
 import com.bringyour.sdk.ConnectGrid
 import com.bringyour.sdk.ConnectLocation
@@ -127,7 +129,32 @@ fun ConnectScreen(
     val availableBytes by subscriptionBalanceViewModel.availableBalanceByteCount.collectAsState()
     val dailyByteCount by subscriptionBalanceViewModel.startBalanceByteCount.collectAsState()
 
-    val displayInsufficientBalance = contractStatus?.insufficientBalance == true && !isPro
+    // the last fetched account balance, as the start connect gate outside the
+    // ui reads it (MainApplication.checkStartConnect)
+    val screenContext = LocalContext.current
+    val balanceChanges by com.bringyour.network.widgets.WidgetSnapshotStore.changes.collectAsState()
+    val accountBalance = remember(balanceChanges) {
+        com.bringyour.network.widgets.WidgetSnapshotStore.loadBalance(screenContext)
+    }
+    val balanceExhausted = accountBalanceExhausted(accountBalance)
+    // a connect insufficient balance blocked, waiting to be retried (BalanceRecovery)
+    val balanceRecoveryState by (
+        (screenContext.applicationContext as? MainApplication)?.balanceRecoveryState
+            ?: kotlinx.coroutines.flow.MutableStateFlow(BalanceRecoveryState())
+        ).collectAsState()
+    // upgrade shown in place of connect on the account balance alone: make
+    // sure that balance is current, so a stale zero does not hide connect
+    val balanceGatesConnect = balanceExhausted && connectStatus == ConnectStatus.DISCONNECTED
+    LaunchedEffect(balanceGatesConnect, balanceChanges) {
+        if (balanceGatesConnect) {
+            (screenContext.applicationContext as? MainApplication)?.refreshStartConnectBalanceIfStale()
+        }
+    }
+    val displayInsufficientBalance = com.bringyour.network.ui.connect.displayInsufficientBalance(
+        contractInsufficientBalance = contractStatus?.insufficientBalance == true,
+        accountBalanceExhausted = balanceExhausted,
+        connectRequested = connectStatus != ConnectStatus.DISCONNECTED,
+    ) && !isPro
 
     var promptSolanaReview by remember { mutableStateOf(false) }
 
@@ -139,6 +166,17 @@ fun ConnectScreen(
     val reviewManagerRequest = rememberReviewManager()
     val context = LocalContext.current
     val application = context.applicationContext as? MainApplication
+
+    // Strict Private DNS silently breaks name resolution while connected; warn
+    // only in that state (privateDnsStrictNoticeHost).
+    val privateDnsMode by (
+        application?.privateDnsMode
+            ?: kotlinx.coroutines.flow.MutableStateFlow<PrivateDnsMode>(PrivateDnsMode.Off)
+        ).collectAsState()
+    val privateDnsStrictHost = privateDnsStrictNoticeHost(
+        privateDnsMode,
+        connectStatus == ConnectStatus.CONNECTED,
+    )
 
     val promptReview = {
         val activity = context as? android.app.Activity
@@ -211,7 +249,12 @@ fun ConnectScreen(
                 connectStatus = connectStatus,
                 isPollingSubscriptionBalance = subscriptionBalanceViewModel.isPollingSubscriptionBalance,
                 displayReconnectTunnel = connectViewModel.displayReconnectTunnel,
+                privateDnsStrictHost = privateDnsStrictHost,
                 insufficientBalance = displayInsufficientBalance,
+                outOfBalanceKind = outOfBalanceKind(accountBalance),
+                reservedBytes = accountBalance?.openTransferByteCount ?: 0L,
+                balanceRecovery = balanceRecoveryState,
+                cancelBalanceRecovery = { application?.clearBalanceRecovery() },
                 usedBytes = subscriptionBalanceViewModel.usedBalanceByteCount,
                 pendingBytes = subscriptionBalanceViewModel.pendingBalanceByteCount,
                 availableBytes = availableBytes,
@@ -231,7 +274,6 @@ fun ConnectScreen(
                 dnsSettingsViewModel = dnsSettingsViewModel,
                 blockerViewModel = blockerViewModel,
                 ipFamilyPoints = connectViewModel.ipFamilyPoints,
-                gridWidth = connectViewModel.grid?.width?.toInt(),
                 onReferralClick = {
                     navController.navigate(Route.Referrals)
                 },

@@ -4,6 +4,7 @@ import com.bringyour.network.ui.components.tabletReadableColumn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,15 +44,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.bringyour.network.R
+import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URTextInputLabel
 import com.bringyour.network.ui.components.referral.ReferralGoldPanel
 import com.bringyour.network.ui.settings.SettingsViewModel
+import com.bringyour.network.ui.shared.models.SectionLoad
+import com.bringyour.network.ui.shared.models.referralStatLoads
 import com.bringyour.network.ui.settings.updateReferralNetworkBottomSheet.UpdateReferralNetworkBottomSheet
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.BlueMedium
@@ -63,6 +70,25 @@ import com.bringyour.network.ui.theme.TopBarTitleTextStyle
 import com.bringyour.network.ui.theme.URNetworkTheme
 import com.bringyour.network.ui.wallet.EarningsFormat
 import kotlinx.coroutines.launch
+
+internal const val ACCEPTANCE_REFERRALS_ADD_CODE_TAG = "acceptance.referrals.addCode"
+
+/** What the referral network row offers. */
+sealed interface ReferralNetworkAction {
+    /** No referral network: the primary "Add referral code" action. */
+    data object AddCode : ReferralNetworkAction
+
+    /** The network this one signed up with, and Update. */
+    data class Update(val networkName: String) : ReferralNetworkAction
+}
+
+/** The action for the network this one signed up with: Add referral code when there is none. */
+internal fun referralNetworkAction(referralNetworkName: String?): ReferralNetworkAction =
+    if (referralNetworkName.isNullOrBlank()) {
+        ReferralNetworkAction.AddCode
+    } else {
+        ReferralNetworkAction.Update(referralNetworkName)
+    }
 
 /**
  * Account › Referrals ("Refer and earn"). Everything about the referral program
@@ -79,8 +105,10 @@ fun ReferralsScreen(
     referralCode: String,
     totalReferrals: Long,
     referralPoints: Double,
-    pointsLoaded: Boolean,
+    pointsLoad: SectionLoad,
     fetchAccountPoints: () -> Unit,
+    referralCodeLoad: SectionLoad = SectionLoad.Loaded,
+    retryReferralCode: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val referralNetwork by settingsViewModel.referralNetwork.collectAsState()
@@ -99,7 +127,10 @@ fun ReferralsScreen(
         referralCode = referralCode,
         totalReferrals = totalReferrals,
         referralPoints = referralPoints,
-        pointsLoaded = pointsLoaded,
+        pointsLoad = pointsLoad,
+        retryPoints = fetchAccountPoints,
+        referralCodeLoad = referralCodeLoad,
+        retryReferralCode = retryReferralCode,
         referralNetworkName = referralNetwork?.name,
         onUpdateReferralNetwork = {
             scope.launch {
@@ -147,11 +178,16 @@ fun ReferralsScreenContent(
     referralCode: String,
     totalReferrals: Long,
     referralPoints: Double,
-    pointsLoaded: Boolean,
+    pointsLoad: SectionLoad,
     referralNetworkName: String?,
     onUpdateReferralNetwork: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    retryPoints: () -> Unit = {},
+    referralCodeLoad: SectionLoad = SectionLoad.Loaded,
+    retryReferralCode: () -> Unit = {},
 ) {
+    val statLoads = referralStatLoads(codeLoad = referralCodeLoad, pointsLoad = pointsLoad)
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -190,7 +226,9 @@ fun ReferralsScreenContent(
              */
             ReferralGoldPanel(
                 referralCode = referralCode.ifEmpty { null },
-                totalReferrals = totalReferrals
+                totalReferrals = totalReferrals,
+                codeFailed = referralCodeLoad == SectionLoad.Failed,
+                onRetryCode = retryReferralCode,
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -207,13 +245,15 @@ fun ReferralsScreenContent(
                 ReferralStatColumn(
                     label = stringResource(id = R.string.total_referrals),
                     value = "$totalReferrals",
-                    loaded = true,
+                    load = statLoads.totalReferrals,
+                    onRetry = retryReferralCode,
                     modifier = Modifier.weight(1f)
                 )
                 ReferralStatColumn(
                     label = stringResource(id = R.string.referral_points),
                     value = EarningsFormat.points(referralPoints),
-                    loaded = pointsLoaded,
+                    load = statLoads.referralPoints,
+                    onRetry = retryPoints,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -223,25 +263,40 @@ fun ReferralsScreenContent(
             Spacer(modifier = Modifier.height(16.dp))
 
             /**
-             * 4. The referral network this network signed up with.
+             * 4. The referral network this network signed up with. With none
+             * yet, the row is the code entry itself: a friend who missed the
+             * field at sign-up adds the code here (support inbox 1698).
              */
             URTextInputLabel(stringResource(id = R.string.referral_network))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    referralNetworkName ?: stringResource(id = R.string.none),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White
-                )
+            when (val action = referralNetworkAction(referralNetworkName)) {
+                ReferralNetworkAction.AddCode -> {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    URButton(
+                        onClick = onUpdateReferralNetwork,
+                        modifier = Modifier.testTag(ACCEPTANCE_REFERRALS_ADD_CODE_TAG)
+                    ) { buttonTextStyle ->
+                        Text(stringResource(id = R.string.add_referral_code), style = buttonTextStyle)
+                    }
+                }
+                is ReferralNetworkAction.Update -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            action.networkName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
 
-                TextButton(onClick = onUpdateReferralNetwork) {
-                    Text(
-                        stringResource(id = R.string.update),
-                        color = BlueMedium
-                    )
+                        TextButton(onClick = onUpdateReferralNetwork) {
+                            Text(
+                                stringResource(id = R.string.update),
+                                color = BlueMedium
+                            )
+                        }
+                    }
                 }
             }
 
@@ -254,7 +309,8 @@ fun ReferralsScreenContent(
 private fun ReferralStatColumn(
     label: String,
     value: String,
-    loaded: Boolean,
+    load: SectionLoad,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
@@ -263,8 +319,26 @@ private fun ReferralStatColumn(
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted
         )
-        if (loaded) {
+        if (load == SectionLoad.Loaded) {
             Text(value, style = HeadingLargeCondensed)
+        } else if (load == SectionLoad.Failed) {
+            // a failed fetch is not "0": no value, and Try again
+            val loadFailed = stringResource(id = R.string.load_failed)
+            Text(
+                "\u2014",
+                style = HeadingLargeCondensed,
+                color = TextMuted,
+                modifier = Modifier.semantics { contentDescription = loadFailed }
+            )
+            TextButton(
+                onClick = onRetry,
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                Text(
+                    stringResource(id = R.string.try_again),
+                    color = BlueMedium
+                )
+            }
         } else {
             Spacer(modifier = Modifier.height(6.dp))
             CircularProgressIndicator(
@@ -287,7 +361,7 @@ private fun ReferralsScreenPreview() {
             referralCode = "ABC123",
             totalReferrals = 3,
             referralPoints = 668.0,
-            pointsLoaded = true,
+            pointsLoad = SectionLoad.Loaded,
             referralNetworkName = "parent_network",
             onUpdateReferralNetwork = {},
             snackbarHostState = SnackbarHostState(),
@@ -305,7 +379,7 @@ private fun ReferralsScreenNoReferralsPreview() {
             referralCode = "ABC123",
             totalReferrals = 0,
             referralPoints = 0.0,
-            pointsLoaded = false,
+            pointsLoad = SectionLoad.Loading,
             referralNetworkName = null,
             onUpdateReferralNetwork = {},
             snackbarHostState = SnackbarHostState(),

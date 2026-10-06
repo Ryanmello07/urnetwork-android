@@ -3,6 +3,7 @@ package com.bringyour.network.ui.stats
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
@@ -72,11 +74,10 @@ fun ConnectStatsSections(
     blockActionsViewModel: BlockActionsViewModel,
     dnsSettingsViewModel: DnsSettingsViewModel,
     blockerViewModel: BlockerViewModel,
-    // the window's providers by IP version and the connect widget's live
-    // grid width, for the histogram under the transport bar
+    // the window's providers with their state and IP version, for the
+    // family status row under the transport bar
     ipFamilyPoints: List<IpFamilyPoint> = listOf(),
-    gridWidth: Int? = null,
-    // the device's extender network, for the panel under the histogram
+    // the device's extender network, for the panel under the status row
     extenderStatusViewModel: ExtenderStatusViewModel = hiltViewModel(),
 ) {
 
@@ -115,12 +116,13 @@ fun ConnectStatsSections(
         Spacer(modifier = Modifier.height(12.dp))
 
         /**
-         * The window's providers by the IP version they carry, one dot per
-         * provider at the connect widget's dot size, under the transports.
+         * The window's providers by the IP version they carry: Dualstack,
+         * IPv4 and IPv6 columns, each with its connected and connecting
+         * counts, under the transports. Tapping it does nothing.
          */
-        IpFamilyHistogram(
+        IpFamilyStatusRow(
             points = ipFamilyPoints,
-            gridWidth = gridWidth,
+            modifier = Modifier.blocksCardTap(),
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -128,11 +130,15 @@ fun ConnectStatsSections(
         /**
          * The extenders carrying this client right now, the usable reserve
          * behind them and the gossip network's state, under the families.
-         * Nothing to show until a space runs an extender network.
+         * Nothing to show until a space runs an extender network. Tapping it
+         * does nothing.
          */
         val extenderPanel = extenderStatusViewModel.panel
         if (extenderPanel.present) {
-            ExtenderPanel(panel = extenderPanel)
+            ExtenderPanel(
+                panel = extenderPanel,
+                modifier = Modifier.blocksCardTap(),
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
         }
@@ -225,7 +231,7 @@ fun ConnectStatsSections(
             Spacer(modifier = Modifier.height(8.dp))
             DnsStatusRow(stringResource(id = R.string.local_dns), settings.localDnsEnabled)
             Spacer(modifier = Modifier.height(8.dp))
-            DnsStatusRow(stringResource(id = R.string.local_dns_fallback), settings.localDnsFallbackEnabled)
+            DnsStatusRow(stringResource(id = FastDnsOnConnectToggle.labelRes), settings.fastDnsOnConnectEnabled)
         } else if (!dnsSettingsViewModel.reported) {
             // the device has not reported its resolver settings yet: the four
             // status rows as placeholders in their exact layout, so the card
@@ -239,7 +245,7 @@ fun ConnectStatsSections(
                 Spacer(modifier = Modifier.height(8.dp))
                 DnsStatusRow(stringResource(id = R.string.local_dns), false, placeholder = true)
                 Spacer(modifier = Modifier.height(8.dp))
-                DnsStatusRow(stringResource(id = R.string.local_dns_fallback), false, placeholder = true)
+                DnsStatusRow(stringResource(id = FastDnsOnConnectToggle.labelRes), false, placeholder = true)
             }
         } else {
             Text(
@@ -632,3 +638,11 @@ private fun StatsCard(
         content()
     }
 }
+
+/**
+ * Keeps a tap on an informational panel inside a stats card from opening the
+ * card's details. The panel sees the pointer before the card's clickable, like
+ * the transport bar, and consumes the tap without doing anything with it.
+ */
+private fun Modifier.blocksCardTap(): Modifier =
+    pointerInput(Unit) { detectTapGestures(onTap = {}) }

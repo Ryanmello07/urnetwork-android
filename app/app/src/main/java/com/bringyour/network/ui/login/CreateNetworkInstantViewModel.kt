@@ -1,9 +1,11 @@
 package com.bringyour.network.ui.login
 
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bringyour.network.NetworkSpaceManagerProvider
 import com.bringyour.network.ui.components.referral.ReferralCodeInputController
+import com.bringyour.network.ui.components.referral.apiReferralCodeChecker
 import com.bringyour.sdk.NetworkCreateArgs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,20 +42,24 @@ class CreateNetworkInstantViewModel @Inject constructor(
      * Referral code entry. Instant accounts can be referred too -- the server
      * links the referral on any create path.
      */
-    val referralInput = ReferralCodeInputController(viewModelScope)
-
-    private val _presentBonusSheet = MutableStateFlow(false)
-    val presentBonusSheet: StateFlow<Boolean> = _presentBonusSheet
-
-    val setPresentBonusSheet: (Boolean) -> Unit = { present ->
-        _presentBonusSheet.value = present
-    }
+    val referralInput = ReferralCodeInputController(
+        viewModelScope,
+        apiReferralCodeChecker { networkSpaceManagerProvider.getNetworkSpace()?.api },
+    )
 
     fun validateReferralCode(onComplete: (Boolean) -> Unit) {
-        referralInput.validate(
-            networkSpaceManagerProvider.getNetworkSpace()?.api,
-            onComplete
-        )
+        referralInput.check(onComplete)
+    }
+
+    /**
+     * Pre-fills the code a referral link or the Play install referrer named,
+     * and checks it, as the create-network screens do. A code the user has
+     * already entered is kept.
+     */
+    fun seedReferralCode(code: String?) {
+        val seed = referralCodeSeed(code, referralInput.code.text) ?: return
+        referralInput.setCode(TextFieldValue(seed))
+        validateReferralCode {}
     }
 
     fun createNetwork(
@@ -81,15 +87,16 @@ class CreateNetworkInstantViewModel @Inject constructor(
         // Main still validates this field. Newer servers generate their own
         // instant-account name and safely ignore this compatibility fallback.
         args.networkName = "guest-${UUID.randomUUID()}"
-        args.guestMode = true
+        // no guestMode: the server dropped guest_mode from network create with
+        // the seedphrase path and ignores it; this is a seedphrase account
         args.terms = termsAgreed
         // the sign-up page's "Periodic product updates" line; false here keeps the preference on
         args.productUpdatesOptOut = !productUpdates
         // no userAuth, userName, password or walletAuth -- the server reads that
         // as the seedphrase path and returns a generated phrase with the network
 
-        if (referralInput.applied) {
-            args.referralCode = referralInput.code.text
+        referralInput.createCode?.let { code ->
+            args.referralCode = code
         }
 
         api.networkCreate(args) { result, err ->
@@ -134,4 +141,13 @@ class CreateNetworkInstantViewModel @Inject constructor(
             }
         }
     }
+}
+
+/**
+ * The code to pre-fill the referral field with: an incoming non-blank code,
+ * unless the field already holds one.
+ */
+internal fun referralCodeSeed(incoming: String?, current: String): String? {
+    val code = incoming?.trim().orEmpty()
+    return code.takeIf { it.isNotEmpty() && current.isEmpty() }
 }

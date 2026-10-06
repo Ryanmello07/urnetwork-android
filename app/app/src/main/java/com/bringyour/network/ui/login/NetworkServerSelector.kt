@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,11 +38,13 @@ import com.bringyour.network.BuildConfig
 import com.bringyour.network.MainApplication
 import com.bringyour.network.R
 import com.bringyour.network.TAG
+import com.bringyour.network.ui.account.ControlDohSettingsDialog
 import com.bringyour.network.ui.components.ButtonStyle
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URDialog
 import com.bringyour.network.ui.components.URInlineErrorText
 import com.bringyour.network.ui.components.URTextInput
+import com.bringyour.network.ui.settings.VlessSettingsDialog
 import com.bringyour.network.ui.theme.BlueMedium
 import com.bringyour.network.ui.theme.TextFaint
 import com.bringyour.network.ui.theme.TextMuted
@@ -105,7 +110,7 @@ private fun hasInsecureScheme(raw: String, secureScheme: String): Boolean {
     } ?: false
 }
 
-private fun derivedServiceUrl(
+internal fun derivedServiceUrl(
     hostName: String,
     migrationHostName: String,
     envName: String,
@@ -156,6 +161,8 @@ fun NetworkServerSelector(
     val configuredConnectUrl = active?.configuredPlatformUrl ?: ""
 
     var isPresenting by remember { mutableStateOf(false) }
+    var isPresentingVless by remember { mutableStateOf(false) }
+    var isPresentingControlDoh by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
     val textColor = when {
         !enabled -> TextFaint
@@ -195,6 +202,14 @@ fun NetworkServerSelector(
         currentConnectUrl = currentConnectUrl,
         configuredApiUrl = configuredApiUrl,
         configuredConnectUrl = configuredConnectUrl,
+        vlessAvailable = active != null,
+        onOpenVless = {
+            isPresentingVless = true
+        },
+        controlDohAvailable = active != null,
+        onOpenControlDoh = {
+            isPresentingControlDoh = true
+        },
         onDismiss = {
             isPresenting = false
         },
@@ -249,6 +264,29 @@ fun NetworkServerSelector(
             }
         }
     )
+
+    // the active space's VLESS settings, saved by the editor itself. Apply
+    // above leaves them alone: updateNetworkSpace hands its callback a copy of
+    // the space's current values, and the callback never sets `vless`.
+    if (isPresentingVless) {
+        VlessSettingsDialog(
+            onDismiss = {
+                isPresentingVless = false
+            },
+        )
+    }
+
+    // the active space's bootstrap DoH servers, likewise saved by their own
+    // editor and left alone by Apply. Where the default DoH servers are
+    // blocked (mainland China), a fresh install reaches the api only through
+    // these, so they are set here, before sign-in.
+    if (isPresentingControlDoh) {
+        ControlDohSettingsDialog(
+            onDismiss = {
+                isPresentingControlDoh = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -264,6 +302,10 @@ private fun NetworkApiDialog(
     currentConnectUrl: String,
     configuredApiUrl: String,
     configuredConnectUrl: String,
+    vlessAvailable: Boolean,
+    onOpenVless: () -> Unit,
+    controlDohAvailable: Boolean,
+    onOpenControlDoh: () -> Unit,
     onDismiss: () -> Unit,
     onApply: (
         host: String,
@@ -418,6 +460,59 @@ private fun NetworkApiDialog(
                     text = statusText,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // the VLESS server of the active network space, which its own
+            // editor saves; Apply does not
+            val vlessEnabled = enabled && vlessAvailable
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = vlessEnabled) {
+                        onOpenVless()
+                    }
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(id = R.string.vless),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (vlessEnabled) Color.White else TextFaint
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(id = R.string.vless),
+                    tint = TextMuted
+                )
+            }
+
+            // the bootstrap DoH servers of the active network space, which
+            // their own editor saves; Apply does not
+            val controlDohEnabled = enabled && controlDohAvailable
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = controlDohEnabled) {
+                        onOpenControlDoh()
+                    }
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(id = R.string.control_doh_urls),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (controlDohEnabled) Color.White else TextFaint,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(id = R.string.control_doh_urls),
+                    tint = TextMuted
                 )
             }
         }

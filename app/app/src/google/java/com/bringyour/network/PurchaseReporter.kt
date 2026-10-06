@@ -11,7 +11,6 @@ import com.bringyour.sdk.Api
 import com.bringyour.sdk.Sdk
 import com.bringyour.sdk.VerifyPlayPurchaseArgs
 import com.bringyour.sdk.VerifyPlayPurchaseCallback
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -47,10 +46,14 @@ object PurchaseReporter {
      * backs the whole backstop. Keys:
      *  - report_product.<purchaseToken> -> product id (presence == proof persisted)
      *  - report_attempts.<purchaseToken> -> total report attempts so far
+     *  - report_terminal.<purchaseToken> -> the terminal status the server answered.
+     *    Kept after the proof is cleared: it is what tells a token the server has
+     *    seen from one acknowledged by a pre-report build (PurchaseReportPolicy).
      */
     private const val PREFS_NAME = "pending_purchase_reconcile"
     private const val KEY_PRODUCT_PREFIX = "report_product."
     private const val KEY_ATTEMPTS_PREFIX = "report_attempts."
+    private const val KEY_TERMINAL_PREFIX = "report_terminal."
 
     /**
      * Bounded in-session report attempts (initial + 2 retries at 1 s and 5 s backoff);
@@ -76,6 +79,8 @@ object PurchaseReporter {
     data class Result(
         val status: String?,
         val acknowledged: Boolean,
+        /** The purchase carries an obfuscated account id (isLinkedToAccount). */
+        val linkedToAccount: Boolean = true,
     ) {
         /** The server actually credited this network -- the only success signal. */
         val credited: Boolean
@@ -85,10 +90,21 @@ object PurchaseReporter {
         val wrongNetwork: Boolean get() = status == Sdk.PurchaseReportStatusWrongNetwork
 
         val invalid: Boolean get() = status == Sdk.PurchaseReportStatusInvalid
+
+        internal val outcome: PurchaseReportPolicy.Outcome
+            get() = PurchaseReportPolicy.outcomeFor(credited, wrongNetwork, invalid, linkedToAccount)
     }
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    /**
+     * Whether the purchase was made through this app's billing flow, which sets the
+     * network as the obfuscated account id. A purchase made outside it (a Play Store
+     * promo code redemption) carries none.
+     */
+    fun isLinkedToAccount(purchase: Purchase): Boolean =
+        !purchase.accountIdentifiers?.obfuscatedAccountId.isNullOrEmpty()
 
     private fun productIdOf(purchase: Purchase): String =
         purchase.products.firstOrNull() ?: DEFAULT_PRODUCT_ID
@@ -127,7 +143,27 @@ object PurchaseReporter {
             }
     }
 
-    /** Step 3's tail: the proof reached a terminal answer AND Play acknowledged. */
+    /** The server answered this token with a terminal status at least once. */
+    fun isReportedTerminal(context: Context, purchaseToken: String): Boolean =
+        prefs(context).contains(KEY_TERMINAL_PREFIX + purchaseToken)
+
+    /** The terminal status the server last answered for this token, if any. */
+    fun reportedTerminalStatus(context: Context, purchaseToken: String): String? =
+        prefs(context).getString(KEY_TERMINAL_PREFIX + purchaseToken, null)
+
+    /** What a reconcile must do with a purchase Play returned (PurchaseReportPolicy). */
+    internal fun actionFor(context: Context, purchase: Purchase): PurchaseReportPolicy.Action =
+        PurchaseReportPolicy.actionFor(
+            purchased = purchase.purchaseState == Purchase.PurchaseState.PURCHASED,
+            acknowledged = purchase.isAcknowledged,
+            hasPersistedProof = hasEntry(context, purchase.purchaseToken),
+            reportedTerminal = isReportedTerminal(context, purchase.purchaseToken),
+        )
+
+    /**
+     * Step 3's tail: the proof reached a terminal answer AND Play acknowledged. The
+     * reported-terminal flag stays.
+     */
     fun clear(context: Context, purchaseToken: String) {
         prefs(context)
             .edit()
@@ -136,14 +172,26 @@ object PurchaseReporter {
             .apply()
     }
 
-    private fun bumpAttempts(context: Context, purchaseToken: String) {
-        val p = prefs(context)
-        p.edit()
-            .putInt(
-                KEY_ATTEMPTS_PREFIX + purchaseToken,
-                p.getInt(KEY_ATTEMPTS_PREFIX + purchaseToken, 0) + 1
-            )
-            .apply()
+    private fun store(context: Context) = object : PurchaseReportPolicy.Store {
+        override fun persist(productId: String, purchaseToken: String) =
+            persist(context, productId, purchaseToken)
+
+        override fun bumpAttempts(purchaseToken: String) {
+            val p = prefs(context)
+            p.edit()
+                .putInt(
+                    KEY_ATTEMPTS_PREFIX + purchaseToken,
+                    p.getInt(KEY_ATTEMPTS_PREFIX + purchaseToken, 0) + 1
+                )
+                .apply()
+        }
+
+        override fun markReportedTerminal(purchaseToken: String, status: String) {
+            prefs(context)
+                .edit()
+                .putString(KEY_TERMINAL_PREFIX + purchaseToken, status)
+                .apply()
+        }
     }
 
     /**
@@ -154,7 +202,8 @@ object PurchaseReporter {
      * dropped after a successful acknowledge (clear).
      *
      * A null `api` (network space not up, e.g. a worker run before login state
-     * loads) counts as a transport failure: not terminal, retry later.
+     * loads) counts as a transport failure: not terminal, retry later. A terminal
+     * answer sets the token's reported-terminal flag.
      */
     suspend fun report(
         context: Context,
@@ -163,26 +212,23 @@ object PurchaseReporter {
         purchaseToken: String,
         maxAttempts: Int = MAX_REPORT_ATTEMPTS_PER_SESSION,
     ): String? {
-        persist(context, productId, purchaseToken)
-
-        var attemptsThisSession = 0
-        while (true) {
-            val status = if (api == null) null else verifyOnce(api, productId, purchaseToken)
-            if (status != null && Sdk.isPurchaseReportTerminal(status)) {
-                return status
-            }
-            bumpAttempts(context, purchaseToken)
-            attemptsThisSession += 1
-            if (maxAttempts <= attemptsThisSession) {
-                Log.i(
-                    TAG,
-                    "PurchaseReporter: no terminal answer after $attemptsThisSession " +
-                            "attempts (last status: $status); the daily reconcile carries it"
-                )
-                return null
-            }
-            delay(Sdk.purchaseReportBackoffMillis(attemptsThisSession - 1))
+        val status = PurchaseReportPolicy.reportUntilTerminal(
+            store(context),
+            productId,
+            purchaseToken,
+            maxAttempts,
+            verifyOnce = { if (api == null) null else verifyOnce(api, productId, purchaseToken) },
+            isTerminal = { Sdk.isPurchaseReportTerminal(it) },
+            backoffMillis = { Sdk.purchaseReportBackoffMillis(it) },
+        )
+        if (status == null) {
+            Log.i(
+                TAG,
+                "PurchaseReporter: no terminal answer after $maxAttempts attempts; " +
+                        "the daily reconcile carries it"
+            )
         }
+        return status
     }
 
     /**
@@ -208,13 +254,17 @@ object PurchaseReporter {
             productIdOf(purchase),
             purchase.purchaseToken,
             maxAttempts
-        ) ?: return Result(status = null, acknowledged = false)
+        ) ?: return Result(
+            status = null,
+            acknowledged = false,
+            linkedToAccount = isLinkedToAccount(purchase)
+        )
 
         if (purchase.isAcknowledged) {
-            // e.g. re-reporting a proof whose acknowledge landed but whose clear was
-            // lost to process death
+            // a legacy purchase acknowledged before the report path existed, or a
+            // proof whose acknowledge landed but whose clear was lost to process death
             clear(context, purchase.purchaseToken)
-            return Result(status, acknowledged = true)
+            return Result(status, acknowledged = true, linkedToAccount = isLinkedToAccount(purchase))
         }
 
         val ackParams = AcknowledgePurchaseParams.newBuilder()
@@ -223,7 +273,7 @@ object PurchaseReporter {
         val ackResult = billingClient.acknowledgePurchase(ackParams)
         return if (ackResult.responseCode == BillingResponseCode.OK) {
             clear(context, purchase.purchaseToken)
-            Result(status, acknowledged = true)
+            Result(status, acknowledged = true, linkedToAccount = isLinkedToAccount(purchase))
         } else {
             Log.i(
                 TAG,
@@ -231,7 +281,7 @@ object PurchaseReporter {
                         "${ackResult.responseCode} ${ackResult.debugMessage}"
             )
             PendingPurchaseReconcileWorker.markPendingSeen(context)
-            Result(status, acknowledged = false)
+            Result(status, acknowledged = false, linkedToAccount = isLinkedToAccount(purchase))
         }
     }
 

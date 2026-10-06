@@ -1,8 +1,6 @@
 package com.bringyour.network.ui.account
 
 import com.bringyour.network.ui.components.tabletReadableColumn
-import android.app.Activity
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,14 +54,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import com.bringyour.network.LoginActivity
-import com.bringyour.network.MainApplication
 import com.bringyour.network.R
+import com.bringyour.network.ui.components.SectionLoadError
 import com.bringyour.network.ui.Route
 import com.bringyour.network.ui.components.URNavListItem
 import com.bringyour.network.ui.components.AccountSwitcher
 import com.bringyour.network.ui.components.LoginMode
 import com.bringyour.network.ui.components.UsageBar
+import com.bringyour.network.ui.components.dataInfoShowsFreeRefresh
 import com.bringyour.network.ui.components.overlays.OverlayMode
 import com.bringyour.network.ui.components.redeemTransferBalanceCode.RedeemTransferBalanceCodeSheet
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
@@ -94,6 +92,8 @@ fun AccountScreen(
     totalAccountPoints: Double,
     accountPointsLoaded: Boolean,
     totalReferrals: Long,
+    accountPointsFailed: Boolean = false,
+    retryAccountPoints: () -> Unit = {},
     meanReliabilityWeight: Double,
     isPro: Boolean,
     postQuantumIdentityViewModel: PostQuantumIdentityViewModel = hiltViewModel(),
@@ -149,6 +149,8 @@ fun AccountScreen(
                         networkName = networkUser?.networkName,
                         totalAccountPoints = totalAccountPoints,
                         accountPointsLoaded = accountPointsLoaded,
+                        accountPointsFailed = accountPointsFailed,
+                        retryAccountPoints = retryAccountPoints,
                         currentPlan = if (isPro) Plan.Supporter else Plan.Basic,
                         currentStore = currentStore,
                         accountOffer = accountOffer,
@@ -179,8 +181,10 @@ fun AccountScreen(
                     isPresentingRedeemTransferBalanceSheet = it
                 },
                 onSuccess = {
-                    subscriptionBalanceViewModel.pollSubscriptionBalance()
-                    overlayViewModel.launch(OverlayMode.Upgrade)
+                    // a balance code is data only: the sheet confirmed the data it
+                    // added; read the balance once. The Pro overlay and the Pro
+                    // confirmation poll would wait for a plan a code never grants.
+                    subscriptionBalanceViewModel.fetchSubscriptionBalance()
                 }
             )
         }
@@ -198,6 +202,8 @@ fun AccountScreenContent(
     totalAccountPoints: Double,
     accountPointsLoaded: Boolean,
     currentPlan: Plan,
+    accountPointsFailed: Boolean = false,
+    retryAccountPoints: () -> Unit = {},
     currentStore: String?,
     // the welcome offer while it can be redeemed (read-only on this screen)
     accountOffer: com.bringyour.network.ui.upgrade.OfferPresentation? = null,
@@ -219,7 +225,6 @@ fun AccountScreenContent(
 ) {
 
     val context = LocalContext.current
-    val application = context.applicationContext as? MainApplication
     val uriHandler = LocalUriHandler.current
 
     Column(
@@ -243,7 +248,8 @@ fun AccountScreenContent(
                 networkName = networkName,
                 // Pro members get a glowing gold ring around their avatar
                 isPro = currentPlan == Plan.Supporter,
-                openReferrals = { navController.navigate(Route.Referrals) }
+                openReferrals = { navController.navigate(Route.Referrals) },
+                createAccount = { navController.navigate(Route.GuestConversion) }
             )
         }
 
@@ -267,14 +273,9 @@ fun AccountScreenContent(
                     onPlanLabelTap = onPlanLabelTap,
                     currentStore = currentStore,
 //                    scope = scope,
-                    logout = {
-                        application?.logout()
-
-                        val intent = Intent(context, LoginActivity::class.java)
-                        context.startActivity(intent)
-
-                        (context as? Activity)?.finish()
-                    },
+                    // never logs out: that stranded a guest's plan and balance on
+                    // a network with no login to come back to (GuestAccount)
+                    createAccount = { navController.navigate(Route.GuestConversion) },
                     isProcessingUpgrade = isProcessingUpgrade,
                     isPollingSubscriptionBalance = isPollingSubscriptionBalance,
                     isCheckingSolanaTransaction = isCheckingSolanaTransaction,
@@ -301,9 +302,10 @@ fun AccountScreenContent(
                         if (loginMode == LoginMode.Authenticated) {
                             navController.navigate(Route.Referrals)
                         } else {
-                            context.startActivity(Intent(context, LoginActivity::class.java))
+                            navController.navigate(Route.GuestConversion)
                         }
-                    }
+                    },
+                    showFreeRefresh = dataInfoShowsFreeRefresh(currentPlan),
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -350,7 +352,7 @@ fun AccountScreenContent(
                         .fillMaxWidth()
                         .clickable {
                             if (loginMode == LoginMode.Guest) {
-                                context.startActivity(Intent(context, LoginActivity::class.java))
+                                navController.navigate(Route.GuestConversion)
                             } else {
                                 navController.navigate(Route.Earnings)
                             }
@@ -363,7 +365,13 @@ fun AccountScreenContent(
                                 color = TextMuted
                             )
                         )
-                        if (accountPointsLoaded) {
+                        if (accountPointsFailed) {
+                            // a failed fetch is an error, not "0 points"
+                            SectionLoadError(
+                                onRetry = retryAccountPoints,
+                                modifier = Modifier.height(42.dp),
+                            )
+                        } else if (accountPointsLoaded) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -423,7 +431,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Profile)
                 } else {
-                    context.startActivity(Intent(context, LoginActivity::class.java))
+                    navController.navigate(Route.GuestConversion)
                 }
             }
         )
@@ -435,7 +443,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Settings)
                 } else {
-                    context.startActivity(Intent(context, LoginActivity::class.java))
+                    navController.navigate(Route.GuestConversion)
                 }
             }
         )
@@ -447,7 +455,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Earnings)
                 } else {
-                    context.startActivity(Intent(context, LoginActivity::class.java))
+                    navController.navigate(Route.GuestConversion)
                 }
             }
         )
@@ -459,7 +467,7 @@ fun AccountScreenContent(
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Referrals)
                 } else {
-                    context.startActivity(Intent(context, LoginActivity::class.java))
+                    navController.navigate(Route.GuestConversion)
                 }
             }
         )
@@ -477,13 +485,13 @@ fun AccountScreenContent(
         // the extender settings of this network space, and the share and
         // import of an extender list (EXTENDER.md K6, K7)
         URNavListItem(
-            iconResourceId = R.drawable.main_nav_globe,
+            iconResourceId = R.drawable.nav_list_item_extenders,
             text = stringResource(id = R.string.extenders),
             onClick = {
                 if (loginMode == LoginMode.Authenticated) {
                     navController.navigate(Route.Extenders)
                 } else {
-                    context.startActivity(Intent(context, LoginActivity::class.java))
+                    navController.navigate(Route.GuestConversion)
                 }
             }
         )

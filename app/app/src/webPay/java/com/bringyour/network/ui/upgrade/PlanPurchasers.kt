@@ -42,6 +42,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.bringyour.network.R
 import com.bringyour.network.analytics.ClientEvents
+import com.bringyour.network.ui.account.GuestAccount
+import com.bringyour.network.ui.account.PurchaseRefusal
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.shared.enums.PlanType
 import com.bringyour.network.ui.shared.viewmodels.PlanViewModel
@@ -68,6 +70,7 @@ fun rememberPlanPurchaser(
 ): PlanPurchaser {
     val context = LocalContext.current
     val notCompleted = stringResource(id = R.string.payment_not_completed)
+    val accountNotReady = stringResource(id = R.string.account_isn_t_ready_for_purchases)
     var payPage by remember { mutableStateOf<PayPage?>(null) }
 
     payPage?.let { page ->
@@ -81,6 +84,7 @@ fun rememberPlanPurchaser(
             },
             onDismiss = {
                 payPage = null
+                subscriptionBalanceViewModel.cancelPurchaseConfirmation()
                 planViewModel.setInProgress(false)
                 ClientEvents.purchaseCancelled(Sdk.EventStoreStripe, ClientEvents.PRODUCT_STRIPE_PRO, page.plan, page.trial, page.price, page.currency)
             },
@@ -90,10 +94,19 @@ fun rememberPlanPurchaser(
     return remember(planViewModel) {
         PlanPurchaser(store = Sdk.EventStoreStripe) { plan, presentation ->
             val api = planViewModel.api
-            if (api == null || planViewModel.inProgress) {
-                return@PlanPurchaser
+            when (purchaseStartFor(api != null, planViewModel.inProgress)) {
+                PurchaseStart.InProgress -> return@PlanPurchaser
+                PurchaseStart.AccountNotReady -> {
+                    planViewModel.setChangePlanError(accountNotReady)
+                    return@PlanPurchaser
+                }
+                PurchaseStart.Start -> Unit
             }
+            // Start implies an api
+            api ?: return@PlanPurchaser
             planViewModel.setInProgress(true)
+            // the confirmation baseline loads while the pay page is up
+            subscriptionBalanceViewModel.preparePurchaseConfirmation()
             val yearly = plan == PlanType.YEARLY
             val planName = if (yearly) Sdk.PlanYearly else Sdk.PlanMonthly
             ClientEvents.purchaseStarted(
@@ -101,15 +114,23 @@ fun rememberPlanPurchaser(
                 if (yearly) (presentation.offer?.firstYearAmount ?: presentation.yearlyAmount) else presentation.monthlyAmount,
                 presentation.currency,
             )
-            StripeSheetRequest.request(api, plan, subscriptionBalanceViewModel.storefrontCountry) { result, error ->
+            StripeSheetRequest.request(api, plan, subscriptionBalanceViewModel.storefrontCountry) { result, error, refusal ->
                 if (result == null) {
+                    subscriptionBalanceViewModel.cancelPurchaseConfirmation()
                     planViewModel.setInProgress(false)
+                    if (refusal == PurchaseRefusal.AddSignInMethod) {
+                        // a guest network: the add-sign-in sheet instead of the error
+                        ClientEvents.purchaseFailed(Sdk.EventStoreStripe, ClientEvents.PRODUCT_STRIPE_PRO, planName, yearly, 0.0, presentation.currency, GuestAccount.PURCHASE_ERROR_GUEST_SIGN_IN_REQUIRED)
+                        subscriptionBalanceViewModel.guestSignInRequired()
+                        return@request
+                    }
                     ClientEvents.purchaseFailed(Sdk.EventStoreStripe, ClientEvents.PRODUCT_STRIPE_PRO, planName, yearly, 0.0, presentation.currency, "prepare")
                     planViewModel.setChangePlanError(listOfNotNull(notCompleted, error).joinToString("\n"))
                     return@request
                 }
                 val secret = if (result.intentType == Sdk.StripeIntentTypeSetup) result.setupIntentClientSecret else result.paymentIntentClientSecret
                 if (secret.isNullOrEmpty()) {
+                    subscriptionBalanceViewModel.cancelPurchaseConfirmation()
                     planViewModel.setInProgress(false)
                     Toast.makeText(context, notCompleted, Toast.LENGTH_SHORT).show()
                     return@request
@@ -182,7 +203,9 @@ private fun PayPageDialog(page: PayPage, onDone: () -> Unit, onDismiss: () -> Un
 /**
  * Solana Pay on the F-Droid build: a sheet with the payment QR code (for a
  * wallet on another device) and an "Open wallet" button for the `solana:`
- * deep link on this one. The balance is polled when the app returns.
+ * deep link on this one, built from the server's quote. The balance is polled
+ * when the app returns. A quote the sdk refuses to build a payment from (its
+ * error is a plain Exception) is a payment that did not start.
  */
 @Composable
 fun rememberSolanaPayLauncher(): SolanaPayLauncher {
@@ -192,11 +215,11 @@ fun rememberSolanaPayLauncher(): SolanaPayLauncher {
     }
     val context = LocalContext.current
     return remember {
-        SolanaPayLauncher { reference, amountUsd, plan ->
+        SolanaPayLauncher { reference, quote, plan ->
             try {
-                request = buildSolanaPaymentUrl(reference, amountUsd, plan)
+                request = buildSolanaPaymentUrl(reference, quote, plan)
                 true
-            } catch (e: IllegalArgumentException) {
+            } catch (e: Exception) {
                 Toast.makeText(context, context.getString(R.string.payment_not_completed), Toast.LENGTH_LONG).show()
                 false
             }

@@ -39,8 +39,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -53,10 +55,12 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.bringyour.network.R
+import com.bringyour.network.ui.components.SectionLoadError
 import com.bringyour.network.ui.components.ButtonStyle
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URLearnMoreText
 import com.bringyour.network.ui.login.NoSolanaWalletsAlert
+import com.bringyour.network.ui.login.launchBittensorBridge
 import com.bringyour.network.ui.stats.ThroughputViewModel
 import com.bringyour.network.ui.shared.viewmodels.OverlayViewModel
 import com.bringyour.network.ui.stats.ProviderStatsSection
@@ -76,9 +80,15 @@ import com.bringyour.network.utils.Ss58
 import com.bringyour.sdk.ReliabilityWindow
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 
 const val UR_XYZ_URL = "https://ur.xyz"
+
+// the SN payout line at the foot of the points card and its two actions
+const val EARNINGS_SN_PAYOUT_LINE_TAG = "earnings-sn-payout-line"
+const val EARNINGS_SN_PAYOUT_CLAIM_TAG = "earnings-sn-payout-claim"
+const val EARNINGS_SET_COLDKEY_TAG = "earnings-set-coldkey"
 
 /**
  * The Earnings screen: points first, always. The UR protocol layer (wallet,
@@ -97,15 +107,17 @@ fun EarningsScreen(
     fetchAccountPoints: () -> Unit,
     reliabilityWindow: ReliabilityWindow?,
     activityResultSender: ActivityResultSender?,
+    accountPointsFailed: Boolean = false,
 ) {
-    val context = LocalContext.current
 
     val wallet by earningsViewModel.wallet.collectAsState()
     val walletLoaded by earningsViewModel.walletLoaded.collectAsState()
+    val walletFailed by earningsViewModel.walletFailed.collectAsState()
     val connectState by earningsViewModel.connectState.collectAsState()
     val claims by earningsViewModel.claims.collectAsState()
     val totalClaimableRao by earningsViewModel.totalClaimableRao.collectAsState()
     val claimsError by earningsViewModel.claimsError.collectAsState()
+    val schedule by earningsViewModel.schedule.collectAsState()
     val epochs by earningsViewModel.epochs.collectAsState()
     val epochsLoaded by earningsViewModel.epochsLoaded.collectAsState()
     val head by earningsViewModel.head.collectAsState()
@@ -161,6 +173,17 @@ fun EarningsScreen(
         onPauseOrDispose {}
     }
 
+    // how and when providers are paid, with the times from the epoch schedule
+    val locale = LocalConfiguration.current.locales[0]
+    val payoutLine = snPayoutLine(
+        walletKnown = earningsViewModel.protocolAvailable && walletLoaded && (wallet != null || !walletFailed),
+        hasColdkey = wallet != null,
+        totalClaimableRao = totalClaimableRao,
+        schedule = schedule,
+        nowMillis = System.currentTimeMillis(),
+        formatTime = { formatSnPayoutTime(it, ZoneId.systemDefault(), locale) },
+    )
+
     EarningsScreenContent(
         navController = navController,
         isRefreshing = earningsViewModel.isRefreshing,
@@ -175,11 +198,15 @@ fun EarningsScreen(
         multiplierPoints = multiplierPoints,
         reliabilityPoints = reliabilityPoints,
         isSeekerHolder = isSeekerHolder,
+        accountPointsFailed = accountPointsFailed,
+        onRetryAccountPoints = fetchAccountPoints,
         protocolAvailable = earningsViewModel.protocolAvailable,
         wallet = wallet,
         walletLoaded = walletLoaded,
+        walletFailed = walletFailed,
+        onRetryWallet = earningsViewModel.retryWallet,
         connectState = connectState,
-        onConnectWallet = { earningsViewModel.connectWithBridge(context) },
+        onConnectWallet = { earningsViewModel.connectWithBridge() },
         onEnterManually = { earningsViewModel.openManualSheet() },
         onContinueLooksNew = { earningsViewModel.continueAfterLooksNew() },
         onDismissConnectState = { earningsViewModel.dismissConnectState() },
@@ -205,6 +232,8 @@ fun EarningsScreen(
         formatAlpha = earningsViewModel::formatAlpha,
         formatShareBps = earningsViewModel::formatShareBps,
         shortSs58 = earningsViewModel::shortSs58,
+        payoutLine = payoutLine,
+        onSetColdkey = { earningsViewModel.connectWithBridge() },
     )
 
     ClaimDialog(
@@ -217,12 +246,21 @@ fun EarningsScreen(
         explorerTxUrl = earningsViewModel::explorerTxUrl,
     )
 
+    val bridgeContext = LocalContext.current
+    BittensorProofSheets(
+        flow = earningsViewModel.proofFlow,
+        onChoose = { walletId ->
+            earningsViewModel.chooseProofWallet(walletId) { url -> launchBittensorBridge(bridgeContext, url) }
+        },
+        onSubmit = earningsViewModel::submitProof,
+    )
+
     if (earningsViewModel.isPresentedManualSheet) {
         ConnectWalletSheet(
             address = earningsViewModel.manualAddress,
             onAddressChange = { earningsViewModel.updateManualAddress(it) },
             validation = manualValidation,
-            onContinue = { earningsViewModel.continueManual(context) },
+            onContinue = { earningsViewModel.continueManual() },
             onDismiss = { earningsViewModel.closeManualSheet() },
         )
     }
@@ -296,6 +334,12 @@ fun EarningsScreenContent(
     formatAlpha: (Long) -> String,
     formatShareBps: (Long) -> String,
     shortSs58: (String) -> String,
+    accountPointsFailed: Boolean = false,
+    onRetryAccountPoints: () -> Unit = {},
+    walletFailed: Boolean = false,
+    onRetryWallet: () -> Unit = {},
+    payoutLine: SnPayoutLine? = null,
+    onSetColdkey: () -> Unit = {},
 ) {
     val refreshState = rememberPullToRefreshState()
     val claimsByEpoch = claims.associateBy { it.epoch }
@@ -344,7 +388,12 @@ fun EarningsScreenContent(
                     referralPoints = referralPoints,
                     reliabilityPoints = reliabilityPoints,
                     multiplierPoints = multiplierPoints,
-                    isSeekerHolder = isSeekerHolder
+                    isSeekerHolder = isSeekerHolder,
+                    failed = accountPointsFailed,
+                    onRetry = onRetryAccountPoints,
+                    payoutLine = payoutLine,
+                    onClaim = onOpenClaim,
+                    onSetColdkey = onSetColdkey,
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -356,18 +405,16 @@ fun EarningsScreenContent(
                     protocolAvailable = protocolAvailable,
                     wallet = wallet,
                     walletLoaded = walletLoaded,
+                    walletFailed = walletFailed,
+                    onRetryWallet = onRetryWallet,
                     connectState = connectState,
                     onConnectWallet = onConnectWallet,
                     onEnterManually = onEnterManually,
                     onContinueLooksNew = onContinueLooksNew,
                     onDismissConnectState = onDismissConnectState,
                     onConnectSolana = onConnectSolana,
-                    // with no payout wallet to show it on, the USDC waiting sits above the wallet actions
-                    usdcWaiting = if (legacyLoaded && legacy.payoutWallet == null && legacy.hasPending) {
-                        legacy.pendingUsd
-                    } else {
-                        null
-                    },
+                    // with no payout wallet to show it on, the final USDC payout sits above the wallet actions
+                    usdcWaiting = if (legacy.payoutWallet == null) finalUsdcWaitingUsd(legacy, legacyLoaded) else null,
                     shortSs58 = shortSs58
                 )
 
@@ -448,7 +495,30 @@ private fun PointsHeadline(
     reliabilityPoints: Double,
     multiplierPoints: Double,
     isSeekerHolder: Boolean,
+    failed: Boolean = false,
+    onRetry: () -> Unit = {},
+    payoutLine: SnPayoutLine? = null,
+    onClaim: () -> Unit = {},
+    onSetColdkey: () -> Unit = {},
 ) {
+    if (failed) {
+        // a failed points fetch is an error, not "0 points"; how payouts work still shows
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MainTintedBackgroundBase, RoundedCornerShape(12.dp))
+                .padding(16.dp)
+        ) {
+            SectionLoadError(onRetry = onRetry)
+            payoutLine?.let {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = TextFaint)
+                Spacer(modifier = Modifier.height(12.dp))
+                SnPayoutLineBlock(line = it, onClaim = onClaim, onSetColdkey = onSetColdkey)
+            }
+        }
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -511,7 +581,7 @@ private fun PointsHeadline(
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Text(
-                        stringResource(id = R.string.seeker_points_only),
+                        stringResource(id = R.string.seeker_multiplier_benefit),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextMuted
                     )
@@ -524,6 +594,77 @@ private fun PointsHeadline(
                     softWrap = false,
                     textAlign = TextAlign.End
                 )
+            }
+        }
+
+        payoutLine?.let {
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = TextFaint)
+            Spacer(modifier = Modifier.height(12.dp))
+            SnPayoutLineBlock(line = it, onClaim = onClaim, onSetColdkey = onSetColdkey)
+        }
+    }
+}
+
+/**
+ * How and when a provider is paid on the UR subnet. With a coldkey: the
+ * explanation, the current epoch's times when known, and Claim while something
+ * is claimable (the claim dialog; the app never claims by itself). Without one:
+ * the prompt to set it, with the action that opens the coldkey flow.
+ */
+@Composable
+private fun SnPayoutLineBlock(
+    line: SnPayoutLine,
+    onClaim: () -> Unit,
+    onSetColdkey: () -> Unit,
+) {
+    Column(modifier = Modifier.testTag(EARNINGS_SN_PAYOUT_LINE_TAG)) {
+        when (line) {
+            SnPayoutLine.SetColdkey -> {
+                Text(
+                    stringResource(id = R.string.set_coldkey_to_get_paid),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    stringResource(id = R.string.set_coldkey),
+                    modifier = Modifier
+                        .testTag(EARNINGS_SET_COLDKEY_TAG)
+                        .clickable { onSetColdkey() }
+                        .padding(vertical = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = BlueMedium
+                )
+            }
+            is SnPayoutLine.Schedule -> {
+                Text(
+                    stringResource(id = R.string.sn_payout_schedule),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
+                )
+                line.times?.let { times ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        stringResource(
+                            id = R.string.sn_payout_schedule_times,
+                            times.epochEnd,
+                            times.claimOpen,
+                            times.expiry
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted
+                    )
+                }
+                if (line.claimable) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    URButton(
+                        onClick = onClaim,
+                        modifier = Modifier.testTag(EARNINGS_SN_PAYOUT_CLAIM_TAG)
+                    ) { buttonTextStyle ->
+                        Text(stringResource(id = R.string.claim), style = buttonTextStyle)
+                    }
+                }
             }
         }
     }
@@ -555,7 +696,15 @@ internal fun WalletSection(
     onConnectSolana: () -> Unit,
     usdcWaiting: Double?,
     shortSs58: (String) -> String,
+    walletFailed: Boolean = false,
+    onRetryWallet: () -> Unit = {},
 ) {
+    if (walletLoaded && wallet == null && walletFailed) {
+        // a failed read is an error, not the "connect wallet" offer
+        SectionLoadError(onRetry = onRetryWallet)
+        return
+    }
+
     if (!walletLoaded) {
         Row(
             modifier = Modifier
@@ -702,6 +851,10 @@ internal fun WalletSection(
                     is WalletConnectState.Blocked -> stringResource(id = R.string.wallet_blocked) to Red
                     is WalletConnectState.Failed ->
                         (connectState.detail ?: stringResource(id = R.string.chain_rpc_unreachable)) to Red
+                    is WalletConnectState.SignatureMismatch -> stringResource(
+                        id = R.string.bittensor_error_signature_mismatch,
+                        bittensorWalletDisplayName(connectState.walletId),
+                    ) to Red
                     is WalletConnectState.Connected -> stringResource(id = R.string.wallet_connected_to_protocol) to Green
                     else -> null to TextMuted
                 }

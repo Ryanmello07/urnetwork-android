@@ -120,13 +120,32 @@ test("quiet uses the original full sampled helper and each Fast.com child retain
 
 test("serial, root scope, labels, port and CPU limits fail closed before any invocation", () => {
   const mutate = (key, value) => { const result = args("/private/arm-root"); result[result.indexOf(key) + 1] = value; return result; };
-  for (const [key, value] of [["--serial", "arbitrary-device"], ["--root", "/"], ["--run-dir", "/Users"],
+  for (const [key, value] of [["--serial", "arbitrary-device"], ["--root", "/"], ["--run-dir", dirname(root)],
     ["--run-dir", `${root}/artifacts`], ["--run-dir", "/private/../tmp/test"], ["--label", "../other-arm"],
     ["--build-id", "x;echo secret"], ["--cdp-port", "0"], ["--underlay", "auto"], ["--max-workers", "5"], ["--gomaxprocs", "11"]]) {
     assert.throws(() => parseArgs(mutate(key, value), 14), undefined, `${key} ${value}`);
   }
   assert.throws(() => parseArgs([...args("/private/arm-root"), "--profile-rate", "65536"], 14));
   assert.throws(() => parseArgs([...args("/private/arm-root"), "--label", "second"], 14));
+});
+
+test("run directory containment follows the chosen workspace rather than a host home prefix", () => {
+  // parseArgs is host-only: synthetic roots make both relationships explicit
+  // even when this test itself runs from a /Users or temporary checkout.
+  for (const workspace of ["/Users/fixture/workspace", "/tmp/fixture/workspace"]) {
+    const forRun = run => {
+      const argv = args(run);
+      argv[argv.indexOf("--root") + 1] = workspace;
+      return argv;
+    };
+    for (const run of [workspace, join(workspace, "artifacts"), dirname(workspace), "/"]) {
+      assert.throws(() => parseArgs(forRun(run), 14), /private-run-outside-workspace-required/);
+    }
+    const sibling = join(dirname(workspace), "run");
+    assert.equal(parseArgs(forRun(sibling), 14)["run-dir"], sibling);
+    const unrelated = workspace.startsWith("/Users/") ? "/tmp" : "/Users";
+    assert.equal(parseArgs(forRun(unrelated), 14)["run-dir"], unrelated);
+  }
 });
 
 test("prepare owns fresh private leaves and its exact workload passes the existing script preflight", t => {
@@ -487,13 +506,24 @@ test("retained diagnostic tail rejects replaced sessions, activity/role changes,
 });
 
 const memorySample = (elapsedMs, bytes = 23 * 1024 * 1024) => ({ type: "sample", elapsedMs, goRuntimeBytes: bytes,
+  memoryProfile: "ios-memory-audit-v2",
   goMemoryProfileRateBytes: 65536, goMemoryLimitBytes: 32 * 1024 * 1024, samplerDropped: 0 });
 
+test("diagnostic v2 iOS memory reports the same 32 MiB cap but never qualifies", () => {
+  const result = evaluateDiagnosticMemory([memorySample(0, 33_554_432), memorySample(15000, 33_554_433)]);
+  assert.equal(result.goRuntimeLimitBytes, 33_554_432);
+  assert.equal(result.goRuntimeBreachSampleCount, 1);
+  assert.equal(result.qualificationEligible, false);
+  for (const memoryProfile of [undefined, null, "android", "private-canary"]) {
+    assert.throws(() => evaluateDiagnosticMemory([{ ...memorySample(0), memoryProfile }]), /diagnostic-memory-evidence-invalid/);
+  }
+});
+
 test("diagnostic memory preserves exact raw global/teardown breaches and never confers qualification", () => {
-  const result = evaluateDiagnosticMemory([memorySample(0, 29_405_216), memorySample(15000), memorySample(30000, 25_268_256)]);
-  assert.equal(result.peakGoRuntimeBytes, 29_405_216); assert.equal(result.goRuntimeBreachSampleCount, 2);
+  const result = evaluateDiagnosticMemory([memorySample(0, 34_405_216), memorySample(15000), memorySample(30000, 25_268_256)]);
+  assert.equal(result.peakGoRuntimeBytes, 34_405_216); assert.equal(result.goRuntimeBreachSampleCount, 1);
   assert.equal(result.qualificationEligible, false); assert.equal(result.sampleCount, 3);
-  assert.equal(result.goRuntimeLimitBytes, 25_165_824);
+  assert.equal(result.goRuntimeLimitBytes, 33_554_432);
   assert.equal(evaluateDiagnosticMemory([memorySample(0, 1)]).qualificationEligible, false);
   for (const records of [[], [{ type: "error" }], [memorySample(0), memorySample(0)],
     [{ ...memorySample(0), samplerDropped: 1 }], [{ ...memorySample(0), goMemoryProfileRateBytes: 0 }],

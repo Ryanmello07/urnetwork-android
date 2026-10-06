@@ -21,11 +21,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.bringyour.network.R
+import com.bringyour.network.ui.account.PurchaseRefusal
 import com.bringyour.network.ui.components.UpgradeScreenHeader
 import com.bringyour.network.ui.components.tabletReadableColumn
 import com.bringyour.network.ui.shared.viewmodels.PlanViewModel
 import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
 import com.bringyour.network.ui.theme.Black
+import com.bringyour.network.utils.SolanaPaymentQuote
 import com.bringyour.sdk.Sdk
 
 /**
@@ -43,8 +45,8 @@ fun UpgradeScreen(
     createSolanaPaymentIntent: (
         reference: String,
         plan: String,
-        onSuccess: (amountUsd: Double) -> Unit,
-        onError: () -> Unit
+        onSuccess: (quote: SolanaPaymentQuote) -> Unit,
+        onError: (PurchaseRefusal) -> Unit
     ) -> Unit,
     onStripePaymentSuccess: () -> Unit,
     isCheckingSolanaTransaction: Boolean

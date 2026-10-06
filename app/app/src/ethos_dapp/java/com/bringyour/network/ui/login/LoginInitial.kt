@@ -1,6 +1,9 @@
 package com.bringyour.network.ui.login
 
 import com.bringyour.network.ui.components.tabletForm
+import com.bringyour.network.ui.wallet.BittensorProofFlow
+import com.bringyour.network.ui.wallet.BittensorProofSheets
+import com.bringyour.network.ui.wallet.bittensorSignatureMismatchText
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -134,7 +137,7 @@ fun LoginInitial(
                 contentVisible = it
             },
             onErr = {
-                Toast.makeText(context, "Error logging in, please try again.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.error_logging_in_please_try_again), Toast.LENGTH_LONG).show()
             },
             onWelcomeOverlayVisibilityChange = {
                 welcomeOverlayVisible = it
@@ -279,34 +282,38 @@ fun LoginInitial(
             }
 
         } else {
-            Toast.makeText(context, "No EthOs wallet found", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.no_ethos_wallet_found), Toast.LENGTH_SHORT).show()
         }
 
     }
 
+    // Talisman or TAO.com: neither documents a mobile connect interface, so
+    // the user signs the shown challenge in the wallet and pastes the proof
+    val bittensorLogin = remember {
+        BittensorLoginController(
+            flow = BittensorProofFlow(nowMillis = System::currentTimeMillis),
+            scope = scope,
+            api = { application?.api },
+            setLoginError = loginViewModel.setLoginError,
+            setInProgress = loginViewModel.setBittensorAuthInProgress,
+            defaultError = { context.getString(R.string.login_error) },
+            onNetworkJwt = onLogin,
+            onCreateNetwork = { bundle ->
+                navController.navigate("create-network-wallet/${bundle.toBase64Json()}")
+            },
+            openUrl = { url -> launchBittensorBridge(context, url) },
+            signatureMismatchText = { walletId -> bittensorSignatureMismatchText(context, walletId) },
+        )
+    }
+
+    // back from the WalletConnect page: a bridge that already returned is done
+    LifecycleResumeEffect(bittensorLogin) {
+        bittensorLogin.onResumed()
+        onPauseOrDispose {}
+    }
+
     val connectBittensorWallet = {
-        loginViewModel.setLoginError(null)
-
-        scope.launch {
-            val api = application?.api
-            if (api == null) {
-                loginViewModel.setLoginError(context.getString(R.string.login_error))
-                return@launch
-            }
-
-            requestBittensorChallenge(api)
-                .onSuccess { message ->
-                    if (launchBittensorSignMessage(context, message, BITTENSOR_SIGN_PURPOSE_LOGIN)) {
-                        loginViewModel.setBittensorAuthInProgress(true)
-                    } else {
-                        loginViewModel.setLoginError(context.getString(R.string.login_error))
-                    }
-                }
-                .onFailure { error ->
-                    Log.i("LoginInitial", "Error fetching Bittensor challenge: $error")
-                    loginViewModel.setLoginError(context.getString(R.string.login_error))
-                }
-        }
+        bittensorLogin.start()
     }
 
     // Apple has no Android SDK: Apple's own web flow runs in a Custom Tab and
@@ -372,6 +379,12 @@ fun LoginInitial(
         onInstantAccountCreate = onInstantAccountCreate
     )
 
+    BittensorProofSheets(
+        flow = bittensorLogin.flow,
+        onChoose = bittensorLogin::choose,
+        onSubmit = bittensorLogin::submit,
+    )
+
     SeedphraseLoginSheet(
         isPresenting = seedphraseLoginSheetVisible,
         setIsPresenting = { seedphraseLoginSheetVisible = it },
@@ -388,7 +401,7 @@ fun LoginInitial(
                         loginActivity?.finishAuthenticatedLoginNow()
                     is com.bringyour.network.LoginClientCompletion.Failed -> {
                         android.util.Log.e("LoginInitial", "auth client finish err: ${completion.message}")
-                        android.widget.Toast.makeText(context, "Error logging in, please try again.", android.widget.Toast.LENGTH_LONG).show()
+                        android.widget.Toast.makeText(context, context.getString(R.string.error_logging_in_please_try_again), android.widget.Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -670,7 +683,7 @@ fun LoginInitialActions(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Text(
-                    "or",
+                    stringResource(id = R.string.or),
                     color = TextMuted
                 )
             }
@@ -715,7 +728,7 @@ fun LoginInitialActions(
 
             if (!loginError.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                URInlineErrorText(loginError)
+                URInlineErrorText(loginError, Modifier.testTag("acceptance.password.discovery-error"))
             }
 
             Spacer(modifier = Modifier.height(16.dp))

@@ -1,5 +1,6 @@
 package com.bringyour.network.ui.connect
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,26 +25,38 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.bringyour.network.R
 import com.bringyour.network.ui.Route
 import com.bringyour.network.ui.components.ButtonStyle
+import com.bringyour.network.ui.components.DataInfoSheet
+import com.bringyour.network.ui.components.outOfBalanceKindText
 import com.bringyour.network.ui.components.URButton
 import com.bringyour.network.ui.components.URSwitch
 import com.bringyour.network.ui.components.UsageBar
+import com.bringyour.network.ui.components.dataInfoShowsFreeRefresh
+import com.bringyour.network.ui.components.rememberFreeRefreshCountdown
+import com.bringyour.network.ui.navigateToUpgradeForBalanceBlock
 import com.bringyour.network.ui.shared.models.ConnectStatus
 import com.bringyour.network.ui.shared.viewmodels.Plan
 import com.bringyour.network.ui.stats.BlockActionsViewModel
@@ -63,7 +76,7 @@ import com.bringyour.sdk.ConnectLocation
 import kotlin.math.roundToInt
 
 @Composable
-fun ConnectActions(
+internal fun ConnectActions(
     navController: NavController,
     selectedLocation: ConnectLocation?,
     peerCount: Int,
@@ -80,7 +93,18 @@ fun ConnectActions(
     connectStatus: ConnectStatus,
     isPollingSubscriptionBalance: Boolean,
     displayReconnectTunnel: Boolean,
+    // the strict Private DNS provider host to warn about, or null for no notice
+    // (see privateDnsStrictNoticeHost). Shown only while connected in strict mode.
+    privateDnsStrictHost: String?,
     insufficientBalance: Boolean,
+    // reserved (Pending) or used up, from the last account balance, and the
+    // reserved amount it names
+    outOfBalanceKind: OutOfBalanceKind,
+    reservedBytes: Long,
+    // a connect insufficient balance blocked, waiting to be retried by itself;
+    // cancelBalanceRecovery is the refused start's Cancel
+    balanceRecovery: BalanceRecoveryState,
+    cancelBalanceRecovery: () -> Unit,
     usedBytes: Long,
     availableBytes: Long,
     pendingBytes: Long,
@@ -99,10 +123,9 @@ fun ConnectActions(
     blockActionsViewModel: BlockActionsViewModel,
     dnsSettingsViewModel: DnsSettingsViewModel,
     blockerViewModel: BlockerViewModel,
-    // the window's providers by IP version, and the connect widget's live
-    // grid width, for the histogram under the transport bar
+    // the window's providers with their state and IP version, for the
+    // family status row under the transport bar
     ipFamilyPoints: List<IpFamilyPoint>,
-    gridWidth: Int?,
     // opens the referral flow from the usage bar referral row
     onReferralClick: () -> Unit,
     // Reports the local integer Y offset of the fold marker placed right after
@@ -123,6 +146,10 @@ fun ConnectActions(
     // ConnectActions with nothing above it, so no other height contributes.
     val cardPadding = 16.dp
     val cardPaddingPx = with(LocalDensity.current) { cardPadding.roundToPx() }
+
+    // the "About your data" sheet, opened from Why? under the out-of-balance
+    // notice
+    var dataInfoPresented by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -148,6 +175,14 @@ fun ConnectActions(
             // the marker (the peers line, the connection-type selector, the
             // toggles) stays inside the same card but falls below the fold when
             // collapsed.
+            val actionButtons = connectActionButtons(
+                insufficientBalance = insufficientBalance,
+                currentPlan = currentPlan,
+                isPollingSubscriptionBalance = isPollingSubscriptionBalance,
+                connectStatus = connectStatus,
+                displayReconnectTunnel = displayReconnectTunnel,
+            )
+
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -169,27 +204,66 @@ fun ConnectActions(
                         .height(48.dp)
                 ) {
 
-                if (insufficientBalance && currentPlan != Plan.Supporter && !isPollingSubscriptionBalance) {
+                val disconnectButton: @Composable (Modifier) -> Unit = { buttonModifier ->
                     URButton(
-                        onClick = {
-                            navController.navigate(Route.Upgrade)
-                        },
-                        style = ButtonStyle.OUTLINE
+                        onClick = disconnect,
+                        style = ButtonStyle.OUTLINE,
+                        modifier = buttonModifier.testTag("acceptance.disconnect")
                     ) { buttonTextStyle ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.Center
                         ) {
+
                             Text(
-                                stringResource(id = R.string.insufficient_balance),
+                                stringResource(id = R.string.disconnect),
                                 style = buttonTextStyle,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
+
+                        }
+                    }
+                }
+
+                if (actionButtons.upgrade) {
+                    // out of balance: upgrade replaces connect, but a requested
+                    // connection always keeps its way out
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        URButton(
+                            onClick = {
+                                navController.navigateToUpgradeForBalanceBlock()
+                            },
+                            style = ButtonStyle.OUTLINE,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("acceptance.insufficient_balance_upgrade")
+                        ) { buttonTextStyle ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    stringResource(id = R.string.insufficient_balance),
+                                    style = buttonTextStyle,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+                            }
+                        }
+
+                        if (actionButtons.disconnect) {
+                            disconnectButton(Modifier.weight(1f))
                         }
                     }
                 } else {
 
-                    if (connectStatus == ConnectStatus.DISCONNECTED) {
+                    if (actionButtons.connect) {
                         URButton(
                             onClick = connect,
                             modifier = Modifier.testTag("acceptance.connect")
@@ -202,28 +276,40 @@ fun ConnectActions(
                         }
                     }
 
-                    if (connectStatus != ConnectStatus.DISCONNECTED && !displayReconnectTunnel) {
-                        URButton(
-                            onClick = disconnect,
-                            style = ButtonStyle.OUTLINE,
-                            modifier = Modifier.testTag("acceptance.disconnect")
-                        ) { buttonTextStyle ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-
-                                Text(
-                                    stringResource(id = R.string.disconnect),
-                                    style = buttonTextStyle,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
-
+                    if (actionButtons.retry) {
+                        // the connect failed: retry connects to the selected
+                        // location again, and disconnect stays the way out
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            URButton(
+                                onClick = connect,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("acceptance.connect_retry")
+                            ) { buttonTextStyle ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        stringResource(id = R.string.retry),
+                                        style = buttonTextStyle,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                }
                             }
+
+                            disconnectButton(Modifier.weight(1f))
                         }
+                    } else if (actionButtons.disconnect) {
+                        disconnectButton(Modifier)
                     }
 
-                    if (displayReconnectTunnel) {
+                    if (actionButtons.reconnect) {
                         URButton(
                             onClick = {
 //                                application?.startVpnService()
@@ -241,6 +327,136 @@ fun ConnectActions(
                 }
                 }
             }
+
+            // in-app alert, above the fold so it shows in the collapsed peek
+            val outOfBalanceNotice = outOfBalanceNotice(actionButtons, outOfBalanceKind, balanceRecovery)
+
+            if (outOfBalanceNotice.refresh) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(id = R.string.insufficient_balance_refreshes_in, rememberFreeRefreshCountdown()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
+                        stringResource(id = R.string.data_info_why),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Pink,
+                        modifier = Modifier
+                            .clickable(role = Role.Button) { dataInfoPresented = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("acceptance.insufficient_balance_why")
+                    )
+                }
+            }
+
+            // reserved data comes back as connections close (no time promised);
+            // used up waits for the refresh or an upgrade
+            val outOfBalanceKindText = outOfBalanceKindText(outOfBalanceNotice.kind, reservedBytes)
+            if (outOfBalanceKindText != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    outOfBalanceKindText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                        .testTag("acceptance.insufficient_balance_kind")
+                )
+            }
+
+            if (outOfBalanceNotice.held) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    stringResource(id = R.string.insufficient_balance_held_notice),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                        .testTag("acceptance.insufficient_balance_notice")
+                )
+            }
+
+            if (outOfBalanceNotice.willReconnect) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(id = R.string.insufficient_balance_will_reconnect),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .testTag("acceptance.insufficient_balance_will_reconnect")
+                    )
+                    if (outOfBalanceNotice.cancel) {
+                        Text(
+                            stringResource(id = R.string.cancel),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Pink,
+                            modifier = Modifier
+                                .clickable(role = Role.Button) { cancelBalanceRecovery() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .testTag("acceptance.insufficient_balance_cancel_reconnect")
+                        )
+                    }
+                }
+            }
+
+            // Strict Private DNS breaks name resolution while connected: Android
+            // sends DoT straight to the user's provider instead of through the
+            // tunnel. Android has no public Private DNS settings intent, so the
+            // button opens the wireless settings screen.
+            if (privateDnsStrictHost != null) {
+                val context = LocalContext.current
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    stringResource(id = R.string.private_dns_strict_notice, privateDnsStrictHost),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                        .testTag("acceptance.private_dns_strict_notice")
+                )
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    }
+                ) {
+                    Text(
+                        stringResource(id = R.string.private_dns_open_settings),
+                        color = Pink
+                    )
+                }
+            }
+
+            DataInfoSheet(
+                presented = dataInfoPresented,
+                onDismiss = { dataInfoPresented = false },
+                startBalanceByteCount = dailyByteCount,
+                availableByteCount = availableBytes,
+                pendingByteCount = pendingBytes,
+                showFreeRefresh = dataInfoShowsFreeRefresh(currentPlan),
+            )
 
             // the fold marker: a zero-height anchor at the bottom of the
             // location + connect block. positionInParent is relative to the
@@ -325,11 +541,24 @@ fun ConnectActions(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    stringResource(id = R.string.fixed_ip),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White
-                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text(
+                        stringResource(id = R.string.fixed_ip),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White
+                    )
+                    // a Fixed IP window keeps its one exit for the session
+                    // (connect stickyExit): no hourly rotation, no spare
+                    Text(
+                        stringResource(id = R.string.fixed_ip_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
 
                 /**
                  * Fixed IP Switch
@@ -413,7 +642,6 @@ fun ConnectActions(
             dnsSettingsViewModel = dnsSettingsViewModel,
             blockerViewModel = blockerViewModel,
             ipFamilyPoints = ipFamilyPoints,
-            gridWidth = gridWidth,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -511,11 +739,24 @@ fun ConnectActions(
                 meanReliabilityWeight = meanReliabilityWeight,
                 totalReferrals = totalReferrals,
                 dailyByteCount = dailyByteCount,
-                onReferralClick = onReferralClick
+                onReferralClick = onReferralClick,
+                showFreeRefresh = dataInfoShowsFreeRefresh(currentPlan),
             )
 
         }
     }
+}
+
+/**
+ * Shortens [label] to "abcd…1234" when it is the client id [clientId]
+ * (the first four and last four characters). Other labels are returned as is.
+ */
+internal fun shortClientIdLabel(label: String, clientId: String?): String {
+    if (clientId.isNullOrEmpty() || !label.trim().equals(clientId, ignoreCase = true)) {
+        return label
+    }
+    val id = label.trim()
+    return if (id.length <= 12) id else "${id.take(4)}…${id.takeLast(4)}"
 }
 
 @Composable
@@ -532,6 +773,10 @@ fun OpenProviderListButton(
         selectedLocation == null || selectedLocation.connectLocationId.bestAvailable ->
             stringResource(id = R.string.best_available_provider)
         else -> selectedLocation.name
+    }.let { label ->
+        // a client id label (a direct client connection, or a peer without a device name)
+        // is shortened to "abcd…1234" so it does not crowd the Change button
+        shortClientIdLabel(label, selectedLocation?.connectLocationId?.clientId?.idStr)
     }
 
     val iconTint = if (selectedLocation == null || selectedLocation.connectLocationId.bestAvailable) {
@@ -557,6 +802,8 @@ fun OpenProviderListButton(
     ) {
 
         Row(
+            // take only the remaining width so the Change button is never squeezed
+            modifier = Modifier.weight(1f, fill = false),
             verticalAlignment = Alignment.CenterVertically
         ) {
 
@@ -574,7 +821,9 @@ fun OpenProviderListButton(
                 Text(
                     text,
                     color = Color.White,
-                    style = MaterialTheme.typography.bodyLarge
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 if (selectedLocation != null) {

@@ -12,8 +12,10 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.os.ext.SdkExtensions
@@ -22,6 +24,11 @@ import android.telephony.TelephonyCallback
 import android.telephony.TelephonyDisplayInfo
 import android.telephony.TelephonyManager
 import android.util.Log
+import com.bringyour.network.analytics.WHITELIST_PROBE_HTTP_TIMEOUT_MILLIS
+import com.bringyour.network.analytics.WHITELIST_PROBE_LOG_TAG
+import com.bringyour.network.analytics.WhitelistProbeStep
+import java.net.HttpURLConnection
+import java.net.URL
 import androidx.core.content.ContextCompat
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -30,6 +37,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.WorkManager
 import com.bringyour.network.location.MockLocationController
 import com.bringyour.network.location.MockLocationFeeder
+import com.bringyour.network.ui.login.toVerifySendError
 import com.bringyour.network.ui.shared.models.ProvideNetworkMode
 import com.bringyour.sdk.DeviceLocal
 import com.bringyour.sdk.LocalState
@@ -71,23 +79,37 @@ private class DefaultNetworkTelephonyCallback(
 class MainApplication : Application() {
     internal companion object {
         const val VPN_STATE_BURST_COALESCE_MILLIS = 20L
+        // distinct from MainService.NOTIFICATION_ID so it outlives the service notification
+        const val INSUFFICIENT_BALANCE_NOTIFICATION_ID = 102
         // a return to the foreground after this long starts a new product-event session
         const val CLIENT_EVENT_SESSION_GAP_MILLIS = 30L * 60L * 1000L
         // how long logout waits for the pending product events to send
         const val CLIENT_EVENT_LOGOUT_DRAIN_MILLIS = 1500L
-        // Android retains its normal larger profile. Only a debug audit APK
-        // explicitly selects the iOS extension's 20/32-MiB admission/GC inputs.
-        const val IOS_MEMORY_AUDIT_PROFILE = "ios-memory-audit-v1"
+        // Admission scales with the effective process allowance. The debug
+        // iOS surrogate mirrors the extension's 32/32-MiB target/soft limit;
+        // v1 remains an explicit historical 20/32-MiB comparison profile.
+        const val IOS_MEMORY_AUDIT_PROFILE = "ios-memory-audit-v2"
+        const val LEGACY_IOS_MEMORY_AUDIT_PROFILE = "ios-memory-audit-v1"
         val MEMORY_PROFILE_NAME: String
-            get() = if (BuildConfig.DEBUG && BuildConfig.URNETWORK_MEMORY_PROFILE == IOS_MEMORY_AUDIT_PROFILE) {
-                IOS_MEMORY_AUDIT_PROFILE
+            get() = if (BuildConfig.DEBUG && (BuildConfig.URNETWORK_MEMORY_PROFILE == IOS_MEMORY_AUDIT_PROFILE ||
+                BuildConfig.URNETWORK_MEMORY_PROFILE == LEGACY_IOS_MEMORY_AUDIT_PROFILE)) {
+                BuildConfig.URNETWORK_MEMORY_PROFILE
             } else {
                 "android"
             }
         internal fun processMemoryLimitMib(profile: String): Long =
-            if (profile == IOS_MEMORY_AUDIT_PROFILE) 32L else 40L
+            if (profile == IOS_MEMORY_AUDIT_PROFILE || profile == LEGACY_IOS_MEMORY_AUDIT_PROFILE) 32L else 64L
+        internal fun effectiveProcessMemoryLimitMib(profile: String, memoryClassMib: Int?): Long {
+            val maxMemoryMib = memoryClassMib?.takeIf { it > 0 }?.toLong() ?: 32L
+            return min((3 * maxMemoryMib) / 4, processMemoryLimitMib(profile))
+        }
         val SDK_PROCESS_MEMORY_LIMIT_MIB: Long
             get() = processMemoryLimitMib(MEMORY_PROFILE_NAME)
+        // Published before NetworkSpace/DeviceLocal construction. Keep the
+        // fallback conservative if a consumer reads it before onCreate.
+        @Volatile
+        var SDK_EFFECTIVE_PROCESS_MEMORY_LIMIT_MIB: Long = effectiveProcessMemoryLimitMib(MEMORY_PROFILE_NAME, null)
+            private set
         // Stable platform capability id since API 30. The framework exposes it
         // to system code only, but public hasCapability(Int) reports it to VPN
         // apps as part of ordinary NetworkCapabilities callbacks.
@@ -200,6 +222,12 @@ class MainApplication : Application() {
     private var performanceDegradedDevice: DeviceLocal? = null
     private var performanceDegradedApplied: Boolean? = null
 
+    // main-looper confined; the pause sources that device.providePaused is
+    // decided from together (see updateProvidePaused)
+    private var provideNetworkAvailable = false
+    private var providePowerSave = false
+    private var provideBattery = BatteryPowerFacts.Unknown
+
     var loginVc: LoginViewController? = null
 
     /** Process-owned, bounded login diagnostics shared with acceptance. */
@@ -283,6 +311,8 @@ class MainApplication : Application() {
                                 PasswordAuthWireResult(
                                     byJwt = it.network?.byJwt,
                                     verificationUserAuth = it.verificationRequired?.userAuth,
+                                    verificationSendError =
+                                        it.verificationRequired?.sendError?.toVerifySendError(),
                                     failure = if (resultError == null) {
                                         null
                                     } else {
@@ -334,6 +364,9 @@ class MainApplication : Application() {
     @Inject
     lateinit var mockLocationFeeder: MockLocationFeeder
 
+    @Inject
+    lateinit var providePauseState: ProvidePauseState
+
     var vpnRequestStart: Boolean = false
         private set
 
@@ -384,11 +417,171 @@ class MainApplication : Application() {
 
     /**
      * The screen a Home Screen widget tap asked for (see QuickConnectActivity):
-     * "connect", "provider_locations" or "contract_stats". MainNavHost observes
-     * it, navigates, and clears it -- whether the app was cold-started for the
-     * tap or was already running.
+     * "connect", "provider_locations", "contract_stats" or "upgrade" (a
+     * blocked connect). MainNavHost observes it, navigates, and clears it --
+     * whether the app was cold-started for the tap or was already running.
      */
     val widgetRoute = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /**
+     * The plan and balance poll state the connect screen shows, mirrored by
+     * InsufficientBalanceNoticeEffect so the start connect gate outside the ui
+     * (tile, shortcuts, widget button) matches the in-app swap. Main thread.
+     */
+    @Volatile
+    internal var uiIsPro: Boolean = false
+    @Volatile
+    internal var uiPollingSubscriptionBalance: Boolean = false
+
+    /**
+     * The start connect gate shared by every connect surface (see
+     * InsufficientBalancePolicy): out of balance by the contract status or a
+     * fresh account balance, not Supporter, no balance poll. A cached balance
+     * older than START_CONNECT_BALANCE_MAX_AGE_MILLIS is fetched again first
+     * (bounded by START_CONNECT_BALANCE_FETCH_TIMEOUT_MILLIS; a failed fetch
+     * does not block). onResult runs on the main thread, once.
+     */
+    fun checkStartConnect(onResult: (blocked: Boolean) -> Unit) {
+        com.bringyour.network.ui.connect.startConnectBalance(
+            cached = com.bringyour.network.widgets.WidgetSnapshotStore.loadBalance(this),
+            nowMillis = System.currentTimeMillis(),
+            fetch = ::fetchStartConnectBalance,
+        ) { balance ->
+            onResult(startConnectBlocked(balance))
+        }
+    }
+
+    /** Fetches the account balance again when the cached one is too old to gate on. */
+    fun refreshStartConnectBalanceIfStale() {
+        val cached = com.bringyour.network.widgets.WidgetSnapshotStore.loadBalance(this)
+        if (!com.bringyour.network.ui.connect.startConnectBalanceFresh(cached, System.currentTimeMillis())) {
+            fetchStartConnectBalance {}
+        }
+    }
+
+    private fun startConnectBlocked(balance: com.bringyour.network.widgets.WidgetBalanceSnapshot?): Boolean {
+        val isPro = uiIsPro ||
+            balance?.isPro == true ||
+            deviceManager.jwtFlow.value?.pro == true
+        return com.bringyour.network.ui.connect.startConnectBlocked(
+            contractInsufficientBalance = device?.contractStatus?.insufficientBalance == true,
+            accountBalanceExhausted = com.bringyour.network.ui.connect.accountBalanceExhausted(balance),
+            currentPlan = if (isPro) com.bringyour.network.ui.shared.viewmodels.Plan.Supporter
+                else com.bringyour.network.ui.shared.viewmodels.Plan.Basic,
+            isPollingSubscriptionBalance = uiPollingSubscriptionBalance,
+        )
+    }
+
+    /**
+     * Fetches the subscription balance, publishes it for the widgets and the
+     * connect screen, and calls back on the main thread with it, or with null
+     * when the fetch fails or does not answer in time.
+     */
+    private fun fetchStartConnectBalance(onBalance: (com.bringyour.network.widgets.WidgetBalanceSnapshot?) -> Unit) {
+        val mainHandler = Handler(Looper.getMainLooper())
+        val first = com.bringyour.network.ui.connect.FirstBalance(onBalance)
+        val api = device?.api
+        if (api == null) {
+            mainHandler.post { first.offer(null) }
+            return
+        }
+        mainHandler.postDelayed(
+            { first.offer(null) },
+            com.bringyour.network.ui.connect.START_CONNECT_BALANCE_FETCH_TIMEOUT_MILLIS,
+        )
+        api.subscriptionBalance(com.bringyour.sdk.SubscriptionBalanceCallback { result, err ->
+            val balance = if (err == null && result != null) {
+                com.bringyour.network.widgets.WidgetBalanceSnapshot(
+                    updatedAtMillis = System.currentTimeMillis(),
+                    startBalanceByteCount = result.startBalanceByteCount,
+                    balanceByteCount = result.balanceByteCount,
+                    openTransferByteCount = result.openTransferByteCount,
+                    isPro = result.currentSubscription != null,
+                )
+            } else {
+                null
+            }
+            mainHandler.post {
+                if (balance != null) {
+                    widgetSnapshotWriter?.publishBalance(balance)
+                        ?: com.bringyour.network.widgets.WidgetSnapshotStore.save(this, balance)
+                }
+                first.offer(balance)
+            }
+        })
+    }
+
+    /** A blocked connect: show the upgrade screen when the app is next in front. */
+    fun requestUpgradeScreen() {
+        widgetRoute.value = QuickConnectActivity.ROUTE_UPGRADE
+    }
+
+    /**
+     * Self-recovery for a connect insufficient balance blocked (BalanceRecovery):
+     * the refused start or the held connection is retried once the balance is
+     * back. Fed on the main thread by InsufficientBalanceNoticeEffect, so it
+     * only ever acts while the app is in front.
+     */
+    private val balanceRecovery = com.bringyour.network.ui.connect.BalanceRecovery<com.bringyour.sdk.ConnectLocation?>()
+
+    /** What the out-of-balance notice says about the recovery. Main thread. */
+    internal val balanceRecoveryState = kotlinx.coroutines.flow.MutableStateFlow(balanceRecovery.state)
+
+    /**
+     * The start connect gate refused a connect the user asked for (to
+     * `location`, or the best available provider when null): wait for the
+     * balance to retry it, and show the upgrade screen meanwhile.
+     */
+    fun startConnectBlocked(location: com.bringyour.sdk.ConnectLocation?) {
+        balanceRecovery.startRefused(location, System.currentTimeMillis())
+        balanceRecoveryState.value = balanceRecovery.state
+        requestUpgradeScreen()
+    }
+
+    /**
+     * The user connected, disconnected, signed out or cancelled the wait:
+     * nothing they asked for is waiting on the balance any more.
+     */
+    fun clearBalanceRecovery() {
+        balanceRecovery.clear()
+        balanceRecoveryState.value = balanceRecovery.state
+    }
+
+    /**
+     * Feeds the recovery the gate, the connect request and the last account
+     * balance, and makes the retry it decides on. True when it retried, so the
+     * caller tells the user.
+     */
+    fun observeBalanceRecovery(gate: Boolean, connectRequested: Boolean): Boolean {
+        val step = balanceRecovery.observe(
+            gate = gate,
+            connectRequested = connectRequested,
+            balance = com.bringyour.network.widgets.WidgetSnapshotStore.loadBalance(this),
+            nowMillis = System.currentTimeMillis(),
+        )
+        balanceRecoveryState.value = balanceRecovery.state
+        val target = when (step) {
+            com.bringyour.network.ui.connect.BalanceRecoveryStep.None -> return false
+            is com.bringyour.network.ui.connect.BalanceRecoveryStep.Start -> step.target
+            com.bringyour.network.ui.connect.BalanceRecoveryStep.Rebuild -> device?.connectLocation
+        }
+        val current = device ?: return false
+        // the gate is not asked again: the recovery decided on a fresh balance,
+        // and a held connection still reports insufficient balance until the
+        // rebuild replaces it
+        val vc = current.openConnectViewController() ?: return false
+        try {
+            Log.i(TAG, "[connect]balance is back: retrying the blocked connect")
+            if (target != null) {
+                vc.connect(target)
+            } else {
+                vc.connectBestAvailable()
+            }
+        } finally {
+            current.closeViewController(vc)
+        }
+        return true
+    }
 
     /**
      * A campaign email link opened the app on the feedback screen with a
@@ -397,6 +590,16 @@ class MainApplication : Application() {
      * them once.
      */
     val pendingFeedbackPrefill = kotlinx.coroutines.flow.MutableStateFlow<com.bringyour.network.analytics.FeedbackPrefill?>(null)
+
+    /**
+     * The physical network's Private DNS (DoT) mode, mapped from the offline
+     * callback's LinkProperties (API 28+). In strict mode (a user-set hostname)
+     * Android sends every lookup as DoT straight to that host through the tunnel,
+     * bypassing URnetwork's DNS and failing completely when that path is down.
+     * The connect screen reads this to show a muted notice while connected, and
+     * MainService logs it on every builder.establish().
+     */
+    val privateDnsMode = kotlinx.coroutines.flow.MutableStateFlow<PrivateDnsMode>(PrivateDnsMode.Off)
 
     /**
      * The product-event queue for the active network space (one per process;
@@ -411,6 +614,152 @@ class MainApplication : Application() {
 //    val vcManager get() = deviceManager.vcManager
     val api get() = networkSpaceManagerProvider.getNetworkSpace()?.api
     val asyncLocalState get() = networkSpaceManagerProvider.getNetworkSpace()?.asyncLocalState
+
+    // Diagnostics that support needs from "send feedback with logs": logcat plus
+    // the sdk log, which is what feedback uploads (see AppDiagnosticLog).
+    private val diagnosticLog = AppDiagnosticLog(
+        logcat = { Log.i(TAG, it) },
+        sdkLog = { tag, line -> Sdk.logAppInfo(tag, line) },
+    )
+
+    /**
+     * The whitelist-network measurement probe (P052). Bounded, URnetwork-owned
+     * endpoints only, local logs only; see WhitelistProbe. Built lazily so its
+     * cool-down state lives for the process. ConnectViewModel calls
+     * [maybeRunWhitelistProbe] when a connect attempt fails (the sdk's
+     * CONNECT_FAILED, or no provider in the window past the time bound, while the
+     * user wants to be connected; see ConnectFailurePolicy). Only a run the probe
+     * claims gets a worker thread, and it claims one run at a time, so a failure
+     * it declines starts no thread. Its block goes to logcat and, line by line,
+     * to the sdk log that feedback uploads.
+     */
+    private val whitelistProbe by lazy {
+        com.bringyour.network.analytics.WhitelistProbe(
+            runOnWorker = { work ->
+                Thread({
+                    runCatching { work() }
+                        .onFailure { Log.w(TAG, "whitelist probe failed: ${it.message}") }
+                }, "whitelist-probe").start()
+            },
+            checkApiReachable = { probeApiReachable() },
+            log = { diagnosticLog.info(WHITELIST_PROBE_LOG_TAG, it) },
+        )
+    }
+
+    /**
+     * Runs the whitelist probe once if a connect failed on an RU cellular path.
+     * Reads the data path and the SIM/network country here. The probe claims the
+     * run on this thread, checking and setting its trigger, cool-down and run in
+     * flight in one step, and runs the bounded network step on its worker. A
+     * probe failure never fails the caller.
+     */
+    fun maybeRunWhitelistProbe(connectFailed: Boolean) {
+        if (!connectFailed) {
+            return
+        }
+        val cellular = isActiveNetworkCellular()
+        val countryIso = runCatching {
+            getSystemService(TelephonyManager::class.java)?.networkCountryIso
+        }.getOrNull()
+        runCatching { whitelistProbe.maybeRun(cellular, countryIso, connectFailed = true) }
+            .onFailure { Log.w(TAG, "whitelist probe failed: ${it.message}") }
+    }
+
+    /** Whether the active network carries cellular transport. */
+    private fun isActiveNetworkCellular(): Boolean {
+        val connectivityManager =
+            getSystemService(ConnectivityManager::class.java) ?: return false
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+    }
+
+    /**
+     * Reports the mobile network's country to the sdk (P052). The extender
+     * dials of every network space front with the spoof list of that country
+     * while the extender hint cannot be fetched, as on a whitelist-only mobile
+     * network; see NetworkCountryReporter. The value never leaves the device.
+     */
+    private val networkCountryReporter = NetworkCountryReporter(
+        readNetworkCountryIso = {
+            runCatching { getSystemService(TelephonyManager::class.java)?.networkCountryIso }.getOrNull()
+        },
+        report = { countryCode ->
+            Log.i(TAG, "network country = \"$countryCode\"")
+            Sdk.setNetworkCountryCode(countryCode)
+        },
+    )
+    private var networkCountryCallback: ConnectivityManager.NetworkCallback? = null
+
+    /**
+     * Reports the current default network's country, then follows the default
+     * network for the life of the process. It runs before the network space
+     * manager builds its spaces, whose first extender dials already need it,
+     * and it is not tied to the device: the login flow dials too.
+     */
+    private fun addNetworkCountryCallback() {
+        if (networkCountryCallback != null) return
+        val connectivityManager = getSystemService(ConnectivityManager::class.java) ?: return
+        // synchronously: the callback's first delivery is posted, and the
+        // spaces built right after this dial before it lands
+        networkCountryReporter.defaultNetworkChanged(isActiveNetworkCellular())
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(
+                network: Network,
+                networkCapabilities: NetworkCapabilities,
+            ) {
+                if (networkCountryCallback !== this) return
+                networkCountryReporter.defaultNetworkChanged(
+                    networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
+                )
+            }
+
+            override fun onLost(network: Network) {
+                if (networkCountryCallback !== this) return
+                networkCountryReporter.defaultNetworkChanged(isCellular = false)
+            }
+        }
+        networkCountryCallback = callback
+        runCatching {
+            connectivityManager.registerDefaultNetworkCallback(callback, Handler(mainLooper))
+        }.onFailure {
+            networkCountryCallback = null
+            Log.w(TAG, "network country callback unavailable: ${it.message}")
+        }
+    }
+
+    /**
+     * Probe step (a): a bounded https GET of the api `/status` endpoint. Reaching
+     * the server with any http response means the control plane is routable; a
+     * timeout or connection error on a whitelist network is the signal we want.
+     * URnetwork-owned endpoint only; no new data destination.
+     */
+    private fun probeApiReachable(): WhitelistProbeStep {
+        val apiUrl = networkSpaceManagerProvider.getNetworkSpace()?.apiUrl?.trimEnd('/')
+        if (apiUrl.isNullOrEmpty()) {
+            return WhitelistProbeStep("api-reachable", null, "no api url")
+        }
+        val statusUrl = "$apiUrl/status"
+        val start = System.currentTimeMillis()
+        return try {
+            val connection = (URL(statusUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = WHITELIST_PROBE_HTTP_TIMEOUT_MILLIS
+                readTimeout = WHITELIST_PROBE_HTTP_TIMEOUT_MILLIS
+                instanceFollowRedirects = false
+            }
+            try {
+                val code = connection.responseCode
+                val elapsed = System.currentTimeMillis() - start
+                WhitelistProbeStep("api-reachable", true, "HTTP $code in ${elapsed}ms")
+            } finally {
+                connection.disconnect()
+            }
+        } catch (e: Exception) {
+            val elapsed = System.currentTimeMillis() - start
+            WhitelistProbeStep("api-reachable", false, "${e.javaClass.simpleName} after ${elapsed}ms")
+        }
+    }
 //    val apiUrl get() = networkSpace?.apiUrl
 //    val platformUrl get() = networkSpace?.platformUrl
 
@@ -590,6 +939,13 @@ class MainApplication : Application() {
     private fun initializeApplicationState() {
         addTunnelLifecycleObservers()
 
+        // a new provide power mode in settings decides the pause again
+        providePauseState.onPowerModeChange = {
+            Handler(mainLooper).post {
+                updateProvidePaused()
+            }
+        }
+
         if (widgetSnapshotWriter == null) {
             widgetSnapshotWriter = com.bringyour.network.widgets.WidgetSnapshotWriter(
                 this,
@@ -653,10 +1009,11 @@ class MainApplication : Application() {
         }
 
         val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager?
-        val maxMemoryMib = activityManager?.memoryClass?.toLong() ?: 32
-        // Bound emergency GC pacing independently of device admission targets.
-        val sdkMemoryMib = min((3 * maxMemoryMib) / 4, SDK_PROCESS_MEMORY_LIMIT_MIB)
+        // Publish the applied limit so DeviceLocal uses the full allowance
+        // without exceeding the memory-class clamp on smaller devices.
+        val sdkMemoryMib = effectiveProcessMemoryLimitMib(MEMORY_PROFILE_NAME, activityManager?.memoryClass)
         Sdk.setMemoryLimit(sdkMemoryMib * 1024 * 1024)
+        SDK_EFFECTIVE_PROCESS_MEMORY_LIMIT_MIB = sdkMemoryMib
 
         // Nothing removes location test providers when a process dies — not a
         // crash, not force-stop, not uninstall. Start the controller here (not
@@ -665,34 +1022,68 @@ class MainApplication : Application() {
         mockLocationController.start()
         mockLocationFeeder.start()
 
+        // The mobile network's country, before the network space manager
+        // builds its spaces: their extender dials front with that country's
+        // spoof list while the extender hint cannot be fetched (P052).
+        addNetworkCountryCallback()
+
         networkSpaceManagerProvider.init(filesDir.absolutePath)
 
         val networkSpaceManager = networkSpaceManagerProvider.getNetworkSpaceManager()
 
-        val key = Sdk.newNetworkSpaceKey(BuildConfig.BRINGYOUR_BUNDLE_HOST_NAME, BuildConfig.BRINGYOUR_BUNDLE_ENV_NAME)
-        val bundleNetworkSpaceExists = networkSpaceManager?.getNetworkSpace(key) != null
-        val bundleNetworkSpace = networkSpaceManager?.updateNetworkSpace(key) { values ->
-            // migrate specific bundled fields to the latest from the build
-            values.envSecret = BuildConfig.BRINGYOUR_BUNDLE_ENV_SECRET
-            values.bundled = true
-            // security settings
-            // more security can mean fewer connectivity options and slower connectivity in some regions
-            values.netExposeServerIps = BuildConfig.BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_IPS
-            values.netExposeServerHostNames = BuildConfig.BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_HOST_NAMES
-            // server settings
-            values.linkHostName = BuildConfig.BRINGYOUR_BUNDLE_LINK_HOST_NAME
-            values.migrationHostName = BuildConfig.BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME
-            // third party settings
-            // TODO sso settings
-            values.store = BuildConfig.BRINGYOUR_BUNDLE_STORE
-            values.wallet = BuildConfig.BRINGYOUR_BUNDLE_WALLET
-            values.ssoGoogle = BuildConfig.BRINGYOUR_BUNDLE_SSO_GOOGLE
-        }
+        // The bundled space is keyed by the operator host. An earlier bundle
+        // keyed it under the legacy host; installBundleNetworkSpace rolls
+        // that key forward BEFORE the bundled key is read, created, or bound
+        // (the sdk's migrateNetworkSpace contract), so the credentials and
+        // local state saved under the old key move with it.
+        val bundleIdentity = BundleNetworkSpaceIdentity.fromBuildConfig()
+        val bundleInstall = installBundleNetworkSpace(
+            bundleIdentity,
+            object : BundleNetworkSpaceStore<NetworkSpace> {
+                override fun migrate(fromHostName: String, toHostName: String, envName: String): Boolean {
+                    return networkSpaceManager?.migrateNetworkSpace(
+                        Sdk.newNetworkSpaceKey(fromHostName, envName),
+                        Sdk.newNetworkSpaceKey(toHostName, envName),
+                    ) ?: false
+                }
 
-        if (!bundleNetworkSpaceExists || networkSpaceManager?.activeNetworkSpace == null) {
-            // switch to the bundled network space when first created
-            // this is important when migrating from an older bundle to a newer bundle
-            networkSpaceManager?.activeNetworkSpace = bundleNetworkSpace
+                override fun exists(hostName: String, envName: String): Boolean {
+                    return networkSpaceManager?.getNetworkSpace(Sdk.newNetworkSpaceKey(hostName, envName)) != null
+                }
+
+                override fun update(hostName: String, envName: String): NetworkSpace? {
+                    return networkSpaceManager?.updateNetworkSpace(Sdk.newNetworkSpaceKey(hostName, envName)) { values ->
+                        // migrate specific bundled fields to the latest from the build
+                        values.envSecret = BuildConfig.BRINGYOUR_BUNDLE_ENV_SECRET
+                        values.bundled = true
+                        // security settings
+                        // more security can mean fewer connectivity options and slower connectivity in some regions
+                        values.netExposeServerIps = BuildConfig.BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_IPS
+                        values.netExposeServerHostNames = BuildConfig.BRINGYOUR_BUNDLE_NET_EXPOSE_SERVER_HOST_NAMES
+                        // server settings
+                        values.linkHostName = BuildConfig.BRINGYOUR_BUNDLE_LINK_HOST_NAME
+                        values.migrationHostName = BuildConfig.BRINGYOUR_BUNDLE_MIGRATION_HOST_NAME
+                        // third party settings
+                        // TODO sso settings
+                        values.store = BuildConfig.BRINGYOUR_BUNDLE_STORE
+                        values.wallet = BuildConfig.BRINGYOUR_BUNDLE_WALLET
+                        values.ssoGoogle = BuildConfig.BRINGYOUR_BUNDLE_SSO_GOOGLE
+                    }
+                }
+
+                override var active: NetworkSpace?
+                    get() = networkSpaceManager?.activeNetworkSpace
+                    set(value) {
+                        networkSpaceManager?.activeNetworkSpace = value
+                    }
+            },
+        )
+        if (bundleInstall.migratedFromLegacyHost) {
+            Log.i(
+                TAG,
+                "migrated bundled network space ${bundleIdentity.legacyHostName}/${bundleIdentity.envName}" +
+                    " -> ${bundleIdentity.hostName}/${bundleIdentity.envName}",
+            )
         }
 
         networkSpaceSub = networkSpaceManager?.addActiveNetworkSpaceChangeListener { networkSpace ->
@@ -1038,6 +1429,17 @@ class MainApplication : Application() {
                 if (offlineCallback !== this || device !== callbackDevice) {
                     return
                 }
+                // Private DNS is a system-wide setting Android reports per
+                // network on LinkProperties (API 28+). Reading it from whichever
+                // physical path updates keeps the mode current.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    privateDnsMode.value = privateDnsModeOf(
+                        Build.VERSION.SDK_INT,
+                        linkProperties.isPrivateDnsActive,
+                        linkProperties.privateDnsServerName,
+                    )
+                }
+
                 // Same network, new addressing (DHCP renew, IPv6 renumbering,
                 // AP roam, DNS or route update): old sockets may be stale too.
                 val fingerprint = listOf(
@@ -1453,21 +1855,31 @@ class MainApplication : Application() {
 
         powerSaveReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                val action = intent?.action
                 Handler(mainLooper).post {
-                    updatePerformanceDegraded()
+                    if (action == PowerManager.ACTION_POWER_SAVE_MODE_CHANGED) {
+                        updatePerformanceDegraded()
+                    }
+                    updateProvidePower(action)
                 }
             }
         }
         ContextCompat.registerReceiver(
             this,
             powerSaveReceiver,
-            IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
-            // This is a protected system broadcast. Exported context
+            IntentFilter().apply {
+                addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+                // the provide pause also follows the charger
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_POWER_DISCONNECTED)
+            },
+            // These are protected system broadcasts. Exported context
             // receivers reliably accept privileged framework senders across
             // OEM builds while still rejecting non-system spoofing.
             ContextCompat.RECEIVER_EXPORTED,
         )
         updatePerformanceDegraded()
+        updateProvidePower(null)
     }
 
     fun removePowerSaveReceiver() {
@@ -1478,6 +1890,68 @@ class MainApplication : Application() {
             }
         }
         powerSaveReceiver = null
+    }
+
+    /**
+     * Reads Battery Saver and the charger for the provide pause. The plug
+     * state comes from the sticky ACTION_BATTERY_CHANGED, which a null
+     * receiver reads without registering; a power connected or disconnected
+     * broadcast is the newest word on the plug.
+     */
+    private fun updateProvidePower(action: String?) {
+        providePowerSave = runCatching {
+            getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+        }.getOrDefault(false)
+        val battery = runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                null,
+                IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                ContextCompat.RECEIVER_EXPORTED,
+            )
+        }.getOrNull()
+        val batteryFacts = battery?.let {
+            batteryPowerFacts(
+                plugged = it.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0),
+                present = it.getBooleanExtra(BatteryManager.EXTRA_PRESENT, true),
+                level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1),
+                scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1),
+            )
+        } ?: BatteryPowerFacts.Unknown
+        provideBattery = when (action) {
+            Intent.ACTION_POWER_CONNECTED -> batteryFacts.copy(charging = true)
+            Intent.ACTION_POWER_DISCONNECTED -> batteryFacts.copy(charging = false)
+            else -> batteryFacts
+        }
+        updateProvidePaused()
+    }
+
+    /**
+     * Sets device.providePaused from every pause source at once: the matching
+     * network, Battery Saver and the charger, with the provide power mode
+     * (providePauseDecision). Setting it from one source alone would let that
+     * source clear another's pause, as the network callback used to clear any
+     * pause when a network appeared. The decision is published for the
+     * provider card's idle reason.
+     */
+    private fun updateProvidePaused() {
+        val decision = providePauseDecision(
+            ProvidePauseFacts(
+                networkAvailable = provideNetworkAvailable,
+                powerSave = providePowerSave,
+                charging = provideBattery.charging,
+                batteryPct = provideBattery.batteryPct,
+                mode = providePauseState.powerMode.value,
+            )
+        )
+        if (providePauseState.decision.value != decision) {
+            Log.i(
+                TAG,
+                "provide pause paused=${decision.paused} reason=${decision.reason} network=$provideNetworkAvailable powerSave=$providePowerSave charging=${provideBattery.charging} battery=${provideBattery.batteryPct} mode=${providePauseState.powerMode.value}",
+            )
+        }
+        providePauseState.publishDecision(decision)
+        device?.providePaused = decision.paused
     }
 
     private fun addThermalStatusListener() {
@@ -1516,7 +1990,8 @@ class MainApplication : Application() {
                 }
                 availableNetworks.onAvailable(network)
                 Log.i(TAG, "network available provider = $network count=${availableNetworks.size}")
-                callbackDevice?.providePaused = false
+                provideNetworkAvailable = true
+                updateProvidePaused()
             }
 
             override fun onLost(network: Network) {
@@ -1526,7 +2001,8 @@ class MainApplication : Application() {
                 val change = availableNetworks.onLost(network)
                 if (change.topologyChanged) {
                     Log.i(TAG, "network lost provider = $network count=${availableNetworks.size}")
-                    callbackDevice?.providePaused = !change.available
+                    provideNetworkAvailable = change.available
+                    updateProvidePaused()
                 }
             }
         }
@@ -1555,7 +2031,8 @@ class MainApplication : Application() {
             getSystemService(ConnectivityManager::class.java) as ConnectivityManager
         // Until the passive callback reports a matching path, do not expose the
         // device as a provider on a stale path from the previous configuration.
-        callbackDevice?.providePaused = true
+        provideNetworkAvailable = false
+        updateProvidePaused()
         connectivityManager.registerNetworkCallback(
             networkRequest,
             networkCallback!!,
@@ -1740,6 +2217,8 @@ class MainApplication : Application() {
     private fun logoutInternal() {
         stop()
         widgetSnapshotWriter?.clear()
+        // a connect the signed-out account asked for must not start later
+        clearBalanceRecovery()
 
         // the pending product events can only be sent while the jwt is still
         // set; give the queue a bounded moment to drain before it is cleared
@@ -2240,6 +2719,8 @@ class MainApplication : Application() {
         }
         val current = device ?: return
         if (!current.connectEnabled) return
+        // the user's disconnect: a held connection is not reconnected
+        clearBalanceRecovery()
 
         val vc = current.openConnectViewController() ?: run {
             Log.i(TAG, "Unable to open connect controller for VPN disconnect from $source")
@@ -2258,8 +2739,92 @@ class MainApplication : Application() {
     }
 
     /**
+     * Process-wide so the notice is posted once per out of balance episode even
+     * across activity recreation. Fed on the main thread by
+     * InsufficientBalanceNoticeEffect.
+     */
+    internal val insufficientBalanceMonitor by lazy(LazyThreadSafetyMode.NONE) {
+        com.bringyour.network.ui.connect.InsufficientBalanceMonitor(
+            object : com.bringyour.network.ui.connect.InsufficientBalanceSession {
+                override fun disconnect() {
+                    disconnectVpnConnection("insufficient_balance")
+                }
+
+                override fun postNotice() {
+                    postInsufficientBalanceNotice()
+                }
+
+                override fun cancelNotice() {
+                    runCatching {
+                        (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                            .cancel(INSUFFICIENT_BALANCE_NOTIFICATION_ID)
+                    }
+                }
+            }
+        )
+    }
+
+    /**
+     * Tells the user the account is out of balance and traffic is held in the
+     * tunnel, with a disconnect action. Without notification permission the
+     * in-app alert still explains it.
+     */
+    @android.annotation.SuppressLint("NotificationPermission")
+    private fun postInsufficientBalanceNotice() {
+        runCatching {
+            val notificationManager =
+                getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            // same channel as the service notification; creating it again is a no-op
+            notificationManager.createNotificationChannel(
+                android.app.NotificationChannel(
+                    MainService.NOTIFICATION_CHANNEL_ID,
+                    getString(R.string.app_name),
+                    android.app.NotificationManager.IMPORTANCE_LOW,
+                ).apply {
+                    setShowBadge(false)
+                }
+            )
+            val contentIntent = android.app.PendingIntent.getActivity(
+                this,
+                0,
+                android.content.Intent(this, MainActivity::class.java),
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            // the service notification's disconnect target
+            val disconnectIntent = android.app.PendingIntent.getBroadcast(
+                this,
+                1,
+                android.content.Intent(this, NotificationDisconnectReceiver::class.java)
+                    .setAction(NotificationDisconnectReceiver.ACTION_DISCONNECT),
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val message = getString(R.string.insufficient_balance_held_notice)
+            val builder = androidx.core.app.NotificationCompat.Builder(
+                this,
+                MainService.NOTIFICATION_CHANNEL_ID,
+            )
+                .setSmallIcon(R.drawable.ic_status)
+                .setContentTitle(getString(R.string.insufficient_balance))
+                .setContentText(message)
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(message))
+                .setContentIntent(contentIntent)
+                .setAutoCancel(true)
+            if (!systemAlwaysOnVpn) {
+                builder.addAction(R.drawable.ic_close, getString(R.string.disconnect), disconnectIntent)
+            }
+            notificationManager.notify(INSUFFICIENT_BALANCE_NOTIFICATION_ID, builder.build())
+        }.onFailure {
+            Log.i(TAG, "Insufficient balance notice failed: ${it.message}")
+        }
+    }
+
+    /**
      * System Always-on owns the disconnect policy. Keep the user's selected
      * location when there is one, otherwise reconnect to the best provider.
+     * Not gated on balance: Always-on is a connection the user set up in
+     * system settings and cannot disconnect here, so it counts as already
+     * connected; refusing it would leave the system tunnel up with traffic
+     * escaping it. Out of balance it holds traffic like any connection.
      * A bounded-delay retry covers a transient SDK restore/network race while
      * avoiding multiple simultaneous controllers for the same device.
      */

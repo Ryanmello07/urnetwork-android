@@ -3,8 +3,10 @@ package com.bringyour.network.ui.upgrade
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.bringyour.network.ui.account.PurchaseRefusal
 import com.bringyour.network.ui.shared.viewmodels.PlanViewModel
 import com.bringyour.network.ui.shared.viewmodels.SubscriptionBalanceViewModel
+import com.bringyour.network.utils.SolanaPaymentQuote
 
 /**
  * The plan picker on this flavor: the shared card picker over the server's
@@ -21,8 +23,8 @@ fun SubscriptionOptions(
     createSolanaPaymentIntent: (
         reference: String,
         plan: String,
-        onSuccess: (amountUsd: Double) -> Unit,
-        onError: () -> Unit
+        onSuccess: (quote: SolanaPaymentQuote) -> Unit,
+        onError: (PurchaseRefusal) -> Unit
     ) -> Unit,
     onSolanaUriOpened: (String) -> Unit,
     onStripePaymentSuccess: () -> Unit,

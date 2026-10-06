@@ -72,8 +72,11 @@ rm -rf "$workflow_dir"
 grep -Fq 'gradle_worker_args=(--max-workers "$android_parallelism")' "$here/test-main.sh" || \
   fail "positive GOMAXPROCS is not mapped to Gradle workers"
 # shellcheck disable=SC2016
-[ "$(grep -Fc '"${gradle_worker_args[@]}"' "$here/test-main.sh")" -eq 2 ] || \
-  fail "both Android Gradle invocations do not consume the worker override"
+[ "$(grep -Fc '${gradle_worker_args[@]+"${gradle_worker_args[@]}"}' "$here/test-main.sh")" -eq 2 ] || \
+  fail "both Android Gradle invocations do not safely consume the optional worker override"
+# Exercise the exact production vectors on /bin/bash (macOS Bash 3.2) as well
+# as the selected Bash, including absent overrides and unrelated shell errors.
+go -C "$here" test test-main-gradle-workers_test.go -count=1
 # shellcheck disable=SC2016
 if grep -Eq 'emulator_core_args|(^|[[:space:]])-cores([=[:space:]]|$)' \
     "$here/test-main.sh"; then
@@ -98,10 +101,27 @@ grep -Fq 'throwLoginStartupTimeout(' <<<"$physical_timeout_source" || \
 grep -Fq 'Sdk.writeGoroutineStacks(startupGoroutinesFile.absolutePath)' \
   <<<"$physical_timeout_source" || \
   fail "physical login timeout does not synchronously request Go stacks"
+# All shipping initial forms must expose the same error-presence contract. The
+# physical login driver records only its presence, never server/user text.
+for login_flavor in google ungoogle solana_dapp ethos_dapp; do
+  grep -Fq 'URInlineErrorText(loginError, Modifier.testTag("acceptance.password.discovery-error"))' \
+    "$here/app/app/src/$login_flavor/java/com/bringyour/network/ui/login/LoginInitial.kt" || \
+    fail "$login_flavor does not expose terminal password-discovery errors"
+done
+physical_failure_source="$(sed -n \
+  '/private fun failureStatus(/,/private fun stopClient/p' \
+  "$here/app/app/src/androidTest/java/com/bringyour/network/acceptance/PhysicalLowbarSessionTest.kt")"
+discovery_failure_line="$(grep -n 'error is PasswordLoginFailureException' <<<"$physical_failure_source" | cut -d: -f1)"
+logged_out_failure_line="$(grep -n 'startupState is LoginStartupState.LoggedOut' <<<"$physical_failure_source" | cut -d: -f1)"
+[ -n "$discovery_failure_line" ] && [ -n "$logged_out_failure_line" ] && \
+  [ "$discovery_failure_line" -lt "$logged_out_failure_line" ] || \
+  fail "expected pre-password LoggedOut masks a finite discovery failure"
+grep -Fq '"loginUiBeforeTeardown"' <<<"$physical_failure_source" || \
+  fail "physical login lost bounded UI evidence from before instrumentation teardown"
 grep -Fq 'main-startup-goroutines.txt' "$here/test-main.sh" || \
   fail "main acceptance collection does not retain optional Pending startup evidence"
 main_timeout_source="$(sed -n \
-  '/private fun waitForMain()/,/private fun createInstantAccount()/p' \
+  '/private fun waitForMain(/,/private fun createInstantAccount()/p' \
   "$here/app/app/src/androidTest/java/com/bringyour/network/acceptance/MainAcceptanceTest.kt")"
 grep -Fq 'throwLoginStartupTimeout(' <<<"$main_timeout_source" || \
   fail "main login does not route its Pending timeout through the evidence boundary"
@@ -203,15 +223,235 @@ printf '%s\n' \
   $'emulator-5554\tdevice product:sdk model:Pixel_7 device:emu transport_id:2' \
   $'3B161FDJG001KT\tdevice product:husky model:Pixel_8_Pro device:husky' \
   $'partner-serial\tdevice product:partner model:Partner_Device device:partner' \
+  $'0B111JEC200229\tunauthorized usb:1-1' \
+  $'unrelated-offline\toffline' \
+  $'emulator-5556\tdevice product:sdk model:Pixel_7' \
   >"$fleet_raw"
 android_acceptance_select_adb_devices \
-  "$fleet_raw" "$fleet_selected" "$fleet_excluded" \
-  3B161FDJG001KT R5CX21FY6ND || fail "valid attached fleet was rejected"
-[ "$(cat "$fleet_selected")" = "emulator-5554
-partner-serial" ] || fail "eligible devices were not selected and sorted exactly"
-expected_excluded=$'3B161FDJG001KT\tdevice\treserved-for-performance\nR5CX21FY6ND\toffline\treserved-for-performance'
+  "$fleet_raw" "$fleet_selected" "$fleet_excluded" emulator-5554 \
+  3B161FDJG001KT R5CX21FY6ND || fail "owned AVD was rejected because of unrelated devices"
+[ "$(cat "$fleet_selected")" = emulator-5554 ] || \
+  fail "acceptance selected a serial other than its explicitly owned AVD"
+expected_excluded=$'0B111JEC200229\tunauthorized\toutside-acceptance-selection\n3B161FDJG001KT\tdevice\treserved-for-performance\nR5CX21FY6ND\toffline\treserved-for-performance\nemulator-5556\tdevice\toutside-acceptance-selection\npartner-serial\tdevice\toutside-acceptance-selection\nunrelated-offline\toffline\toutside-acceptance-selection'
 [ "$(cat "$fleet_excluded")" = "$expected_excluded" ] || \
-  fail "reserved performance devices were not excluded exactly"
+  fail "reserved and unrelated devices were not recorded as exclusions exactly"
+
+# Inventory visibility never grants mutation authority. Before the owned AVD
+# starts, even a ready foreign emulator or physical phone selects no target.
+android_acceptance_select_adb_devices \
+  "$fleet_raw" "$fleet_selected" "$fleet_excluded" '' \
+  3B161FDJG001KT R5CX21FY6ND || fail "unrelated devices prevented owned AVD startup"
+[ ! -s "$fleet_selected" ] || fail "initial inventory selected an unowned device"
+for required_state in offline unauthorized unknown; do
+  printf '%s\n' 'List of devices attached' "emulator-5554 $required_state" >"$fleet_raw"
+  if android_acceptance_select_adb_devices \
+      "$fleet_raw" "$fleet_selected" "$fleet_excluded" emulator-5554 \
+      3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
+    fail "required owned AVD in $required_state state was accepted"
+  fi
+done
+printf '%s\n' 'List of devices attached' $'foreign\tdevice' >"$fleet_raw"
+if android_acceptance_select_adb_devices \
+    "$fleet_raw" "$fleet_selected" "$fleet_excluded" emulator-5554 \
+    3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
+  fail "missing required owned AVD was replaced by a foreign device"
+fi
+printf '%s\n' 'List of devices attached' $'3B161FDJG001KT\tdevice' >"$fleet_raw"
+if android_acceptance_select_adb_devices \
+    "$fleet_raw" "$fleet_selected" "$fleet_excluded" 3B161FDJG001KT \
+    3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
+  fail "an explicit selection bypassed the reserved performance-device exclusion"
+fi
+printf '%s\n' 'List of devices attached' $'diagnostic-ready\tdevice' \
+  $'unrelated\tunauthorized' >"$fleet_raw"
+android_acceptance_select_adb_devices \
+  "$fleet_raw" "$fleet_selected" "$fleet_excluded" diagnostic-ready \
+  3B161FDJG001KT R5CX21FY6ND || fail "explicit diagnostic target was blocked by an unrelated device"
+[ "$(cat "$fleet_selected")" = diagnostic-ready ] || \
+  fail "diagnostic inventory broadened beyond the explicit serial"
+capture_selection_source="$(sed -n '/^capture_device_fleet()/,/^}/p' "$here/test-main.sh")"
+# Pin the production selector to launch ownership, not broad ADB visibility.
+# shellcheck disable=SC2016
+grep -Fq 'local required_serials="$started_emulator_serial"' <<<"$capture_selection_source" || \
+  fail "canonical inventory is not bound to the owned emulator serial"
+# shellcheck disable=SC2016
+grep -Fq 'required_serials="$diagnostic_device"' <<<"$capture_selection_source" || \
+  fail "diagnostic inventory lost its explicit requested serial"
+# shellcheck disable=SC2016
+grep -Fq '"$raw" "$selected_output" "$excluded_devices" "$required_serials"' <<<"$capture_selection_source" || \
+  fail "the inventory parser is not given the explicitly scoped serial"
+
+# Canonical physical authorization is exact and additive: it must not prevent
+# the owned AVD from starting, broaden diagnostics, or select a similar phone.
+canonical_solana="$(android_acceptance_canonical_solana_serial)"
+[ "$canonical_solana" = O1N1XT172304047 ] || fail "canonical Solana authorization changed"
+printf '%s\n' 'List of devices attached' \
+  "$canonical_solana device model:Saga" \
+  'emulator-5554 device model:Pixel' \
+  'foreign-seeker device model:Seeker' \
+  'unrelated unauthorized' \
+  '3B161FDJG001KT device' 'R5CX21FY6ND offline' >"$fleet_raw"
+canonical_required="emulator-5554"$'\n'"$canonical_solana"
+android_acceptance_select_adb_devices \
+  "$fleet_raw" "$fleet_selected" "$fleet_excluded" "$canonical_required" \
+  3B161FDJG001KT R5CX21FY6ND || fail "canonical AVD and authorized Saga were not selected"
+[ "$(cat "$fleet_selected")" = "$canonical_solana"$'\n''emulator-5554' ] || \
+  fail "canonical selection did not retain exactly the owned AVD and authorized Saga"
+for bad_required in "$canonical_required"$'\n'"$canonical_solana" \
+    "$canonical_required"$'\n''3B161FDJG001KT' 'bad serial'; do
+  if android_acceptance_select_adb_devices \
+      "$fleet_raw" "$fleet_selected" "$fleet_excluded" "$bad_required" \
+      3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
+    fail "duplicate, reserved, or malformed canonical selection was accepted"
+  fi
+done
+for bad_state in absent offline unauthorized duplicate; do
+  printf '%s\n' 'List of devices attached' 'emulator-5554 device' \
+    'foreign-seeker device model:Seeker' >"$fleet_dir/bad-physical-raw"
+  case "$bad_state" in
+    absent) ;;
+    duplicate) printf '%s\n' "$canonical_solana device" "$canonical_solana device" >>"$fleet_dir/bad-physical-raw" ;;
+    *) printf '%s\n' "$canonical_solana $bad_state" >>"$fleet_dir/bad-physical-raw" ;;
+  esac
+  if android_acceptance_select_adb_devices \
+      "$fleet_dir/bad-physical-raw" "$fleet_selected" "$fleet_excluded" "$canonical_required" \
+      3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
+    fail "required physical Saga in $bad_state state was silently replaced"
+  fi
+done
+(
+  # Execute the production capture function against a read-only fake ADB.
+  timeout() { shift; "$@"; }
+  fake_fleet_adb() { [ "$*" = 'devices -l' ] || return 99; cat "$fleet_raw"; }
+  # shellcheck disable=SC2294
+  eval "$capture_selection_source"
+  run_dir="$fleet_dir/capture"
+  mkdir -p "$run_dir"
+  adb=fake_fleet_adb
+  device_serials="$run_dir/selected"
+  captured_device_serials="$run_dir/diagnostic"
+  excluded_devices="$run_dir/excluded"
+  reserved_device_serials=(3B161FDJG001KT R5CX21FY6ND)
+  execution_mode=canonical
+  canonical_solana_serial="$canonical_solana"
+  started_emulator_serial=''
+  capture_device_fleet || fail "canonical prelaunch physical inventory failed"
+  [ "$(cat "$device_serials")" = "$canonical_solana" ] || fail "prelaunch selected an unowned AVD"
+  started_emulator_serial=emulator-5554
+  capture_device_fleet || fail "canonical postlaunch inventory failed"
+  [ "$(wc -l <"$device_serials" | tr -d ' ')" = 2 ] || fail "physical presence displaced the owned AVD"
+  canonical_solana_serial=''
+  capture_device_fleet || fail "general-only profile required the Solana phone"
+  [ "$(cat "$device_serials")" = emulator-5554 ] || fail "general-only profile selected physical hardware"
+  execution_mode=diagnostic
+  diagnostic_device=foreign-seeker
+  capture_device_fleet || fail "diagnostic exact-serial capture changed"
+  [ "$(cat "$captured_device_serials")" = foreign-seeker ] || fail "diagnostic selected canonical devices"
+) || fail "production fleet-capture regression"
+# A ready physical target must not suppress canonical AVD creation.
+if grep -Fq 'elif [ ! -s "$device_serials" ]; then' "$here/test-main.sh"; then
+  fail "physical Solana presence still suppresses the required owned AVD"
+fi
+(
+  timeout() { shift; "$@"; }
+  fake_solana_failure=''
+  fake_solana_adb() {
+    [ "$1" = -s ] && [ "$2" = "$canonical_solana" ] || return 90
+    shift 2
+    printf '%s\n' "$*" >>"$fleet_dir/identity-reads"
+    case "$*" in
+      get-state) [ "$fake_solana_failure" != offline ] || return 1; printf 'device\n' ;;
+      get-serialno)
+        if [ "$fake_solana_failure" = serial ]; then printf 'other-device\n'; else printf '%s\n' "$canonical_solana"; fi ;;
+      'shell getprop ro.kernel.qemu'|'shell getprop ro.boot.qemu')
+        if [ "$fake_solana_failure" = emulator ]; then printf '1\n'; else printf '0\n'; fi ;;
+      'shell getprop ro.product.manufacturer') printf 'Solana Mobile\n' ;;
+      'shell getprop ro.product.brand') printf 'OSOM\n' ;;
+      'shell getprop ro.product.model')
+        if [ "$fake_solana_failure" = model ]; then printf 'Generic\n'; else printf 'Saga\n'; fi ;;
+      'shell getprop ro.product.name'|'shell getprop ro.product.device') printf 'ingot\n' ;;
+      'shell getprop ro.build.version.sdk')
+        if [ "$fake_solana_failure" = api ]; then printf '25\n'; else printf '34\n'; fi ;;
+      'shell getprop ro.product.cpu.abilist')
+        if [ "$fake_solana_failure" = abi ]; then printf 'x86_64\n'; else printf 'arm64-v8a,armeabi-v7a\n'; fi ;;
+      *) fail "identity proof attempted a mutation: $*" ;;
+    esac
+  }
+  android_acceptance_validate_canonical_solana_device fake_solana_adb "$canonical_solana" || \
+    fail "authorized ARM API34 Saga failed read-only identity validation"
+  for fake_solana_failure in offline serial emulator model api abi; do
+    if android_acceptance_validate_canonical_solana_device \
+        fake_solana_adb "$canonical_solana" >/dev/null 2>&1; then
+      fail "invalid physical identity/capability $fake_solana_failure was accepted"
+    fi
+  done
+  fake_solana_failure=''
+  for unauthorized_serial in foreign-seeker 3B161FDJG001KT R5CX21FY6ND emulator-5554; do
+    : >"$fleet_dir/identity-reads"
+    if android_acceptance_validate_canonical_solana_device \
+        fake_solana_adb "$unauthorized_serial" >/dev/null 2>&1; then
+      fail "unapproved serial passed canonical physical identity gate"
+    fi
+    [ ! -s "$fleet_dir/identity-reads" ] || fail "identity gate contacted an unapproved serial"
+  done
+
+  # Execute the actual removal wrapper with fake mutation endpoints. Failed
+  # authorization must not reach even the first uninstall operation.
+  # shellcheck disable=SC2294
+  eval "$(sed -n '/^authorize_selected_device()/,/^}/p' "$here/test-main.sh")"
+  # shellcheck disable=SC2294
+  eval "$(sed -n '/^uninstall_acceptance_packages()/,/^}/p' "$here/test-main.sh")"
+  execution_mode=canonical
+  canonical_solana_serial="$canonical_solana"
+  reserved_device_serials=(3B161FDJG001KT R5CX21FY6ND)
+  started_emulator_serial=emulator-5554
+  peer_serial=emulator-5556
+  emulator_pid=123
+  emulator_owner_token=test-owned
+  avd_name=urnetwork-acceptance
+  diagnostic_device=''
+  adb=fake_solana_adb
+  android_acceptance_timeout_executable=fake-timeout
+  android_acceptance_runner_owns_emulator() { [ "${fake_lost_avd:-0}" = 0 ]; }
+  runner_owns_peer_emulator() { [ "${fake_lost_peer:-0}" = 0 ]; }
+  android_acceptance_uninstall_package() { printf '%s\n' "$3 $4" >>"$fleet_dir/fake-uninstalls"; }
+  for rejected_serial in foreign-seeker 3B161FDJG001KT R5CX21FY6ND; do
+    if uninstall_acceptance_packages "$rejected_serial" "$fleet_dir/cleanup-test"; then
+      fail "cleanup accepted an unselected/reserved target"
+    fi
+  done
+  fake_solana_failure=model
+  if uninstall_acceptance_packages "$canonical_solana" "$fleet_dir/cleanup-test" >/dev/null 2>&1; then
+    fail "cleanup accepted lost Saga identity"
+  fi
+  fake_solana_failure=''
+  fake_lost_avd=1
+  fake_lost_peer=1
+  for rejected_serial in emulator-5554 emulator-5556; do
+    if uninstall_acceptance_packages "$rejected_serial" "$fleet_dir/cleanup-test"; then
+      fail "cleanup accepted lost emulator ownership"
+    fi
+  done
+  [ ! -e "$fleet_dir/fake-uninstalls" ] || fail "rejected identity caused package mutation"
+  uninstall_acceptance_packages "$canonical_solana" "$fleet_dir/cleanup-test" || \
+    fail "authorized physical cleanup failed"
+  [ "$(wc -l <"$fleet_dir/fake-uninstalls" | tr -d ' ')" = 2 ] || \
+    fail "authorized cleanup did not remove exactly the app/test pair"
+) || fail "canonical physical identity/mutation regression"
+# Read-only failure is not mutation ownership. EXIT visits only the list
+# enrolled after identity proof and before physical readiness mutation.
+# shellcheck disable=SC2016
+grep -Fq 'done 3<"$device_cleanup_records"' "$here/test-main.sh" || \
+  fail "EXIT cleanup still visits every merely selected phone"
+# shellcheck disable=SC2016
+enrollment_source="$(sed -n '/selected device \$serial lost mutation authorization/,+6p' "$here/test-main.sh")"
+# shellcheck disable=SC2016
+grep -Fq '>>"$device_cleanup_records"' <<<"$enrollment_source" || \
+  fail "mutation enrollment does not immediately follow identity proof"
+
+# The capability planner is independently tested with a synthetic, explicitly
+# declared multi-device fixture, not with whatever ADB happens to enumerate.
+printf '%s\n' emulator-5554 partner-serial >"$fleet_selected"
 
 fleet_records="$fleet_dir/records"
 fleet_capabilities="$fleet_dir/capabilities"
@@ -253,6 +493,33 @@ android_acceptance_require_target_coverage \
 if android_acceptance_require_target_coverage "$fleet_plan" missing >/dev/null 2>&1; then
   fail "a requested flavor with no compatible device was accepted"
 fi
+printf '%s\n' \
+  $'owned-avd\temulator-5554\t1\t0\t34' \
+  "physical-saga"$'\t'"$canonical_solana"$'\t1\t1\t34' \
+  >"$fleet_dir/canonical-capabilities"
+android_acceptance_write_device_flavor_plan \
+  "$fleet_dir/canonical-capabilities" "$fleet_dir/canonical-plan" "$fleet_dir/canonical-skips" \
+  --canonical-devices emulator-5554 "$canonical_solana" github play solana_dapp fdroid || \
+  fail "canonical role-scoped shipping matrix failed"
+expected_canonical_plan=$'owned-avd\temulator-5554\tgithub\nowned-avd\temulator-5554\tplay\nphysical-saga\t'"$canonical_solana"$'\tsolana_dapp\nowned-avd\temulator-5554\tfdroid'
+[ "$(cat "$fleet_dir/canonical-plan")" = "$expected_canonical_plan" ] || \
+  fail "canonical role scope installed a general flavor on Saga or Solana on AVD"
+android_acceptance_require_target_coverage "$fleet_dir/canonical-plan" github play solana_dapp fdroid || \
+  fail "canonical physical lane did not satisfy complete shipping-flavor coverage"
+[ "$(wc -l <"$fleet_dir/canonical-skips" | tr -d ' ')" = 4 ] || \
+  fail "canonical role omissions were not retained"
+for invalid_inventory in missing duplicate foreign; do
+  case "$invalid_inventory" in
+    missing) sed -n '1p' "$fleet_dir/canonical-capabilities" >"$fleet_dir/canonical-bad" ;;
+    duplicate) { cat "$fleet_dir/canonical-capabilities"; sed -n '2p' "$fleet_dir/canonical-capabilities"; } >"$fleet_dir/canonical-bad" ;;
+    foreign) sed "s/$canonical_solana/foreign-seeker/" "$fleet_dir/canonical-capabilities" >"$fleet_dir/canonical-bad" ;;
+  esac
+  if android_acceptance_write_device_flavor_plan \
+      "$fleet_dir/canonical-bad" "$fleet_dir/canonical-bad-plan" "$fleet_dir/canonical-bad-skips" \
+      --canonical-devices emulator-5554 "$canonical_solana" github play solana_dapp fdroid; then
+    fail "canonical planner accepted $invalid_inventory physical identity"
+  fi
+done
 printf '%s\n' $'device-bad\tbad-serial\t1\t0\tnot-an-api' >"$fleet_dir/bad-capabilities"
 if android_acceptance_write_device_flavor_plan \
     "$fleet_dir/bad-capabilities" "$fleet_dir/bad-plan" "$fleet_dir/bad-skips" github; then
@@ -302,14 +569,13 @@ if android_acceptance_verify_device_flavor_smoke_results \
 fi
 
 printf '%s\n' 'List of devices attached' $'unreserved\tunauthorized usb:1-1' >"$fleet_raw"
-if android_acceptance_select_adb_devices \
-    "$fleet_raw" "$fleet_selected" "$fleet_excluded" \
-    3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
-  fail "an unavailable non-reserved attached device was silently skipped"
-fi
+android_acceptance_select_adb_devices \
+  "$fleet_raw" "$fleet_selected" "$fleet_excluded" '' \
+  3B161FDJG001KT R5CX21FY6ND || fail "an unrelated unauthorized device aborted enumeration"
+[ ! -s "$fleet_selected" ] || fail "an unrelated unauthorized device was selected"
 printf '%s\n' 'List of devices attached' $'same\tdevice' $'same\tdevice' >"$fleet_raw"
 if android_acceptance_select_adb_devices \
-    "$fleet_raw" "$fleet_selected" "$fleet_excluded" \
+    "$fleet_raw" "$fleet_selected" "$fleet_excluded" same \
     3B161FDJG001KT R5CX21FY6ND >/dev/null 2>&1; then
   fail "duplicate attached device serials were accepted"
 fi
@@ -549,6 +815,21 @@ env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
     >"$network_gate_dir/diagnostic.log" 2>&1 || android_gate_diagnostic_status=$?
 [ "$android_gate_diagnostic_status" -eq 75 ] || \
   fail "a direct Android diagnostic did not reject live shared ownership with status 75"
+
+android_gate_owned_diagnostic_status=0
+env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
+  -u URNETWORK_NETWORK_TEST_LOCK_ROLE \
+  -u URNETWORK_NETWORK_TEST_LOCK_SCOPE \
+  PATH="$network_gate_fake_bin:$PATH" \
+  ANDROID_GATE_NODE_MARKER="$network_gate_node_marker" \
+  URNETWORK_ROOT="$here/.." \
+  URNETWORK_NETWORK_TESTING=1 \
+  URNETWORK_NETWORK_TEST_LOCK_PATH="$network_gate_lock" \
+  "$here/test-main.sh" --headless --flavor=play \
+    --diagnostic-owned-avd --diagnostic-case=peer-to-peer \
+    >"$network_gate_dir/owned-diagnostic.log" 2>&1 || android_gate_owned_diagnostic_status=$?
+[ "$android_gate_owned_diagnostic_status" -eq 75 ] || \
+  fail "an owned-AVD diagnostic did not reject live shared ownership before startup"
 
 android_gate_full_status=0
 env -u URNETWORK_NETWORK_TEST_LOCK_HELD \
@@ -3521,4 +3802,9 @@ grep -Fq 'android_acceptance_wait_for_runner_owned_emulator' "$runner_source" ||
 [ "$(grep -Fc 'android_acceptance_stop_emulator_child' "$runner_source")" -eq 3 ] || \
   fail "fallback, early peer, and normal peer cleanup do not join exact children"
 
+bash "$here/test-main-p2p.test.sh"
+bash "$here/test-main-observation.test.sh"
+bash "$here/test-main-completion.test.sh"
+bash "$here/test-main-reporting.test.sh"
+bash "$here/test-main-diagnostic-avd.test.sh"
 echo "android/test-main.sh runner tests passed"

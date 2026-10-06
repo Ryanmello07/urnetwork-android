@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -23,16 +24,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +49,8 @@ import androidx.navigation.NavController
 import com.bringyour.network.R
 import com.bringyour.network.ui.indexedLazyListKey
 import com.bringyour.network.ui.components.CircleImage
+import com.bringyour.network.ui.components.RowRemoveControl
+import com.bringyour.network.ui.components.blockedLocationRemoveControls
 import com.bringyour.network.ui.components.SwipeToRevealRow
 import com.bringyour.network.ui.theme.Black
 import com.bringyour.network.ui.theme.TextMuted
@@ -64,8 +73,28 @@ fun BlockedRegionsScreen(
         skipPartiallyExpanded = true
     )
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val notice by viewModel.notice.collectAsState()
+
+    LaunchedEffect(notice) {
+        val shown = notice ?: return@LaunchedEffect
+        val message = when (shown) {
+            BlockedRegionsNotice.LoadFailed ->
+                context.getString(R.string.blocked_locations_load_failed)
+            is BlockedRegionsNotice.BlockFailed ->
+                context.getString(R.string.blocked_location_block_failed, shown.locationName)
+            is BlockedRegionsNotice.UnblockFailed ->
+                context.getString(R.string.blocked_location_unblock_failed, shown.locationName)
+        }
+        viewModel.clearNotice()
+        snackbarHostState.showSnackbar(message = message, withDismissAction = true)
+    }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -210,19 +239,17 @@ fun BlockedRegionListItem(
     modifier: Modifier = Modifier,
 ) {
 
-    SwipeToRevealRow(
-        onDelete = { onRemove(blockedLocation.locationId) },
-        modifier = modifier
-            .fillMaxWidth()
-            .height(64.dp),
-    ) {
+    val rowModifier = modifier
+        .fillMaxWidth()
+        .height(64.dp)
+    val content: @Composable () -> Unit = {
         Box(modifier = Modifier.fillMaxSize()) {
 
             Row(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Black)
-                    .padding(horizontal = 16.dp),
+                    .padding(start = 16.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CircleImage(
@@ -236,7 +263,20 @@ fun BlockedRegionListItem(
                     style = MaterialTheme.typography.bodyLarge,
                     overflow = TextOverflow.Ellipsis,
                     maxLines = 1,
+                    modifier = Modifier.weight(1f),
                 )
+                if (RowRemoveControl.Button in blockedLocationRemoveControls) {
+                    // swipe-to-reveal alone is unreachable for TalkBack, Switch
+                    // Access and keyboard users, and invisible to anyone who
+                    // does not know to swipe
+                    IconButton(onClick = { onRemove(blockedLocation.locationId) }) {
+                        Icon(
+                            Icons.Filled.Clear,
+                            contentDescription = stringResource(id = R.string.remove),
+                            tint = TextMuted,
+                        )
+                    }
+                }
             }
 
             HorizontalDivider(
@@ -244,6 +284,18 @@ fun BlockedRegionListItem(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
             )
+        }
+    }
+
+    if (RowRemoveControl.Swipe in blockedLocationRemoveControls) {
+        SwipeToRevealRow(
+            onDelete = { onRemove(blockedLocation.locationId) },
+            modifier = rowModifier,
+            content = content,
+        )
+    } else {
+        Box(modifier = rowModifier) {
+            content()
         }
     }
 }

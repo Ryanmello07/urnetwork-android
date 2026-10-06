@@ -60,35 +60,26 @@ class PhysicalLowbarSessionTest {
     private val commandFile = File(acceptanceDir, "physical-command")
     private val statusFile = File(acceptanceDir, "physical-status")
     private val samplesFile = File(acceptanceDir, "physical-memory.ndjson")
+    private val diagnosticsFile = File(acceptanceDir, "physical-diagnostics.ndjson")
     private val summaryFile = File(acceptanceDir, "physical-summary.json")
     private val activeClientFile = File(acceptanceDir, "physical-active-client-id")
     private val activeClientLedger = ActiveClientLedger(File(acceptanceDir, "active-client-ids"))
     private val expectedPeerFile = File(acceptanceDir, "physical-expected-peer-id")
     private val startupGoroutinesFile = File(acceptanceDir, "physical-startup-goroutines.txt")
     private var credentialDiagnostics = false
+    private var carrierBaseline = emptyMap<String, PhysicalCarrierBytes>()
+    private val peerTimingEvidence = PhysicalPeerTimingEvidence()
+    private var commandStartedAtMillis = 0L
 
     @Volatile
     private var phase = "startup"
 
     private fun waitFor(
-        description: String,
+        stage: PhysicalWaitStage,
         timeoutMillis: Long = UI_TIMEOUT_MILLIS,
         condition: () -> Boolean,
     ) {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMillis
-        var lastError: Throwable? = null
-        while (SystemClock.elapsedRealtime() < deadline) {
-            try {
-                if (condition()) return
-            } catch (error: Throwable) {
-                lastError = error
-            }
-            SystemClock.sleep(100)
-        }
-        throw AssertionError(
-            "Timed out waiting for $description after ${timeoutMillis / 1_000}s",
-            lastError,
-        )
+        waitForPhysicalCondition(stage, timeoutMillis, SystemClock::elapsedRealtime, SystemClock::sleep, condition)
     }
 
     private fun launchLoggedOutApp(application: MainApplication) {
@@ -179,7 +170,7 @@ class PhysicalLowbarSessionTest {
         val beforeIngressPackets = before?.remoteIngressPacketCount ?: 0
         val beforeIngressBytes = before?.remoteIngressByteCount ?: 0
         val address = peerEgressProbe()
-        waitFor("bidirectional peer traffic counters", EGRESS_TIMEOUT_MILLIS) {
+        waitFor(PhysicalWaitStage.PEER_TRAFFIC_COUNTERS, EGRESS_TIMEOUT_MILLIS) {
             val after = device.packetStats ?: return@waitFor false
             after.remoteEgressPacketCount > beforeEgressPackets &&
                 after.remoteEgressByteCount > beforeEgressBytes &&
@@ -238,12 +229,31 @@ class PhysicalLowbarSessionTest {
         return result.put("transports", transports)
     }
 
+    private fun carrierBytes(device: DeviceLocal): Map<String, PhysicalCarrierBytes> = buildMap {
+        device.packetStats?.transportStats?.let { transports ->
+            for (i in 0 until transports.len()) {
+                val entry = transports.get(i) ?: continue
+                val stats = entry.stats ?: continue
+                put(entry.transportType, PhysicalCarrierBytes(stats.remoteEgressByteCount, stats.remoteIngressByteCount))
+            }
+        }
+    }
+
+    private fun liveProviders(device: DeviceLocal): List<PhysicalProviderEvidence> = buildList {
+        val providers = device.connectedProviderLocations
+        for (i in 0 until providers.len()) {
+            val provider = providers.get(i) ?: continue
+            add(PhysicalProviderEvidence(provider.clientId?.idStr.orEmpty(), provider.countryCode, provider.hasLocation))
+        }
+    }
+
     private fun snapshot(application: MainApplication, startElapsedMs: Long): JSONObject {
         val sdk = Sdk.getMemoryStats()
         val javaRuntime = Runtime.getRuntime()
         val device = application.device
         val result = JSONObject()
             .put("type", "sample")
+            .put("memoryProfile", MainApplication.MEMORY_PROFILE_NAME)
             .put("pid", Process.myPid())
             .put("elapsedMs", SystemClock.elapsedRealtime() - startElapsedMs)
             .put("timeUnixMs", System.currentTimeMillis())
@@ -311,6 +321,7 @@ class PhysicalLowbarSessionTest {
             .put("threadCount", File("/proc/self/task").list()?.size ?: -1)
             .put("fdCount", File("/proc/self/fd").list()?.size ?: -1)
         if (device != null) {
+            val providers = liveProviders(device)
             val tracked = device.memoryUsed()
             val reliability = device.reliabilityMetrics
             result
@@ -318,6 +329,12 @@ class PhysicalLowbarSessionTest {
                 .put("tunnelStarted", device.tunnelStarted)
                 .put("provideEnabled", device.provideEnabled)
                 .put("provideMode", device.provideMode)
+                .put("countryCode", if (device.connectEnabled) physicalLiveCountry(providers) else "")
+                .put("selectedPeerId", physicalSelectedPeer(
+                    device.connectLocation?.connectLocationId?.clientId?.idStr, providers, device.connectEnabled,
+                ))
+                .put("selectedCarrier", physicalSelectedCarriers(carrierBaseline, carrierBytes(device), device.connectEnabled))
+                .put("carrierEvidence", "packet-byte-delta-since-connect")
                 .put("trackedMemory", JSONObject()
                     .put("targetBytes", tracked.targetByteCount)
                     .put("dnsBytes", tracked.dnsByteCount)
@@ -395,6 +412,7 @@ class PhysicalLowbarSessionTest {
         dropped: Long,
     ): JSONObject = JSONObject()
         .put("type", "sample")
+        .put("memoryProfile", MainApplication.MEMORY_PROFILE_NAME)
         .put("samplerSchema", schema)
         .put("samplerDropped", dropped)
         .put("elapsedMs", maxOf(0L, sample.optLong("unix_millis") - startUnixMs))
@@ -642,44 +660,50 @@ class PhysicalLowbarSessionTest {
         summary: SampleSummary,
     ) = thread(name = "physical-lowbar-memory", isDaemon = true) {
         FileOutputStream(samplesFile, false).bufferedWriter().use { writer ->
-            var nextSample = SystemClock.elapsedRealtime()
-            while (!stopped.get()) {
-                val records = runCatching {
-                    val device = checkNotNull(application.device)
-                    val batch = JSONObject(device.takeMemorySamplesJson())
-                    val schema = batch.optInt("schema")
-                    val dropped = batch.optLong("dropped")
-                    val samples = batch.getJSONArray("samples")
-                    buildList {
-                        for (i in 0 until samples.length()) {
-                            add(
-                                primitiveSample(
-                                    samples.getJSONObject(i),
-                                    startUnixMs,
-                                    schema,
-                                    if (i == 0) dropped else 0,
-                                ),
-                            )
+            FileOutputStream(diagnosticsFile, false).bufferedWriter().use { diagnostics ->
+                var nextSample = SystemClock.elapsedRealtime()
+                while (!stopped.get()) {
+                    val records = runCatching {
+                        val device = checkNotNull(application.device)
+                        // One SDK batch owns its timestamp and atomic root/child
+                        // snapshots. Never reconstruct its budget graph in Kotlin.
+                        diagnostics.append(device.transferDiagnosticSnapshotJson())
+                        diagnostics.flush()
+                        val batch = JSONObject(device.takeMemorySamplesJson())
+                        val schema = batch.optInt("schema")
+                        val dropped = batch.optLong("dropped")
+                        val samples = batch.getJSONArray("samples")
+                        buildList {
+                            for (i in 0 until samples.length()) {
+                                add(
+                                    primitiveSample(
+                                        samples.getJSONObject(i),
+                                        startUnixMs,
+                                        schema,
+                                        if (i == 0) dropped else 0,
+                                    ),
+                                )
+                            }
                         }
+                    }.getOrElse { error ->
+                        listOf(
+                            JSONObject()
+                                .put("type", "sample-error")
+                                .put("elapsedMs", SystemClock.elapsedRealtime() - startElapsedMs)
+                                .put("timeUnixMs", System.currentTimeMillis())
+                                .put("phase", phase)
+                                .put("errorType", error.javaClass.simpleName),
+                        )
                     }
-                }.getOrElse { error ->
-                    listOf(
-                        JSONObject()
-                            .put("type", "sample-error")
-                            .put("elapsedMs", SystemClock.elapsedRealtime() - startElapsedMs)
-                            .put("timeUnixMs", System.currentTimeMillis())
-                            .put("phase", phase)
-                            .put("errorType", error.javaClass.simpleName),
-                    )
+                    for (record in records) {
+                        if (record.optString("type") == "sample") summary.observe(record)
+                        writer.append(record.toString()).append('\n')
+                    }
+                    if (records.isNotEmpty()) writer.flush()
+                    nextSample += SAMPLE_INTERVAL_MILLIS
+                    val sleepMillis = nextSample - SystemClock.elapsedRealtime()
+                    if (sleepMillis > 0) SystemClock.sleep(sleepMillis)
                 }
-                for (record in records) {
-                    if (record.optString("type") == "sample") summary.observe(record)
-                    writer.append(record.toString()).append('\n')
-                }
-                if (records.isNotEmpty()) writer.flush()
-                nextSample += SAMPLE_INTERVAL_MILLIS
-                val sleepMillis = nextSample - SystemClock.elapsedRealtime()
-                if (sleepMillis > 0) SystemClock.sleep(sleepMillis)
             }
         }
     }
@@ -701,8 +725,20 @@ class PhysicalLowbarSessionTest {
         }
             .put("type", "status")
             .put("commandId", id)
+            .put("commandSequence", peerTimingEvidence.commandSequence)
             .put("state", state)
             .put("extra", extra)
+        val timingStatus = peerTimingEvidence.snapshot(
+            SystemClock.elapsedRealtime(),
+            when (state) { "complete" -> true; "error" -> false; else -> null },
+        )
+        timingStatus.current?.let { value.put("peerConnectTiming", JSONObject(it)) }
+        timingStatus.lastConnect?.let {
+            value.put("lastPeerConnect", JSONObject()
+                .put("commandSequence", it.commandSequence)
+                .put("successful", it.successful)
+                .put("timing", it.timing?.let { timing -> JSONObject(timing) } ?: JSONObject.NULL))
+        }
         writePrivate(statusFile, "${value}\n")
     }
 
@@ -713,12 +749,16 @@ class PhysicalLowbarSessionTest {
         error: Throwable,
     ) {
         val extra = JSONObject().put("errorType", error.javaClass.simpleName)
+        val waitFailure = physicalWaitFailureEvidence(error)
         val startupState = application.loginStartupState.value
         val startupFailure = when (error) {
             is LoginStartupFailureException -> error.state
             else -> startupState as? LoginStartupState.Failed
         }
         when {
+            waitFailure != null -> {
+                waitFailure.forEach { (key, value) -> extra.put(key, value) }
+            }
             error is CleanupLedgerFailureException -> {
                 extra.put("stage", "client-allocation")
                 extra.put("failure", "cleanup-ledger-persistence-failed")
@@ -726,6 +766,21 @@ class PhysicalLowbarSessionTest {
             startupFailure != null -> {
                 extra.put("stage", startupFailure.stage.wireValue)
                 extra.put("failure", startupFailure.failure.wireValue)
+            }
+            error is PasswordLoginFailureException -> {
+                // LoggedOut is expected until password authentication starts;
+                // it is not evidence that logout caused a discovery/UI error.
+                extra.put("stage", error.stage.wireValue)
+                extra.put("failure", error.failure.wireValue)
+                error.evidence?.let { evidence ->
+                    extra.put(
+                        "loginUiBeforeTeardown",
+                        JSONObject()
+                            .put("userFormVisible", evidence.userFormVisible)
+                            .put("passwordFormVisible", evidence.passwordFormVisible)
+                            .put("discoveryErrorVisible", evidence.errorVisible),
+                    )
+                }
             }
             startupState is LoginStartupState.Pending -> {
                 extra.put("stage", startupState.stage.wireValue)
@@ -742,7 +797,7 @@ class PhysicalLowbarSessionTest {
     private fun stopClient(connectVc: ConnectViewController, device: DeviceLocal) {
         if (device.connectEnabled || connectVc.connected) {
             connectVc.disconnect()
-            waitFor("client disconnect", CONNECT_TIMEOUT_MILLIS) {
+            waitFor(PhysicalWaitStage.CLIENT_DISCONNECT, CONNECT_TIMEOUT_MILLIS) {
                 !device.connectEnabled && !connectVc.connected
             }
         }
@@ -752,7 +807,7 @@ class PhysicalLowbarSessionTest {
         if (device.provideEnabled || device.provideMode != Sdk.ProvideModeNone) {
             application.deviceManager.provideControlMode = ProvideControlMode.NEVER
             device.providePaused = true
-            waitFor("provider stop", CONNECT_TIMEOUT_MILLIS) {
+            waitFor(PhysicalWaitStage.PROVIDER_STOP, CONNECT_TIMEOUT_MILLIS) {
                 !device.provideEnabled && device.provideMode == Sdk.ProvideModeNone
             }
         }
@@ -766,7 +821,7 @@ class PhysicalLowbarSessionTest {
             Sdk.defaultTransportSettings(),
             mode,
         )
-        waitFor("transport policy $mode") { device.transportSettings?.mode == mode }
+        waitFor(PhysicalWaitStage.TRANSPORT_POLICY) { device.transportSettings?.mode == mode }
     }
 
     private fun connectPublic(
@@ -778,10 +833,36 @@ class PhysicalLowbarSessionTest {
         stopClient(connectVc, device)
         stopProvider(application, device)
         configureClientMode(device, mode)
-        connectVc.connectBestAvailable()
+        carrierBaseline = carrierBytes(device)
+        val locationsVc = device.openLocationsViewController()
+        try {
+            locationsVc.start()
+            var selected: ConnectLocation? = null
+            waitFor(PhysicalWaitStage.US_COUNTRY_POOL, CONNECT_TIMEOUT_MILLIS) {
+                val countries = locationsVc.filteredLocations?.countries ?: return@waitFor false
+                val locations = (0 until countries.len()).mapNotNull { countries.get(it) }
+                val index = physicalUsCountryIndex(locations.map {
+                    PhysicalCountryCandidate(it.countryCode, it.connectLocationId?.locationId?.idStr,
+                        it.locationType == Sdk.LocationTypeCountry, it.connectLocationId?.bestAvailable == true)
+                }) ?: return@waitFor false
+                selected = locations[index]
+                true
+            }
+            connectVc.connect(checkNotNull(selected))
+        } finally {
+            locationsVc.stop()
+            device.closeLocationsViewController(locationsVc)
+        }
         uiDevice.clickVerifiedVpnConsentIfPresent()
-        waitFor("public VPN connection", CONNECT_TIMEOUT_MILLIS) {
+        waitFor(PhysicalWaitStage.PUBLIC_VPN_CONNECTION, CONNECT_TIMEOUT_MILLIS) {
             connectVc.connected && device.connectEnabled && device.tunnelStarted
+        }
+        // A small separate-UID warmup proves actual carrier bytes. Auto policy
+        // and a requested US location are not evidence of the live route.
+        peerEgressProbeWithTrafficProof(device)
+        waitFor(PhysicalWaitStage.US_PROVIDER_CARRIER_EVIDENCE, CONNECT_TIMEOUT_MILLIS) {
+            physicalLiveCountry(liveProviders(device)) == "US" &&
+                physicalSelectedCarriers(carrierBaseline, carrierBytes(device), device.connectEnabled).isNotEmpty()
         }
     }
 
@@ -795,7 +876,7 @@ class PhysicalLowbarSessionTest {
         application.deviceManager.provideControlMode = ProvideControlMode.NETWORK
         device.providePaused = false
         uiDevice.clickVerifiedVpnConsentIfPresent()
-        waitFor("same-network provider", CONNECT_TIMEOUT_MILLIS) {
+        waitFor(PhysicalWaitStage.SAME_NETWORK_PROVIDER, CONNECT_TIMEOUT_MILLIS) {
             device.provideEnabled &&
                 device.provideMode == Sdk.ProvideModeNetwork &&
                 device.tunnelStarted
@@ -843,13 +924,40 @@ class PhysicalLowbarSessionTest {
         stopClient(connectVc, device)
         stopProvider(application, device)
         if (mode.isNotEmpty()) configureClientMode(device, mode)
-        waitFor("connectable same-network peer", PEER_TIMEOUT_MILLIS) {
+        carrierBaseline = carrierBytes(device)
+        waitFor(PhysicalWaitStage.CONNECTABLE_PEER, PEER_TIMEOUT_MILLIS) {
             peerLocation(peerVc, networkPeer) != null
         }
-        connectVc.connect(checkNotNull(peerLocation(peerVc, networkPeer)))
-        uiDevice.clickVerifiedVpnConsentIfPresent()
-        waitFor("same-network peer VPN connection", CONNECT_TIMEOUT_MILLIS) {
-            connectVc.connected && device.connectEnabled && device.tunnelStarted
+        val selectedPeer = checkNotNull(peerLocation(peerVc, networkPeer))
+        val expectedPeerId = checkNotNull(selectedPeer.connectLocationId?.clientId?.idStr)
+        val timing = PhysicalPeerConnectTiming(
+            SystemClock.elapsedRealtime(), CONNECT_TIMEOUT_MILLIS, commandStartedAtMillis,
+        )
+        peerTimingEvidence.startConnect(timing)
+        runPhysicalPeerEgress(
+            expectedPeerId = expectedPeerId,
+            timing = timing,
+            nowMillis = SystemClock::elapsedRealtime,
+            sleepMillis = SystemClock::sleep,
+            prepareConnection = {
+                connectVc.connect(selectedPeer)
+                uiDevice.clickVerifiedVpnConsentIfPresent()
+            },
+            routeState = {
+                PhysicalPeerRouteState(
+                    controllerConnected = connectVc.connected,
+                    connectEnabled = device.connectEnabled,
+                    tunnelStarted = device.tunnelStarted,
+                    requestedPeerId = device.connectLocation?.connectLocationId?.clientId?.idStr,
+                    providers = liveProviders(device),
+                )
+            },
+            egressProof = { peerEgressProbeWithTrafficProof(device) },
+        )
+        waitFor(PhysicalWaitStage.PEER_CARRIER_EVIDENCE, CONNECT_TIMEOUT_MILLIS) {
+            physicalSelectedPeer(device.connectLocation?.connectLocationId?.clientId?.idStr,
+                liveProviders(device), device.connectEnabled).isNotEmpty() &&
+                physicalSelectedCarriers(carrierBaseline, carrierBytes(device), device.connectEnabled).isNotEmpty()
         }
     }
 
@@ -861,6 +969,8 @@ class PhysicalLowbarSessionTest {
         peerVc: PeerViewController,
         startElapsedMs: Long,
     ): Boolean {
+        peerTimingEvidence.beginCommand()
+        commandStartedAtMillis = SystemClock.elapsedRealtime()
         val parts = command.trim().split('|', limit = 3)
         require(parts.size >= 2) { "invalid physical command" }
         val id = parts[0]
@@ -868,6 +978,9 @@ class PhysicalLowbarSessionTest {
         val argument = parts.getOrElse(2) { "" }
         require(id.matches(Regex("[A-Za-z0-9._-]+"))) { "invalid physical command ID" }
         require(argument.matches(Regex("[A-Za-z0-9._-]*"))) { "invalid physical command argument" }
+        if (verb == "peer-connect" || verb == "peer-platform-connect") {
+            peerTimingEvidence.beginPeerConnect()
+        }
         phase = when (verb) {
             "phase" -> argument.ifEmpty { "idle" }
             else -> "$verb${if (argument.isEmpty()) "" else "-$argument"}"
@@ -907,7 +1020,7 @@ class PhysicalLowbarSessionTest {
                 return false
             }
             "provider-proof" -> waitFor(
-                "bidirectional provider traffic counters",
+                PhysicalWaitStage.PROVIDER_TRAFFIC_COUNTERS,
                 EGRESS_TIMEOUT_MILLIS,
             ) {
                 val stats = device.providerPacketStats ?: return@waitFor false
@@ -1015,12 +1128,13 @@ class PhysicalLowbarSessionTest {
             BuildConfig.URNETWORK_ACCEPTANCE_BUILD_ID,
         )
         assertEquals("main", BuildConfig.BRINGYOUR_BUNDLE_ENV_NAME)
-        assertEquals("ur.network", BuildConfig.BRINGYOUR_BUNDLE_HOST_NAME)
+        assertEquals("bringyour.com", BuildConfig.BRINGYOUR_BUNDLE_HOST_NAME)
 
         acceptanceDir.mkdirs()
         commandFile.delete()
         statusFile.delete()
         samplesFile.delete()
+        diagnosticsFile.delete()
         summaryFile.delete()
         startupGoroutinesFile.delete()
 
@@ -1040,6 +1154,7 @@ class PhysicalLowbarSessionTest {
         var peerVc: PeerViewController? = null
         var sampler: Thread? = null
         var activeCommandId = "0"
+        val previousDiagnosticOptIn = Sdk.setTransferDiagnosticSnapshotsEnabled(true)
 
         try {
             withPhysicalCredentialCheckpoints(
@@ -1087,6 +1202,9 @@ class PhysicalLowbarSessionTest {
                 .onFailure(error::addSuppressed)
             throw error
         } finally {
+            // This process-wide opt-in affects only future constructions; the
+            // retained device's counters remain valid through its teardown.
+            Sdk.setTransferDiagnosticSnapshotsEnabled(previousDiagnosticOptIn)
             removeAllocationListener()
             stopped.set(true)
             sampler?.join(5_000)

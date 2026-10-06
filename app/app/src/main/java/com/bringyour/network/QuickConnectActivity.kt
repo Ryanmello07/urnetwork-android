@@ -6,9 +6,12 @@ import android.os.Bundle
 /**
  * A no-UI trampoline behind the launcher shortcuts ("Connect", "Disconnect"):
  * applies the request through [QuickConnect] and finishes at once. Only when
- * the app is needed — logged out, or the first-ever connect that has to show
- * the system VPN consent dialog — does it open the app instead. Declared with
- * Theme.NoDisplay, so it must finish inside onCreate.
+ * the app is needed — logged out, the first-ever connect that has to show
+ * the system VPN consent dialog, or a connect blocked by insufficient balance
+ * (on the upgrade screen) — does it open the app instead. A connect may
+ * wait briefly for a fresh account balance (see QuickConnect), so it is
+ * declared translucent rather than Theme.NoDisplay, which must finish inside
+ * onCreate.
  */
 class QuickConnectActivity : Activity() {
 
@@ -29,6 +32,8 @@ class QuickConnectActivity : Activity() {
         const val ROUTE_CONNECT = "connect"
         const val ROUTE_PROVIDER_LOCATIONS = "provider_locations"
         const val ROUTE_CONTRACT_STATS = "contract_stats"
+        /** A connect blocked by insufficient balance (see QuickConnect.Result.NEEDS_UPGRADE). */
+        const val ROUTE_UPGRADE = "upgrade"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,14 +49,16 @@ class QuickConnectActivity : Activity() {
             finish()
             return
         }
-        val result = when (action) {
-            ACTION_CONNECT -> QuickConnect.setConnected(app, connect = true, source = "shortcut")
-            ACTION_DISCONNECT -> QuickConnect.setConnected(app, connect = false, source = "shortcut")
-            else -> QuickConnect.toggle(app, source = "shortcut")
+        val onResult: (QuickConnect.Result) -> Unit = { result ->
+            if (result != QuickConnect.Result.APPLIED) {
+                QuickConnect.launchAppIntent(this)?.let { startActivity(it) }
+            }
+            finish()
         }
-        if (result != QuickConnect.Result.APPLIED) {
-            QuickConnect.launchAppIntent(this)?.let { startActivity(it) }
+        when (action) {
+            ACTION_CONNECT -> QuickConnect.setConnected(app, connect = true, source = "shortcut", onResult = onResult)
+            ACTION_DISCONNECT -> QuickConnect.setConnected(app, connect = false, source = "shortcut", onResult = onResult)
+            else -> QuickConnect.toggle(app, source = "shortcut", onResult = onResult)
         }
-        finish()
     }
 }

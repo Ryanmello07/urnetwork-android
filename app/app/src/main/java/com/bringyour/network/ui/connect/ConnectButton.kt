@@ -145,6 +145,31 @@ fun ConnectButton(
             }
 
             /**
+             * Connect failed: no provider could be reached (the sdk's
+             * CONNECT_FAILED). The warning replaces the grid, as the error
+             * state of the desktop apps' connect canvas does, until a provider
+             * lands or the user retries.
+             */
+            AnimatedVisibility(
+                visible = updatedStatus == ConnectStatus.CONNECT_FAILED && !insufficientBalance,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.icon_warning),
+                        contentDescription = stringResource(id = R.string.conn_failed),
+                        tint = TextMuted
+                    )
+                }
+            }
+
+            /**
              * Polling subscription balance
              */
             AnimatedVisibility(
@@ -162,7 +187,7 @@ fun ConnectButton(
                 }
             }
 
-            if (!insufficientBalance) {
+            if (!insufficientBalance && updatedStatus != ConnectStatus.CONNECT_FAILED) {
                 ConnectingButtonContent(
                     providerGridPoints = providerGridPoints,
                     grid = grid,
@@ -244,8 +269,7 @@ private fun ConnectingButtonContent(
 }
 
 // The provider grid canvas side: slightly smaller than the widget so points
-// don't rub against the mask edges. Shared with the connect drawer's IP
-// version histogram, whose dots must be the size of the widget's points.
+// don't rub against the mask edges.
 val CONNECT_GRID_CANVAS_SIZE = 248.dp
 // the gap between adjacent points, in pixels
 const val CONNECT_GRID_POINT_PADDING_PX = 1f
