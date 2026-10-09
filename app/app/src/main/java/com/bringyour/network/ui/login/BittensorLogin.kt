@@ -135,12 +135,26 @@ class BittensorLoginController(
      * Back on the login screen: from the browser, or from a wallet app. A wallet app
      * connection of this screen is told, and woken. It is held for the process, so
      * this is also how a controller made after the activity was recreated finds it.
+     *
+     * A wallet can miss the connection request on the first open of its link (its
+     * page was not ready yet): on the foreground edge a connection that still waits
+     * for its approval is opened again, exactly as the sheet's button does
+     * ([BittensorProofFlow.walletReopen]). Never on the wake-up's own open of this
+     * resume, and never more than once per resume.
      */
     fun onResumed() {
+        // the foreground edge: the screen comes back only from having left the front
+        val edge = !resumed
         resumed = true
         flow.onResumed()
         flow.attachWallet { wakeWallet() }
-        wakeWallet()
+        val woke = wakeWallet()
+        if (edge && woke !is BittensorWalletAction.Open) {
+            val reopen = flow.walletReopen()
+            if (reopen is BittensorWalletAction.Open) {
+                openWalletApp(reopen)
+            }
+        }
     }
 
     /** The login screen left the front: the user is in the wallet, or elsewhere. */
@@ -228,10 +242,11 @@ class BittensorLoginController(
 
     /**
      * The wake-up of the wallet app connection, on the main thread: on every call of
-     * its listener and whenever the screen is in front again.
+     * its listener and whenever the screen is in front again. Returns what it did.
      */
-    private fun wakeWallet() {
-        when (val action = flow.wake(resumed)) {
+    private fun wakeWallet(): BittensorWalletAction {
+        val action = flow.wake(resumed)
+        when (action) {
             BittensorWalletAction.None -> {}
             is BittensorWalletAction.Open -> openWalletApp(action)
             is BittensorWalletAction.Proven -> walletProven(action.proof)
@@ -241,6 +256,7 @@ class BittensorLoginController(
                 flow.walletFailed(walletFailureText(action.walletId, action.refused))
             }
         }
+        return action
     }
 
     /** Starts the wallet app with a link of its connection, for the package of the install check. */

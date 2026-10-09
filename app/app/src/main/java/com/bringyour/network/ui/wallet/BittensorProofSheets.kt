@@ -743,9 +743,20 @@ fun BittensorProofSheets(
                     Text(walletName, style = MaterialTheme.typography.bodyLarge)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(waitingFor, style = MaterialTheme.typography.bodyMedium)
+                    if (signing == null) {
+                        // the wallet can miss the connection prompt on the first open
+                        // of its link; the app opens it again when the user comes back
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            stringResource(id = R.string.bittensor_wallet_reopen_hint, walletName),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
                     Spacer(modifier = Modifier.height(24.dp))
-                    // the app opens the wallet by itself once per step; the button opens
-                    // it again, and is the only way for the create-network signature
+                    // the app opens the wallet by itself once per step, and again on the
+                    // way back while the approval is pending; the button opens it again,
+                    // and is the only way for the create-network signature
                     URButton(
                         onClick = onOpenWallet,
                     ) { buttonTextStyle ->

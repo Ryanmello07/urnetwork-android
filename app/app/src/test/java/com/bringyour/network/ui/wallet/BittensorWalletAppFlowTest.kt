@@ -212,6 +212,39 @@ class BittensorWalletAppFlowTest {
     }
 
     @Test
+    fun `a return to the front reopens the link the wallet is still to approve`() {
+        // nothing is held: nothing to open again
+        assertSame(BittensorWalletAction.None, walletFlow().walletReopen())
+
+        val (flow, _, connection) = started()
+        // the sdk is still working: the wallet has no request to be shown again
+        assertSame(BittensorWalletAction.None, flow.walletReopen())
+
+        connection.stateNow = BittensorWallets.CONNECT_AWAITING_APPROVAL
+        connection.linkToTake = pairingLink
+        connection.buttonLink = pairingLink
+        assertTrue(flow.wake(active = true) is BittensorWalletAction.Open)
+
+        // the wake-up's open took the link once; the return opens the button's link again
+        val reopen = flow.walletReopen() as BittensorWalletAction.Open
+        assertEquals(pairingLink, reopen.link)
+        assertEquals(talismanPackage, reopen.packageName)
+
+        // no link, or only the launch of the package (which is no link): nothing opens
+        connection.buttonLink = ""
+        assertSame(BittensorWalletAction.None, flow.walletReopen())
+        connection.buttonLink = BittensorWallets.WALLET_LINK_LAUNCH_PACKAGE
+        assertSame(BittensorWalletAction.None, flow.walletReopen())
+
+        // past the approval there is nothing to open again
+        connection.buttonLink = pairingLink
+        connection.addressNow = alice
+        connection.stateNow = BittensorWallets.CONNECT_AWAITING_SIGNATURE
+        flow.wake(active = true)
+        assertSame(BittensorWalletAction.None, flow.walletReopen())
+    }
+
+    @Test
     fun `a failure closes the connection and the chooser is up with the reason`() {
         val (flow, connections, connection) = started()
         connection.stateNow = BittensorWallets.CONNECT_AWAITING_APPROVAL

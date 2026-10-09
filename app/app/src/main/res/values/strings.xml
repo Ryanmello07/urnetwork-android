@@ -96,6 +96,7 @@
     <string name="bittensor_wallet_not_verified">This copy of %1$s can\'t be verified. Install %1$s from the store.</string>
     <string name="bittensor_wallet_open">Open %1$s</string>
     <string name="bittensor_wallet_open_failed">Couldn\'t open %1$s. Check that it is installed, then try again.</string>
+    <string name="bittensor_wallet_reopen_hint">If %1$s stays on \"Connecting to dapp\", come back here — we\'ll reopen it automatically when you return.</string>
     <string name="bittensor_walletconnect_continue">Continue in your browser: scan the code with your wallet app, or open the wallet on this device.</string>
     <string name="bittensor_walletconnect_hint">Nova, Nightly and other WalletConnect wallets</string>
     <string name="block_ads_and_trackers">Block ads and trackers</string>

@@ -67,6 +67,10 @@ object BittensorWallets {
     const val CONNECT_FAILED = "failed"
     const val CONNECT_CLOSED = "closed"
 
+    // mirror sdk BittensorWalletLinkLaunchPackage: the wallet link where the wallet
+    // is brought forward by starting its app instead. It is no link and carries nothing.
+    const val WALLET_LINK_LAUNCH_PACKAGE = "launch-package:"
+
     /** The supported wallets, in display order (sdk BittensorWalletIdList). */
     val walletIds: List<String> = listOf(TALISMAN, TAO_COM, WALLET_CONNECT)
 
@@ -760,6 +764,27 @@ class BittensorProofFlow(
         val slot = walletConnections?.get() ?: return BittensorWalletAction.None
         val link = slot.connection.walletLink()
         return if (link.isEmpty()) BittensorWalletAction.None else BittensorWalletAction.Open(link, slot.packageName)
+    }
+
+    /**
+     * The wallet link opened again without a tap when the app came back to the front
+     * and the wallet still has the connection request: a wallet can miss the request
+     * on the first open of the link (its page was not ready yet) and shows it when
+     * the link is opened again. The button's link, not the one the connection hands
+     * out once ([BittensorWalletConnection.takeWalletLink]). None while the
+     * connection waits for anything else, and none when there is no link to open
+     * ([BittensorWallets.WALLET_LINK_LAUNCH_PACKAGE] is no link).
+     */
+    fun walletReopen(): BittensorWalletAction {
+        val slot = walletConnections?.get() ?: return BittensorWalletAction.None
+        if (slot.connection.state() != BittensorWallets.CONNECT_AWAITING_APPROVAL) {
+            return BittensorWalletAction.None
+        }
+        val link = slot.connection.walletLink()
+        if (link.isEmpty() || link == BittensorWallets.WALLET_LINK_LAUNCH_PACKAGE) {
+            return BittensorWalletAction.None
+        }
+        return BittensorWalletAction.Open(link, slot.packageName)
     }
 
     /**
