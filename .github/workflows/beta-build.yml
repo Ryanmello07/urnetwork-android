@@ -182,6 +182,19 @@ jobs:
           fi
           ls -la "$aar_dir"
 
+      # The .aar the app links against. A Windows machine cannot easily run the gomobile
+      # recipe: with these two files in <dir>/build/android and BRINGYOUR_HOME=<dir> (or
+      # <dir> named urnetwork-sdk beside this repository) the app builds in Android Studio.
+      - name: Upload the SDK .aar
+        if: matrix.flavor == 'play'
+        uses: actions/upload-artifact@v4
+        with:
+          name: urnetwork-sdk-android-aar
+          path: |
+            urnetwork-sdk/build/android/*.aar
+            urnetwork-sdk/build/android/*-sources.jar
+          if-no-files-found: error
+
       - name: Write local.properties to bypass warpctl
         working-directory: app
         run: |
@@ -226,3 +239,12 @@ jobs:
             --title "URnetwork Android Talisman live test (${{ matrix.flavor }}) ${{ github.run_number }}" \
             --notes "Live-test build ${{ env.WARP_VERSION }}. Install the arm64-v8a APK. android $GITHUB_SHA; sdk $SDK_REPOSITORY@$SDK_REF; connect $CONNECT_SHA; glog $GLOG_SHA; goidenticons $GOIDENTICONS_SHA; gvisor $GVISOR_SHA." \
             app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk
+
+      - name: Attach the SDK .aar to the play prerelease
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && matrix.flavor == 'play'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: beta-talisman-${{ matrix.flavor }}-${{ github.run_number }}-${{ github.run_attempt }}
+        run: |
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" \
+            urnetwork-sdk/build/android/*.aar urnetwork-sdk/build/android/*-sources.jar
