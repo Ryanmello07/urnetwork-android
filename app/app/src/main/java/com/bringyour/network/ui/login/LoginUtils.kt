@@ -1,12 +1,16 @@
 package com.bringyour.network.ui.login
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.Uri
+import android.os.Build
 import android.util.Base64
 import android.util.Log
 import com.bringyour.network.ui.wallet.BittensorProof
 import com.bringyour.network.ui.wallet.BittensorReturnAction
 import com.bringyour.network.ui.wallet.BittensorWallets
+import com.bringyour.network.ui.wallet.WalletInstall
 import com.bringyour.network.ui.wallet.bittensorWalletDisplayName
 import androidx.browser.customtabs.CustomTabsIntent
 import com.bringyour.network.BuildConfig
@@ -15,11 +19,13 @@ import com.bringyour.network.MainApplication
 import com.bringyour.network.TAG
 import com.bringyour.sdk.Api
 import com.bringyour.sdk.AuthWalletChallengeArgs
+import com.bringyour.sdk.Sdk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
+import java.security.MessageDigest
 import java.security.SecureRandom
 import kotlin.coroutines.resume
 
@@ -122,6 +128,165 @@ fun launchBittensorBridge(context: Context, url: String): Boolean {
         }
     }
 }
+
+// the tag of this app's own lines about a wallet app in the sdk log: the sdk's
+// trace of the wallet connection has the same one
+private const val BITTENSOR_WALLET_LOG_TAG = "bwc"
+
+/** One line about a wallet app into the sdk log. Never a link, a challenge or a proof. */
+private fun bittensorWalletAppLog(line: String) {
+    runCatching { Sdk.logAppInfo(BITTENSOR_WALLET_LOG_TAG, line) }
+}
+
+/**
+ * Whether a wallet app the chooser offers is installed and genuine: the first of
+ * `packages` that is installed and has a signing certificate whose SHA-256 the sdk
+ * lists for it. `signers` are the sdk's lines, "<package> <64 lowercase hex>" (sdk
+ * BittensorWalletChoice.PackageSigners). A package that is installed with no listed
+ * certificate is reported with the digest of the certificate it has, which is a
+ * public value. A wallet link is only ever sent to the package this returns as
+ * installed ([launchBittensorWallet]). The result is written to the sdk log.
+ */
+fun walletInstall(context: Context, packages: List<String>, signers: List<String>): WalletInstall {
+    val packageManager = context.packageManager
+    var install: WalletInstall = WalletInstall.NotInstalled
+    for (pkg in packages) {
+        // null: not installed, or not visible to this app
+        val installed = installedSignerDigests(packageManager, pkg) ?: continue
+        val listed = signers.mapNotNull { signer ->
+            val parts = signer.trim().split(" ")
+            if (parts.size == 2 && parts[0] == pkg) parts[1].lowercase() else null
+        }
+        if (isSignedWithOneOf(packageManager, pkg, listed, installed)) {
+            install = WalletInstall.Installed(pkg)
+            break
+        }
+        if (install == WalletInstall.NotInstalled) {
+            install = WalletInstall.NotVerified(pkg, installed.joinToString(","))
+        }
+    }
+    bittensorWalletAppLog("install " + install.describe())
+    return install
+}
+
+/**
+ * The SHA-256 digests (lowercase hex) of the signing certificates of an installed
+ * package; null when the package is not installed, or not visible to this app.
+ */
+@Suppress("DEPRECATION")
+private fun installedSignerDigests(packageManager: PackageManager, pkg: String): List<String>? {
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signingInfo = packageManager.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
+            if (signingInfo == null) {
+                emptyList<String>()
+            } else if (signingInfo.hasMultipleSigners()) {
+                signatureDigests(signingInfo.apkContentsSigners)
+            } else {
+                signatureDigests(signingInfo.signingCertificateHistory)
+            }
+        } else {
+            signatureDigests(packageManager.getPackageInfo(pkg, PackageManager.GET_SIGNATURES).signatures)
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun signatureDigests(signatures: Array<out Signature>?): List<String> =
+    signatures?.map { signature -> sha256Hex(signature.toByteArray()) } ?: emptyList<String>()
+
+/** One of the `listed` digests is a signing certificate of the installed package. */
+private fun isSignedWithOneOf(
+    packageManager: PackageManager,
+    pkg: String,
+    listed: List<String>,
+    installed: List<String>,
+): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        // the system's own check, which knows a rotated signing certificate
+        return listed.any { digest ->
+            val bytes = hexToBytes(digest)
+            bytes != null && packageManager.hasSigningCertificate(pkg, bytes, PackageManager.CERT_INPUT_SHA256)
+        }
+    }
+    return listed.any { digest -> digest in installed }
+}
+
+private const val HEX_DIGITS = "0123456789abcdef"
+
+private fun sha256Hex(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    val hex = StringBuilder(digest.size * 2)
+    for (b in digest) {
+        val v = b.toInt() and 0xff
+        hex.append(HEX_DIGITS[v shr 4])
+        hex.append(HEX_DIGITS[v and 0x0f])
+    }
+    return hex.toString()
+}
+
+/** The bytes of a hex text, or null when it is none. */
+private fun hexToBytes(hex: String): ByteArray? {
+    if (hex.isEmpty() || hex.length % 2 != 0) {
+        return null
+    }
+    val bytes = ByteArray(hex.length / 2)
+    for (i in bytes.indices) {
+        val high = HEX_DIGITS.indexOf(hex[2 * i])
+        val low = HEX_DIGITS.indexOf(hex[2 * i + 1])
+        if (high < 0 || low < 0) {
+            return null
+        }
+        bytes[i] = ((high shl 4) or low).toByte()
+    }
+    return bytes
+}
+
+/**
+ * Starts a Bittensor wallet app for what its connection has pending (sdk
+ * BittensorWalletConnect.takeWalletLink and walletLink): the link, delivered to
+ * `pkg` and to nothing else, or for sdk BittensorWalletLinkLaunchPackage the launch
+ * intent of `pkg`, which brings the wallet forward and carries nothing. `pkg` is
+ * the package the certificate check returned ([walletInstall]).
+ *
+ * Never without a package, never a chooser, a browser or a Custom Tab: the link
+ * hands the pairing to whoever receives it. For the same reason the link is never
+ * logged, and neither is the text of a failed start, which can hold it.
+ */
+fun launchBittensorWallet(context: Context, link: String, pkg: String): Boolean {
+    if (link.isEmpty() || pkg.isEmpty()) {
+        return false
+    }
+    val launch = link == Sdk.BittensorWalletLinkLaunchPackage
+    val intent = if (launch) {
+        context.packageManager.getLaunchIntentForPackage(pkg)
+    } else {
+        Intent(Intent.ACTION_VIEW, Uri.parse(link))
+    }
+    var opened = false
+    if (intent != null) {
+        // the launch intent names the package already; it is set either way
+        intent.setPackage(pkg)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+            opened = true
+        } catch (e: Exception) {
+            // no activity of the package takes it: the caller decides what follows
+        }
+    }
+    bittensorWalletAppLog((if (opened) "open ok" else "open failed") + (if (launch) " launch" else " link"))
+    return opened
+}
+
+/**
+ * The link a wallet app may open to show this app again after a request: the
+ * redirect of the wallet connection, named only when a debug build's switch is on.
+ * It is inert, it carries no query and no fragment, and its scheme is the app's own
+ * (WalletReturnActivity is its only handler).
+ */
+fun bittensorWalletReturnLink(packageName: String): String = "${packageName}.wallet://return"
 
 fun launchBittensorSignMessage(
     context: Context,

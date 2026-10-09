@@ -250,6 +250,28 @@ class BittensorBridgeReturns {
     }
 }
 
+/**
+ * Whether a wallet app is installed, and whether the installed copy is the genuine
+ * one: the answer of the install check (ui.login.walletInstall) for the packages
+ * and signing certificates the sdk lists for a wallet.
+ */
+sealed class WalletInstall {
+    // installed, with a signing certificate the sdk lists for the package: the only
+    // case in which a wallet link may be sent to it
+    data class Installed(val packageName: String) : WalletInstall()
+    object NotInstalled : WalletInstall()
+    // installed under a listed package name with no listed signing certificate.
+    // sha256 is the digest of the certificate it has (several: comma separated)
+    data class NotVerified(val packageName: String, val sha256: String) : WalletInstall()
+
+    /** One line for the sdk log and a debug build's panel. Nothing in it is a secret. */
+    fun describe(): String = when (this) {
+        is Installed -> "verified pkg=$packageName"
+        is NotVerified -> "not-verified pkg=$packageName sha256=$sha256"
+        NotInstalled -> "not-installed"
+    }
+}
+
 /** A session to start: the wallet, why, and the address the challenge is bound to. */
 data class BittensorProofRequest(
     val walletId: String,
