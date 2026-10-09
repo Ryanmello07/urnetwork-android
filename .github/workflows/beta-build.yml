@@ -1,37 +1,80 @@
 name: Beta Build — Android
 
+# The copy of this workflow on beta/talisman-live-test. It differs from the copy on
+# beta/custom-server in what it builds against, not in how:
+#   - the SDK is one commit of Ryanmello07/urnetwork-sdk (branch beta/talisman-live-test:
+#     urnetwork/sdk main + the Bittensor wallet-app work), not the fork's beta/custom-server;
+#   - connect, glog, goidenticons and gvisor are upstream commits, each pinned by id;
+#   - Go and the NDK are the pair upstream's own Android build used (go 1.27.1, ndk 29.0.14206865);
+#   - local.properties carries the WalletConnect project id;
+#   - a push to this branch, and a manual run, publish a prerelease named beta-talisman-*.
+# Keep this file's PATH: github.run_number is counted per workflow file and is the app's
+# version code, so a renamed file would restart at 1 and the APK would no longer install
+# over the previous beta.
+
 on:
   push:
     branches:
-      - beta/custom-server
+      - beta/talisman-live-test
   pull_request:
     branches:
       - beta/custom-server
+      - beta/talisman-live-test
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# one run per branch: a newer push replaces a run that is still building
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   WARP_VERSION: beta-${{ github.run_number }}
+  # THE PINS. A branch tip moves, a commit does not. Change them together and on purpose.
+  # Rule for the pair: an sdk at or after c0b71e29 needs connect at or after 219d2f9e, and
+  # before urnetwork/connect#219 (which removes packages this sdk imports).
+  SDK_REPOSITORY: Ryanmello07/urnetwork-sdk
+  SDK_REF: 4be412c7be74dd1031357a0d420caf420e1c9e3c # beta/talisman-live-test in the sdk fork: upstream ed9f56a5 + the wallet work as of 7add55b9
+  CONNECT_SHA: 97abb1e6ddb5b21403954a556ddc73947993297a # urnetwork/connect main, 2026-10-09
+  GLOG_SHA: fe810311aa908259ff133ce502bbf0618dd46a0c # urnetwork/glog master
+  GOIDENTICONS_SHA: e94d63579c6b9031d8e110d75cb1f0a9d15ea30a # urnetwork/goidenticons main
+  GVISOR_SHA: c0783dba2eeff7b79692a7f122ffee5f8bd837c1 # urnetwork/gvisor go
+  # app/app/build.gradle pins ndkVersion '29.0.14206865'
+  UR_ANDROID_NDK: "29.0.14206865"
+  # A WalletConnect project id is a public client identifier. This is the one the Apple
+  # app commits (URWalletConnectProjectId); the relay accepts packageName
+  # com.bringyour.network for it.
+  WALLETCONNECT_PROJECT_ID: 13470f178edb2a9098d2261d03245975
 
 jobs:
   build-android:
     name: Build Android app (${{ matrix.flavor }})
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        flavor: [github, play, ethos_dapp, solana_dapp]
+        # while compile errors are being fixed: [play]. The full set is
+        # [github, play, ethos_dapp, solana_dapp].
+        flavor: [play]
     steps:
+      - name: Check the SDK pin
+        run: |
+          if ! echo "$SDK_REF" | grep -Eq '^[0-9a-f]{40}$' || [ "$SDK_REF" = "0000000000000000000000000000000000000000" ]; then
+            echo "::error::SDK_REF is '$SDK_REF': set it to the full commit id of beta/talisman-live-test in $SDK_REPOSITORY"
+            exit 1
+          fi
+
       - name: Check out Android repo
         uses: actions/checkout@v4
 
-      - name: Check out forked SDK
+      - name: Check out the SDK (pinned commit)
         uses: actions/checkout@v4
         with:
-          repository: Ryanmello07/urnetwork-sdk
-          ref: beta/custom-server
+          repository: ${{ env.SDK_REPOSITORY }}
+          ref: ${{ env.SDK_REF }}
           path: urnetwork-sdk
 
       - name: Set up JDK
@@ -46,11 +89,8 @@ jobs:
           if [ -f app/debug.keystore ]; then
             cp app/debug.keystore "$HOME/.android/debug.keystore"
           else
-            keytool -genkeypair -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android -keypass android \
-              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
+            echo "::error::app/debug.keystore is missing: the APK would be signed with a new key and would not install over the previous beta"
+            exit 1
           fi
 
       # v3 defaults its `packages` input to `tools platform-tools`, and Google
@@ -59,43 +99,57 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
-      # `id` matters: the SDK build step below reads this action's ndk-path
-      # OUTPUT. It used to pass `ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}`,
-      # which is self-referential -- it resolves against the workflow/job env
-      # map, where nothing defines it, so it set the variable to the empty
-      # string and overrode anything the action had exported.
-      - name: Set up Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-          add-to-path: true
-          link-to-sdk: true
+      # The SDK build finds llvm-objcopy under ANDROID_NDK_HOME, and AGP strips the
+      # .aar's native libraries with the NDK that build.gradle names. One NDK for
+      # both, installed the way upstream's own workflow installed it.
+      - name: Install the pinned Android NDK
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdkmanager="$(command -v sdkmanager || true)"
+          if [ -z "$sdkmanager" ]; then
+            sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          yes | timeout 300 "$sdkmanager" --licenses >/dev/null || true
+          "$sdkmanager" --install "ndk;$UR_ANDROID_NDK"
+          if [ ! -d "$sdk_root/ndk/$UR_ANDROID_NDK" ]; then
+            echo "::error::the NDK is not at $sdk_root/ndk/$UR_ANDROID_NDK after sdkmanager --install"
+            exit 1
+          fi
+          echo "ANDROID_NDK_HOME=$sdk_root/ndk/$UR_ANDROID_NDK" >> "$GITHUB_ENV"
 
-      # NOT `go-version: stable`. Stable is go 1.27, which REMOVED the
-      # `gotypesalias` GODEBUG, and sdk/build/Makefile exports
-      # `GODEBUG=gotypesalias=0` in both the build_android and build_apple
-      # recipes (it says so itself: "gomobile/gobind must be built with go <=
-      # 1.26 -- the go 1.27 runtime fatals when this GODEBUG is set"). Under
-      # 1.27 the bind dies with `fatal error: removed GODEBUG "gotypesalias"
-      # set to old value "0"`. urnetwork-sdk/build/go.mod pins 1.26.5; read the
-      # version from it so this tracks the sdk rather than drifting again.
+      # The Go the organization's release script builds the SDK with (build/all/run.sh
+      # requires exactly 1.27.1), and the one upstream's own Android workflow used. The
+      # upstream build_android recipe sets no GODEBUG, so go 1.27 can run the bind.
+      # urnetwork-sdk/build/go.mod says `go 1.26.5`: that is a minimum, not the choice.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: urnetwork-sdk/build/go.mod
+          go-version: "1.27.1"
           cache-dependency-path: urnetwork-sdk/build/go.sum
 
-      - name: Check out connect dependency
-        run: git clone --depth 1 --branch beta/custom-server https://github.com/Ryanmello07/connect.git connect
-
-      - name: Check out glog dependency
-        run: git clone --depth 1 https://github.com/urnetwork/glog.git glog
-
-      # the sdk's go.mod resolves this with `replace ... => ../goidenticons`,
-      # so it has to sit next to urnetwork-sdk like connect and glog do
-      - name: Check out goidenticons dependency
-        run: git clone --depth 1 https://github.com/urnetwork/goidenticons.git goidenticons
+      # The sdk's go.mod replaces ../connect, ../connect/sctp, ../glog, ../goidenticons
+      # and ../gvisor (build/go.mod the same, one level up), so the four directories sit
+      # beside urnetwork-sdk under exactly these names.
+      - name: Check out the sibling modules (pinned commits)
+        run: |
+          set -euo pipefail
+          pin() {
+            git init -q "$1"
+            git -C "$1" fetch -q --depth 1 "https://github.com/urnetwork/$1.git" "$2"
+            git -C "$1" checkout -q --detach FETCH_HEAD
+            if [ "$(git -C "$1" rev-parse HEAD)" != "$2" ]; then
+              echo "::error::$1 is at $(git -C "$1" rev-parse HEAD), not at $2"
+              exit 1
+            fi
+            echo "$1 $2"
+          }
+          pin connect "$CONNECT_SHA"
+          pin glog "$GLOG_SHA"
+          pin goidenticons "$GOIDENTICONS_SHA"
+          pin gvisor "$GVISOR_SHA"
+          test -f connect/sctp/go.mod
+          echo "sdk $(git -C urnetwork-sdk rev-parse HEAD)"
 
       - name: Build SDK for Android
         working-directory: urnetwork-sdk/build
@@ -103,12 +157,9 @@ jobs:
           BRINGYOUR_HOME: ${{ github.workspace }}/urnetwork-sdk
           WARP_HOME: ${{ github.workspace }}/urnetwork-sdk
           WARP_VERSION_HOME: ${{ github.workspace }}/urnetwork-sdk/version
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          # setup-go pins 1.26.5 from build/go.mod, but a `go` directive
-          # anywhere in the graph could still make the toolchain silently
-          # self-upgrade to 1.27 and re-break the bind. `local` turns that into
-          # a loud "requires go >= ..." error instead. Every module in the graph
-          # is <= 1.26.5 today (sdk, sdk/build, connect, glog, goidenticons).
+          # setup-go installed 1.27.1. `local` turns a `go` line newer than that
+          # anywhere in the module graph into a loud error instead of a silent switch
+          # to another toolchain.
           GOTOOLCHAIN: local
         run: |
           export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
@@ -117,20 +168,20 @@ jobs:
           # recipe as an opaque `find: '': No such file or directory`. Say so
           # here instead.
           if [ ! -d "$ANDROID_NDK_HOME" ]; then
-            echo "::error::ANDROID_NDK_HOME is not a directory (got '$ANDROID_NDK_HOME') -- the setup-ndk step did not produce an ndk-path"
+            echo "::error::ANDROID_NDK_HOME is not a directory (got '$ANDROID_NDK_HOME') -- the NDK step did not export it"
             exit 1
           fi
-          make init build_android
-          # the sdk's build_android recipe keeps going after a failed
-          # `gomobile bind`, so make can exit 0 having produced no aar. that
-          # only surfaces later as "Unresolved reference 'sdk'" across every
-          # kotlin file, which buries the real go compile error. fail here
-          # instead, while it is still on screen.
+          go version
+          # init_tools, not init: it installs the pinned gomobile, gobind and checksec
+          # and stops. This is the pair of targets upstream's own workflow ran.
+          make init_tools
+          make build_android
           aar_dir="$BRINGYOUR_HOME/build/android"
           if ! ls "$aar_dir"/*.aar >/dev/null 2>&1; then
             echo "::error::gomobile bind produced no .aar in $aar_dir -- see the go compile errors above"
             exit 1
           fi
+          ls -la "$aar_dir"
 
       - name: Write local.properties to bypass warpctl
         working-directory: app
@@ -138,6 +189,7 @@ jobs:
           cat > local.properties <<EOF
           warp.version=${{ env.WARP_VERSION }}
           warp.version_code=${{ github.run_number }}
+          WALLETCONNECT_PROJECT_ID=${{ env.WALLETCONNECT_PROJECT_ID }}
           EOF
 
       - name: Build ${{ matrix.flavor }}Debug APK
@@ -159,16 +211,19 @@ jobs:
           path: app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk
           if-no-files-found: error
 
+      # A push and a manual run both publish: the owner installs from the release page
+      # on the phone. The tag is this branch's own and points at the commit that was built.
       - name: Create prerelease
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: beta-custom-server-${{ matrix.flavor }}-${{ github.run_number }}-${{ github.run_attempt }}
+          TAG: beta-talisman-${{ matrix.flavor }}-${{ github.run_number }}-${{ github.run_attempt }}
         run: |
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes || true
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
             --prerelease \
-            --title "URnetwork Android beta custom server (${{ matrix.flavor }}) ${{ github.run_number }}" \
-            --generate-notes \
+            --title "URnetwork Android Talisman live test (${{ matrix.flavor }}) ${{ github.run_number }}" \
+            --notes "Live-test build ${{ env.WARP_VERSION }}. Install the arm64-v8a APK. android $GITHUB_SHA; sdk $SDK_REPOSITORY@$SDK_REF; connect $CONNECT_SHA; glog $GLOG_SHA; goidenticons $GOIDENTICONS_SHA; gvisor $GVISOR_SHA." \
             app/app/build/outputs/apk/${{ matrix.flavor }}/debug/*.apk
