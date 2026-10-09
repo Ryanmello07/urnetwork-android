@@ -89,6 +89,13 @@
     <string name="bittensor_signature_label">Signature</string>
     <string name="bittensor_signature_placeholder">Paste the 0x… signature</string>
     <string name="bittensor_wallet">Bittensor wallet</string>
+    <string name="bittensor_wallet_approve_connection">Approve the connection in %1$s, then come back to URnetwork.</string>
+    <string name="bittensor_wallet_approve_create">One more signature is needed to set up a new network. Approve it in %1$s, then come back to URnetwork.</string>
+    <string name="bittensor_wallet_approve_request">Approve the request in %1$s for %2$s, then come back to URnetwork.</string>
+    <string name="bittensor_wallet_not_installed">Not installed</string>
+    <string name="bittensor_wallet_not_verified">This copy of %1$s can\'t be verified. Install %1$s from the store.</string>
+    <string name="bittensor_wallet_open">Open %1$s</string>
+    <string name="bittensor_wallet_open_failed">Couldn\'t open %1$s. Check that it is installed, then try again.</string>
     <string name="bittensor_walletconnect_continue">Continue in your browser: scan the code with your wallet app, or open the wallet on this device.</string>
     <string name="bittensor_walletconnect_hint">Nova, Nightly and other WalletConnect wallets</string>
     <string name="block_ads_and_trackers">Block ads and trackers</string>
