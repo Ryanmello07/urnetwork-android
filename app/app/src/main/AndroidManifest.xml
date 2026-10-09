@@ -175,6 +175,26 @@
             </intent-filter>
         </activity>
 
+        <!-- A wallet app may open this link to bring the app to the front after a
+             Bittensor wallet request (the redirect of the WalletConnect session).
+             It carries nothing and nothing reads it: see WalletReturnActivity.
+             The scheme is the app's own and not "ur": LoginActivity takes every
+             ur: link and acts on it. -->
+        <activity
+            android:name=".WalletReturnActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${applicationId}.wallet" />
+            </intent-filter>
+        </activity>
+
         <!-- Home Screen widgets (Jetpack Glance): dashboard, provider globe, contracts -->
         <receiver
             android:name=".widgets.DashboardWidgetReceiver"
