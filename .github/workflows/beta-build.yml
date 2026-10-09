@@ -36,7 +36,7 @@ env:
   # Rule for the pair: an sdk at or after c0b71e29 needs connect at or after 219d2f9e, and
   # before urnetwork/connect#219 (which removes packages this sdk imports).
   SDK_REPOSITORY: Ryanmello07/urnetwork-sdk
-  SDK_REF: f24ede22191be9006bc0be4e816237417e93cd4c # beta/talisman-live-test in the sdk fork: upstream ed9f56a5 + the wallet work with the Talisman changes and the device-test layer
+  SDK_REF: ec9313664b1649a9f8703a256a9d6d6b3ff10ec7 # beta/talisman-live-test in the sdk fork: upstream ed9f56a5 + the wallet work with the Talisman changes, the device-test layer, and the link-expiry/pairing-delete/challenge-recovery fixes
   CONNECT_SHA: 97abb1e6ddb5b21403954a556ddc73947993297a # urnetwork/connect main, 2026-10-09
   GLOG_SHA: fe810311aa908259ff133ce502bbf0618dd46a0c # urnetwork/glog master
   GOIDENTICONS_SHA: e94d63579c6b9031d8e110d75cb1f0a9d15ea30a # urnetwork/goidenticons main
