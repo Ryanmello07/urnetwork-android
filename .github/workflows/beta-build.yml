@@ -56,9 +56,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # while compile errors are being fixed: [play]. The full set is
-        # [github, play, ethos_dapp, solana_dapp].
-        flavor: [play]
+        # the full set. While compile errors are being fixed, [play] alone is quicker.
+        flavor: [github, play, ethos_dapp, solana_dapp]
     steps:
       - name: Check the SDK pin
         run: |
