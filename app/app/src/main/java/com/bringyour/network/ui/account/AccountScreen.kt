@@ -311,7 +311,7 @@ fun AccountScreenContent(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 /**
-                 * "Redeem balance code" gets its OWN row, as a full-width touch target.
+                 * "Redeem balance code" gets its own row, as a full-width touch target.
                  *
                  * It used to be a small right-aligned text link tucked under the usage
                  * bar, sharing space with the referral affordance -- a fiddly thing to
@@ -512,7 +512,7 @@ fun AccountScreenContent(
             Row {
                 Icon(
                     Icons.Filled.LocationOn,
-                    contentDescription = stringResource(id = R.string.check_ip),
+                    contentDescription = null,
                     tint = TextMuted
                 )
                 Spacer(modifier = Modifier.width(16.dp))
@@ -521,7 +521,7 @@ fun AccountScreenContent(
             Row {
                 Icon(
                     Icons.Filled.ArrowOutward,
-                    contentDescription = "Visit external link",
+                    contentDescription = null,
                     tint = TextMuted,
                     modifier = Modifier
                         .size(18.dp)

@@ -37,8 +37,12 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.WorkManager
 import com.bringyour.network.location.MockLocationController
 import com.bringyour.network.location.MockLocationFeeder
+import com.bringyour.network.ui.login.SsoProvider
+import com.bringyour.network.ui.login.ssoOAuthAttempts
 import com.bringyour.network.ui.login.toVerifySendError
 import com.bringyour.network.ui.shared.models.ProvideNetworkMode
+import com.bringyour.network.ui.shared.viewmodels.pendingSolanaPaymentStore
+import com.bringyour.network.ui.wallet.BittensorBridgeReturns
 import com.bringyour.sdk.DeviceLocal
 import com.bringyour.sdk.LocalState
 import com.bringyour.sdk.LoginViewController
@@ -150,13 +154,13 @@ class MainApplication : Application() {
         }
     }
 
-    // the exact os version, always NUMERIC ("17", "16.1"), never a dev
+    // the exact os version, always numeric ("17", "16.1"), never a dev
     // codename. RELEASE is major-only on modern android ("16"); older builds
     // carried the point ("8.1.0"). From android 16 (api 36) the minor os
     // revision is exposed through the full sdk version — append it so the spec
     // reads "16.1" like the ios side's point versions.
     //
-    // NOTE: use RELEASE, not RELEASE_OR_CODENAME. On a preview/beta build the
+    // use RELEASE, not RELEASE_OR_CODENAME. On a preview/beta build the
     // latter returns the dev codename (e.g. "CinnamonBun" on the Android 17
     // preview), producing nonsense like "CinnamonBun.1"; RELEASE stays numeric
     // ("17") on those builds. If RELEASE is ever non-numeric (very early dev
@@ -975,7 +979,7 @@ class MainApplication : Application() {
         // Pre-upgrade builds wrote glog files straight into filesDir. Nothing
         // ever prunes or reads that directory again once the root moves, so
         // the old files are both dead storage and unreachable evidence. Run the
-        // migration BEFORE pointing glog at the new directory: the sdk's
+        // migration before pointing glog at the new directory: the sdk's
         // retention pass then treats the migrated files as part of the app's
         // own history and keeps only the newest four of the merged set.
         val migratedLogCount = try {
@@ -991,7 +995,7 @@ class MainApplication : Application() {
         // gomobile binds Go's `error` return as a checked java exception, and
         // kotlin does not enforce checked exceptions -- so an unguarded call
         // compiles and then propagates out of Application.onCreate as an
-        // unhandled crash on EVERY launch. The sdk's own contract is the
+        // unhandled crash on every launch. The sdk's own contract is the
         // opposite ("logging must never be what breaks a launch"), but the
         // fallback meant to make the error unreachable cannot do that here: it
         // targets os.TempDir(), which on android resolves to /data/local/tmp
@@ -1033,7 +1037,7 @@ class MainApplication : Application() {
 
         // The bundled space is keyed by the operator host. An earlier bundle
         // keyed it under the legacy host; installBundleNetworkSpace rolls
-        // that key forward BEFORE the bundled key is read, created, or bound
+        // that key forward before the bundled key is read, created, or bound
         // (the sdk's migrateNetworkSpace contract), so the credentials and
         // local state saved under the old key move with it.
         val bundleIdentity = BundleNetworkSpaceIdentity.fromBuildConfig()
@@ -1540,7 +1544,7 @@ class MainApplication : Application() {
     }
 
     /**
-     * The membership callback above tracks the SET of physical networks, so it
+     * The membership callback above tracks the set of physical networks, so it
      * cannot see a default-preference flip between two still-attached networks
      * (bad-wifi avoidance moving the default to cell while wifi stays
      * associated, or the reverse). Existing transport sockets do not migrate on
@@ -2194,7 +2198,7 @@ class MainApplication : Application() {
         }
     }
 
-    // Clear a stale or partial auth state WITHOUT rotating the device
+    // Clear a stale or partial auth state without rotating the device
     // identity. The identity key material is device-scoped, not
     // session-scoped: auth staleness (token rotation, partial auth state,
     // re-login) must not change the key peers use to verify this device, so
@@ -2219,6 +2223,17 @@ class MainApplication : Application() {
         widgetSnapshotWriter?.clear()
         // a connect the signed-out account asked for must not start later
         clearBalanceRecovery()
+        // nor may its plan decide the next account's start connect gate, which
+        // reads this until the next connect screen sets its own
+        uiIsPro = false
+        uiPollingSubscriptionBalance = false
+        // what the account left outside the sdk's local state: each network
+        // starts fresh (owner decision 2026-10-05)
+        clearSignedOutNetworkState(
+            ssoAttempts = SsoProvider.entries.map { ssoOAuthAttempts(this, it) },
+            pendingSolanaPayment = pendingSolanaPaymentStore(this),
+            bittensorBridgeReturns = BittensorBridgeReturns.shared,
+        )
 
         // the pending product events can only be sent while the jwt is still
         // set; give the queue a bounded moment to drain before it is cleared

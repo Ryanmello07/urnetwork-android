@@ -2,6 +2,19 @@ package com.bringyour.network.ui
 
 internal const val POST_LOGIN_WELCOME_ENTER_TAG = "acceptance.welcome.enter"
 internal const val POST_LOGIN_INTRO_CLOSE_TAG = "acceptance.intro.close"
+// the overlays' close button; its content description is translated, so the
+// device tests find it by this tag in every language
+internal const val POST_LOGIN_OVERLAY_CLOSE_TAG = "acceptance.overlay.close"
+internal const val POST_LOGIN_MAIN_READY_TAG = "acceptance.main.ready"
+
+/** Navigation can exist before the guest-status load decides to show intro. */
+internal fun postLoginMainNavigationReady(
+    isPro: Boolean,
+    isGuest: Boolean,
+    guestStatusKnown: Boolean,
+    allowPrompt: Boolean,
+    introDisplayed: Boolean,
+): Boolean = !introDisplayed && (isPro || !allowPrompt || (guestStatusKnown && isGuest))
 
 internal enum class PostLoginUiAction {
     WelcomeEnter,

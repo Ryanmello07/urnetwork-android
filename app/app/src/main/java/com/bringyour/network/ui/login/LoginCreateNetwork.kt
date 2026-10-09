@@ -222,8 +222,8 @@ fun LoginCreateNetwork(
     var welcomeOverlayVisible by remember { mutableStateOf(false) }
     var isContentVisible by remember { mutableStateOf(true) }
 
-    // NOTE: this is intentionally a plain `val`, recomputed on every recomposition,
-    // and NOT wrapped in `remember { derivedStateOf { ... } }`.
+    // This is intentionally a plain `val`, recomputed on every recomposition,
+    // and not wrapped in `remember { derivedStateOf { ... } }`.
     //
     // `remember` with no keys only evaluates its calculation once, on this
     // composable's first composition, and caches the result forever after.
@@ -415,7 +415,7 @@ fun LoginCreateNetwork(
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(
                                 Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                contentDescription = "Back"
+                                contentDescription = stringResource(id = R.string.back)
                             )
                         }
                     },
@@ -674,7 +674,7 @@ private fun NetworkCreateForm(
                 Spacer(modifier = Modifier.width(4.dp))
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "Right Arrow",
+                    contentDescription = null,
                     modifier = Modifier.size(16.dp),
                     tint = if (isBtnEnabled) Color.White else Color.Gray
                 )

@@ -187,7 +187,7 @@ fun SplitRulesScreen(
                 ruleId = rule.id,
             )
         } else {
-            // create a rule from the action's host values, all initially UNSELECTED:
+            // create a rule from the action's host values, all initially unselected:
             // the common case is picking one or a few server names, so pre-selecting
             // everything just makes the user uncheck the rest
             RuleEditorTarget(
@@ -209,7 +209,7 @@ fun SplitRulesScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = stringResource(id = R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -904,7 +904,7 @@ private fun AddRuleRow(
     ) {
         Icon(
             imageVector = Icons.Filled.Add,
-            contentDescription = stringResource(id = R.string.add_a_rule),
+            contentDescription = null,
             tint = if (enabled) Green else TextFaint,
             modifier = Modifier.size(20.dp)
         )

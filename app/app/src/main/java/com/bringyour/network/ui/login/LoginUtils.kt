@@ -336,6 +336,14 @@ class SsoOAuthAttempts(
         if (nowMillis() - pending.createdMillis > SSO_OAUTH_MAX_AGE_MILLIS) return null
         return pending
     }
+
+    /**
+     * Drops the pending attempt, whatever its purpose: a sign-out ends every
+     * attempt the app started, so a late return matches none.
+     */
+    fun clear() {
+        store.clear()
+    }
 }
 
 private fun ssoOAuthToken(): String {
@@ -517,7 +525,7 @@ fun launchGoogleOAuth(context: Context, apiUrl: String?, purpose: String = SSO_O
     launchSsoOAuth(context, SsoProvider.GOOGLE, apiUrl, purpose)
 
 /**
- * The display name from the `user` JSON Apple sends with the FIRST
+ * The display name from the `user` JSON Apple sends with the first
  * authorization only: `{"name":{"firstName":…,"lastName":…},"email":…}`.
  * Empty when absent or unreadable.
  */

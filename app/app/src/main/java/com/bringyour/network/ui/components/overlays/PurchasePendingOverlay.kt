@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.bringyour.network.R
@@ -19,7 +20,7 @@ import com.bringyour.network.ui.theme.Pink
 import com.bringyour.network.ui.theme.URNetworkTheme
 
 /**
- * Shown when Google Play ACCEPTED a purchase but has not completed it -- it is waiting
+ * Shown when Google Play accepted a purchase but has not completed it -- it is waiting
  * on an approval (a child needing a parent's OK) or an out-of-band payment.
  *
  * This state used to be invisible. `acknowledgePurchases` filters to PURCHASED, found
@@ -28,7 +29,7 @@ import com.bringyour.network.ui.theme.URNetworkTheme
  * go on, concludes it failed, and tries to buy again.
  *
  * So the one job of this overlay is to say: it worked, it is not done yet, and you do
- * NOT need to pay again.
+ * not need to pay again.
  */
 @Composable
 fun PurchasePendingOverlay(
@@ -44,13 +45,13 @@ fun PurchasePendingOverlay(
             backgroundColor = Pink,
         ) {
             Text(
-                "Almost there.",
+                stringResource(id = R.string.purchase_pending_title),
                 style = MaterialTheme.typography.headlineMedium,
                 color = Black
             )
 
             Text(
-                "Your purchase is waiting for approval. UR Pro will turn on by itself once it goes through — there's no need to buy again.",
+                stringResource(id = R.string.purchase_pending_body),
                 style = MaterialTheme.typography.headlineLarge,
                 color = Black
             )
@@ -67,7 +68,7 @@ fun PurchasePendingOverlay(
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        "Got it",
+                        stringResource(id = R.string.got_it),
                         style = buttonTextStyle,
                         color = Black
                     )
