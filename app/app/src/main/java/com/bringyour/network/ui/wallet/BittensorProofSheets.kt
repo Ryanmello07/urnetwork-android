@@ -379,7 +379,7 @@ fun startBittensorWalletConnection(
     request: BittensorProofRequest,
     // the WalletConnect Cloud project id (local.properties) the app pairs with
     walletConnectProjectId: String = BuildConfig.WALLETCONNECT_PROJECT_ID,
-): Result<BittensorWalletConnection> {
+): BittensorWalletStart {
     val connect = try {
         Sdk.newBittensorWalletConnect(
             api,
@@ -389,17 +389,24 @@ fun startBittensorWalletConnection(
             context.packageName,
         )
     } catch (e: Exception) {
-        return Result.failure(e)
+        return BittensorWalletStart(null, sdkErrorCode(e))
     }
     val connection = SdkBittensorWalletConnection(connect, bittensorWalletDebugSetup(context, connect))
     return try {
         connection.sign(request.purpose, request.expectedAddress ?: "")
-        Result.success(connection)
+        BittensorWalletStart(connection)
     } catch (e: Exception) {
         connection.close()
-        Result.failure(e)
+        BittensorWalletStart(null, sdkErrorCode(e))
     }
 }
+
+/**
+ * The code of an sdk error, the word before its text ("walletconnect_unavailable:
+ * no WalletConnect project id"). The text can name an address and is left out.
+ */
+private fun sdkErrorCode(e: Exception): String =
+    (e.message ?: "").substringBefore(':').trim().take(48)
 
 /**
  * The wallet-app row of a wallet on this phone with its install check, or null when

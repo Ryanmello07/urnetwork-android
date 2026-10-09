@@ -348,6 +348,16 @@ interface BittensorWalletConnection {
     fun traceLines(): List<String> = emptyList()
 }
 
+/**
+ * What starting a wallet app connection gave: the connection, which has begun to
+ * sign, or none with the code of the sdk's refusal (the word before its text, as
+ * "walletconnect_unavailable": the text itself can name an address and is not kept).
+ */
+class BittensorWalletStart(
+    val connection: BittensorWalletConnection?,
+    val errorCode: String = "",
+)
+
 /** What a debug build shows of the login screen's wallet app connection. No secret is in it. */
 data class BittensorWalletDebug(
     // the install check of each wallet-app row

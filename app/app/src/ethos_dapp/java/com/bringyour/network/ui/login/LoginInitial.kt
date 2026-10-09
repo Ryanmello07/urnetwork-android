@@ -1,9 +1,14 @@
 package com.bringyour.network.ui.login
 
 import com.bringyour.network.ui.components.tabletForm
-import com.bringyour.network.ui.wallet.BittensorProofFlow
 import com.bringyour.network.ui.wallet.BittensorProofSheets
+import com.bringyour.network.ui.wallet.BittensorWalletConnections
+import com.bringyour.network.ui.wallet.bittensorLoginProofFlow
 import com.bringyour.network.ui.wallet.bittensorSignatureMismatchText
+import com.bringyour.network.ui.wallet.bittensorWalletFailureText
+import com.bringyour.network.ui.wallet.bittensorWalletOpenFailedText
+import com.bringyour.network.ui.wallet.copyBittensorWalletTrace
+import com.bringyour.network.ui.wallet.startBittensorWalletConnection
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -117,9 +122,10 @@ fun LoginInitial(
         }
     }
 
-    // clear the bittensor auth spinner when returning from the sign message browser flow
+    // clear the bittensor auth spinner when returning from the sign message browser flow.
+    // Not while a wallet app connection of this screen is held: its sign-in is still running
     LifecycleResumeEffect(Unit) {
-        if (loginViewModel.bittensorAuthInProgress) {
+        if (loginViewModel.bittensorAuthInProgress && !BittensorWalletConnections.shared.waiting) {
             loginViewModel.setBittensorAuthInProgress(false)
         }
         if (loginViewModel.appleAuthInProgress) {
@@ -287,11 +293,12 @@ fun LoginInitial(
 
     }
 
-    // Talisman or TAO.com: neither documents a mobile connect interface, so
-    // the user signs the shown challenge in the wallet and pastes the proof
+    // TAO.com: the user signs the shown challenge in the wallet and pastes the
+    // proof. Talisman, where the sdk lists it as an app: the app opens the wallet
+    // itself and the wallet signs there (bittensorLoginProofFlow)
     val bittensorLogin = remember {
         BittensorLoginController(
-            flow = BittensorProofFlow(nowMillis = System::currentTimeMillis),
+            flow = bittensorLoginProofFlow(context),
             scope = scope,
             api = { application?.api },
             setLoginError = loginViewModel.setLoginError,
@@ -303,13 +310,20 @@ fun LoginInitial(
             },
             openUrl = { url -> launchBittensorBridge(context, url) },
             signatureMismatchText = { walletId -> bittensorSignatureMismatchText(context, walletId) },
+            openWallet = { link, pkg -> launchBittensorWallet(context, link, pkg) },
+            connectWallet = { api, request -> startBittensorWalletConnection(context, api, request) },
+            walletFailureText = { walletId, refused -> bittensorWalletFailureText(context, walletId, refused) },
+            walletOpenFailedText = { walletId -> bittensorWalletOpenFailedText(context, walletId) },
+            copyWalletTrace = { copyBittensorWalletTrace(context) },
         )
     }
 
-    // back from the WalletConnect page: a bridge that already returned is done
+    // back from the WalletConnect page: a bridge that already returned is done.
+    // Back from a wallet app: its connection is told and woken, and told again
+    // when this screen leaves the front
     LifecycleResumeEffect(bittensorLogin) {
         bittensorLogin.onResumed()
-        onPauseOrDispose {}
+        onPauseOrDispose { bittensorLogin.onStopped() }
     }
 
     val connectBittensorWallet = {
@@ -383,6 +397,7 @@ fun LoginInitial(
         flow = bittensorLogin.flow,
         onChoose = bittensorLogin::choose,
         onSubmit = bittensorLogin::submit,
+        onOpenWallet = bittensorLogin::openWalletButton,
     )
 
     SeedphraseLoginSheet(
