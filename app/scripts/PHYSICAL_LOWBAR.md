@@ -1,5 +1,24 @@
 # Physical Android low-bar capture
 
+Full canonical PERFVAR uses the existing Go runner's fixed dual-profile axis:
+complete `ios-memory-audit-v2` 32/32/32-MiB and normal `android` 64/64/64-MiB
+target/soft/observed-runtime campaigns on both allowlisted phones. Each profile
+has its own control/candidate builds, installed APKs, sessions, quiet windows,
+all-phase and post-teardown peaks, and comparison pairs. The profile is supplied
+explicitly to `physical_memory_profile.mjs` and `physical_quiet_gate.mjs` via
+`--profile`; it is never inferred from samples. The live/offline proof binds the
+selected profile and all three limits. Missing or cross-profile evidence fails.
+The Kotlin producer's threshold counters follow the selected build profile;
+Android values between 32 and 64 MiB do not trigger iOS-threshold counters.
+Sampling cadence, native ring, four runtime scopes and quiet denominator stay
+unchanged. Existing JavaScript is platform tooling; new campaign automation
+remains in the Go runner, not a second harness.
+
+The scoped H1 commands below retain their default iOS-v2 profile and diagnostic
+purpose. They are not the full dual-profile campaign and cannot promote an old
+single-profile receipt or baseline. The signed physical-iOS footprint gate is
+not measured by either Android profile.
+
 ## Canonical scoped H1 iOS-profile arm
 
 For the scoped Wikipedia/Fast.com qualification, Terra should use
@@ -1029,6 +1048,20 @@ Ordinary completed probe exit codes (for example video exit 2) remain in the
 receipt and `failedChildCount`; they are not performance/correctness successes.
 They permit diagnostic quiet collection only after all work is joined. Keep
 every original result; no retry or baseline promotion hides those failures.
+
+Canonical PERF physical coverage version 3 freezes the user-authorized
+`public-observed-nonprogress-diagnostic-v1` policy: only completed owned public
+CNN/Bloomberg exit-2 nonprogress, with no signal/interruption, committed
+navigation, observed nonempty samples and `playbackProgressed=false`, is
+non-gating diagnostic evidence. Both probes still run; the backend retains raw
+child/results, the unchanged failed-child count and a separate diagnostic
+count. This is not a launch, deadline, identity, malformed-result or cleanup
+exception. P2P video playback remains required. Page/throughput, all 32/64-MiB
+memory phases, quiet, teardown and the complete two-profile matrix are
+unchanged. Old strict-video receipts/failures stay immutable; no flag or receipt
+rewrite upgrades them. Failed public brackets retain their raw memory and
+invalid rows for final teardown replay; failed P2P roles retain available raw
+receipts without claiming quiet samples that were never collected.
 
 The invalid `8vdtZ8` arm actually had four nested child completion receipts,
 all exit 0 and uninterrupted. Its body then invoked

@@ -37,6 +37,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.WorkManager
 import com.bringyour.network.location.MockLocationController
 import com.bringyour.network.location.MockLocationFeeder
+import com.bringyour.network.ui.login.SignInNotices
 import com.bringyour.network.ui.login.SsoProvider
 import com.bringyour.network.ui.login.ssoOAuthAttempts
 import com.bringyour.network.ui.login.toVerifySendError
@@ -89,6 +90,8 @@ class MainApplication : Application() {
         const val CLIENT_EVENT_SESSION_GAP_MILLIS = 30L * 60L * 1000L
         // how long logout waits for the pending product events to send
         const val CLIENT_EVENT_LOGOUT_DRAIN_MILLIS = 1500L
+        // the device type every request of the api reports (Api.SetClientInfo)
+        const val CLIENT_INFO_DEVICE_TYPE = "android"
         // Admission scales with the effective process allowance. The debug
         // iOS surrogate mirrors the extension's 32/32-MiB target/soft limit;
         // v1 remains an explicit historical 20/32-MiB comparison profile.
@@ -594,6 +597,14 @@ class MainApplication : Application() {
      * them once.
      */
     val pendingFeedbackPrefill = kotlinx.coroutines.flow.MutableStateFlow<com.bringyour.network.analytics.FeedbackPrefill?>(null)
+
+    /**
+     * What the sign-in screen says about the last sign-out: the sdk's
+     * AuthLogout leaves the notice its device's cause has (another device
+     * signed this session out), LoginNavHost shows it once, and the app's own
+     * sign-out and a new sign-in drop it.
+     */
+    val signInNotices = SignInNotices()
 
     /**
      * The physical network's Private DNS (DoT) mode, mapped from the offline
@@ -1319,6 +1330,11 @@ class MainApplication : Application() {
         stop()
 
         networkSpaceManagerProvider.setNetworkSpace(networkSpace)
+
+        // the space's api is the api this app's requests go out on: before any
+        // of them, it reports the device type and this build's version, which
+        // the server keeps for each sign-in (Account -> Sessions)
+        networkSpace.api?.setClientInfo(Sdk.newClientInfo(CLIENT_INFO_DEVICE_TYPE, BuildConfig.VERSION_NAME))
 
         // the product-event queue follows the active network space: its api sends
         // and its local state dir persists the pending batch across process death
@@ -2214,6 +2230,8 @@ class MainApplication : Application() {
     }
 
     fun logout() {
+        // the user signed out: the sign-in screen has nothing to explain
+        signInNotices.clear()
         loginStartupTracker.loggedOut()
         logoutInternal()
     }
@@ -2299,11 +2317,14 @@ class MainApplication : Application() {
         // the sdk fires this when the jwt refresh finds the client no longer
         // exists on the server (e.g. the client was removed): the sdk has
         // already cleared its local auth state; log the user out and return
-        // to the login flow
-        deviceManager.onAuthLogout = {
+        // to the login flow. The device's cause, read in its listener, says
+        // whether the sign-in screen tells the user that another device
+        // signed this session out; any other cause says nothing new
+        deviceManager.onAuthLogout = { cause ->
             Handler(mainLooper).post {
                 loginStartupTracker.authLoggedOut()
                 logoutInternal()
+                signInNotices.authLoggedOut(cause)
                 val intent = Intent(applicationContext, LoginActivity::class.java)
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK.or(Intent.FLAG_ACTIVITY_TASK_ON_HOME))
                 startActivity(intent)
@@ -2318,6 +2339,8 @@ class MainApplication : Application() {
         if (deviceInitResult !is DeviceInitResult.Ready) {
             return deviceInitResult
         }
+        // signed in: an earlier sign-out's notice no longer applies
+        signInNotices.clear()
 
         // A callback queued for a former DeviceLocal must never reset the new
         // device's transports or judge its initial provider window unhealthy.

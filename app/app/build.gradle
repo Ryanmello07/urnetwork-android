@@ -76,6 +76,8 @@ ext.warpctlPath = { ->
         case 'Mac OS X':
             osName = 'darwin'
             break
+        default:
+            throw new GradleException('Unsupported warpctl host OS')
     }
     switch (System.getProperty('os.arch')) {
         case 'x86_64':
@@ -85,8 +87,11 @@ ext.warpctlPath = { ->
             osArch = 'amd64'
             break
         case 'aarch64':
+        case 'arm64':
             osArch = 'arm64'
             break
+        default:
+            throw new GradleException('Unsupported warpctl host architecture')
     }
 
     "${bringyourHomeDir}/warp/warpctl/build/${osName}/${osArch}/warpctl"
@@ -173,7 +178,9 @@ android {
             archivesName = "${applicationId}-${versionName}-${versionCode}"
         }
 
-        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // starts the app with the SDK's extender network client off, except for
+        // acceptance and the startup-memory diagnostic (androidTest manifest)
+        testInstrumentationRunner 'com.bringyour.network.ExtenderNetworkClientOffRunner'
 
         // A per-run marker lets the acceptance test prove that the APK it is
         // driving came from this invocation, rather than a stale install.
