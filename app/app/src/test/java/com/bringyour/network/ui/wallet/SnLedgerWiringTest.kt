@@ -14,7 +14,7 @@ import org.junit.Test
 class SnLedgerWiringTest {
 
     private fun source(name: String): String =
-        File("src/main/java/com/bringyour/network/ui/wallet/$name").readText()
+        File("src/main/java/com/bringyour/network/ui/wallet/$name").readText().replace("\r\n", "\n")
 
     // the text between two markers, failing when either is missing
     private fun between(source: String, start: String, end: String): String {

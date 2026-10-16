@@ -30,7 +30,7 @@ class SignInNoticeWiringTest {
 
         private const val SOURCE_DIR = "src/main/java/com/bringyour/network"
 
-        private fun source(path: String) = moduleFile("$SOURCE_DIR/$path").readText()
+        private fun source(path: String) = moduleFile("$SOURCE_DIR/$path").readText().replace("\r\n", "\n")
 
         // the text between two markers, failing when either is missing
         private fun between(source: String, start: String, end: String): String {

@@ -161,7 +161,7 @@ class SignedOutNetworkStateTest {
     // connect gate reads
     @Test
     fun logoutClearsTheNetworksStateBeforeTheLocalLogout() {
-        val source = java.io.File("src/main/java/com/bringyour/network/MainApplication.kt").readText()
+        val source = java.io.File("src/main/java/com/bringyour/network/MainApplication.kt").readText().replace("\r\n", "\n")
         val start = source.indexOf("private fun logoutInternal() {")
         assertTrue(start >= 0)
         val body = source.substring(start, source.indexOf("\n    }\n", start))

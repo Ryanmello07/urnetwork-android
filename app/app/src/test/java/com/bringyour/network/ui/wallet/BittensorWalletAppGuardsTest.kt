@@ -20,6 +20,7 @@ class BittensorWalletAppGuardsTest {
 
     // block comments, then line comments; no string of these files holds "//" or "/*"
     private fun code(path: String): String = File(path).readText()
+        .replace("\r\n", "\n")
         .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
         .replace(Regex("""//[^\n]*"""), "")
 

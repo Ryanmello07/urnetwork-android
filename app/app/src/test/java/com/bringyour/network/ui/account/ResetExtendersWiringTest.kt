@@ -46,7 +46,7 @@ class ResetExtendersWiringTest {
 
     @Test
     fun theRowAsksBeforeTheResetRuns() {
-        val screen = moduleFile("$ACCOUNT_DIR/ExtendersScreen.kt").readText()
+        val screen = moduleFile("$ACCOUNT_DIR/ExtendersScreen.kt").readText().replace("\r\n", "\n")
         // the row only opens the confirmation, and only while a device is
         // there to reset through
         val rowCall = between(screen, "text = stringResource(id = R.string.reset_extenders),", "HorizontalDivider()")

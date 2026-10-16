@@ -15,7 +15,7 @@ import org.junit.Test
  */
 class SnConsentWiringTest {
 
-    private fun source(path: String): String = File("src/$path").readText()
+    private fun source(path: String): String = File("src/$path").readText().replace("\r\n", "\n")
 
     private fun wallet(name: String): String = source("main/java/com/bringyour/network/ui/wallet/$name")
 

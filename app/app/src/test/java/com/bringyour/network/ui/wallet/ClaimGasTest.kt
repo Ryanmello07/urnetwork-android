@@ -25,7 +25,7 @@ class ClaimGasTest {
     private val v1FloorTao = 2_700_000 * 1.1 * 5e9 / 1e18
 
     private fun source(name: String): String =
-        File("src/main/java/com/bringyour/network/ui/wallet/$name").readText()
+        File("src/main/java/com/bringyour/network/ui/wallet/$name").readText().replace("\r\n", "\n")
 
     @Test
     fun `the threshold and the top-up cover the SDK's v1 gas floor`() {
