@@ -33,11 +33,12 @@ concurrency:
 env:
   WARP_VERSION: beta-${{ github.run_number }}
   # THE PINS. A branch tip moves, a commit does not. Change them together and on purpose.
-  # Rule for the pair: an sdk at or after c0b71e29 needs connect at or after 219d2f9e, and
-  # before urnetwork/connect#219 (which removes packages this sdk imports).
+  # Rule for the pair: an sdk at or after c0b71e29 needs connect at or after 219d2f9e. The
+  # connect#219 cap no longer applies: the merged sdk moved messaging out and imports nothing
+  # connect#219 removed.
   SDK_REPOSITORY: Ryanmello07/urnetwork-sdk
-  SDK_REF: ec9313664b1649a9f8703a256a9d6d6b3ff10ec7 # beta/talisman-live-test in the sdk fork: upstream ed9f56a5 + the wallet work with the Talisman changes, the device-test layer, and the link-expiry/pairing-delete/challenge-recovery fixes
-  CONNECT_SHA: 97abb1e6ddb5b21403954a556ddc73947993297a # urnetwork/connect main, 2026-10-09
+  SDK_REF: 29bf475dbe723376114fd768ed2e2b0434f683d6 # beta/talisman-live-test in the sdk fork: upstream/main 2026-10-15 merged (messaging removed, consent/settlement added) + our walletconnect client and Talisman fixes
+  CONNECT_SHA: 64cf3f51987ad1673fc899e4a5dd02195e9991e4 # urnetwork/connect main, 2026-10-15; the merged sdk needs its ClientInfo/SessionId/extender symbols and no longer imports the packages connect#219 removed
   GLOG_SHA: fe810311aa908259ff133ce502bbf0618dd46a0c # urnetwork/glog master
   GOIDENTICONS_SHA: e94d63579c6b9031d8e110d75cb1f0a9d15ea30a # urnetwork/goidenticons main
   GVISOR_SHA: c0783dba2eeff7b79692a7f122ffee5f8bd837c1 # urnetwork/gvisor go
