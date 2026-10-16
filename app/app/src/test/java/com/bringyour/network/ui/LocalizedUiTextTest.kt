@@ -143,8 +143,10 @@ class LocalizedUiTextTest {
         // a scan that reads nothing would pass
         assertTrue("only ${kotlinFiles.size} kotlin files under $src", 100 < kotlinFiles.size)
 
-        val sources = kotlinFiles.map { KotlinSource(path = it.relativeTo(src).path, text = it.readText()) }
-        val xml = xmlFiles.map { xmlFindings(it.relativeTo(src).path, it.readText()) }
+        val sources = kotlinFiles.map {
+            KotlinSource(path = it.relativeTo(src).path.replace(File.separatorChar, '/'), text = it.readText())
+        }
+        val xml = xmlFiles.map { xmlFindings(it.relativeTo(src).path.replace(File.separatorChar, '/'), it.readText()) }
         return Findings(
             spoken = (sources.flatMap { spokenLiterals(it) } + xml.flatMap { it.spoken }).sorted(),
             shown = (sources.flatMap { shownLiterals(it) } + xml.flatMap { it.shown }).sorted(),
